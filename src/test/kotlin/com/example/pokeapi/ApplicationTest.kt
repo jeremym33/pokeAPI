@@ -168,6 +168,17 @@ class ApplicationTest {
     }
 
     @Test
+    fun `swagger UI et spec OpenAPI sont servis`() = appTest {
+        val ui = client.get("/swagger")
+        assertEquals(HttpStatusCode.OK, ui.status)
+        assertContains(ui.bodyAsText(), "swagger-ui")
+
+        val spec = client.get("/swagger/documentation.yaml")
+        assertEquals(HttpStatusCode.OK, spec.status)
+        assertContains(spec.bodyAsText(), "/pokemon/import")
+    }
+
+    @Test
     fun `corps JSON invalide renvoie 400`() = appTest {
         val response = client.post("/teams") {
             contentType(ContentType.Application.Json)

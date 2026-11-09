@@ -75,6 +75,13 @@ Variables d'environnement (valeurs par défaut dans `src/main/resources/applicat
 
 Le schéma est créé automatiquement au démarrage (`SchemaUtils.create`).
 
+## Swagger
+
+Une interface Swagger UI permet de tester tous les endpoints depuis le navigateur :
+**http://localhost:8080/swagger** (la racine `/` y redirige).
+
+La spécification OpenAPI se trouve dans `src/main/resources/openapi/documentation.yaml` ; elle est maintenue à la main, pensez à la mettre à jour quand vous ajoutez une route.
+
 ## Endpoints
 
 ### Pokémon

@@ -1,0 +1,332 @@
+openapi: 3.0.3
+info:
+  title: PokéAPI Ktor
+  version: 0.1.0
+  description: |
+    API Ktor qui s'appuie sur [PokéAPI](https://pokeapi.co/) et met les données en cache dans PostgreSQL.
+
+    Pour commencer : lancez **POST /pokemon/import** (par exemple `limit=151`), puis parcourez **GET /pokemon**.
+servers:
+  - url: /
+tags:
+  - name: Pokémon
+    description: Consultation et import des Pokémon
+  - name: Équipes
+    description: Équipes de 6 Pokémon maximum
+  - name: Divers
+
+paths:
+  /health:
+    get:
+      tags: [Divers]
+      summary: État de l'application et de la base
+      responses:
+        "200":
+          description: Application et base opérationnelles
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+        "503":
+          description: Base de données indisponible
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+
+  /pokemon:
+    get:
+      tags: [Pokémon]
+      summary: Liste paginée des Pokémon en base
+      description: Ne renvoie que les Pokémon déjà enregistrés (importés ou consultés).
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: type
+          in: query
+          description: Filtre par type (fire, water, grass…)
+          schema: { type: string }
+          example: fire
+        - name: name
+          in: query
+          description: Filtre sur une partie du nom
+          schema: { type: string }
+          example: char
+      responses:
+        "200":
+          description: Page de résultats
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PokemonPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /pokemon/{idOrName}:
+    get:
+      tags: [Pokémon]
+      summary: Détail d'un Pokémon
+      description: Lu en base, ou récupéré sur pokeapi.co puis enregistré s'il est absent.
+      parameters:
+        - name: idOrName
+          in: path
+          required: true
+          description: Id PokéAPI ou nom (insensible à la casse)
+          schema: { type: string }
+          example: pikachu
+        - name: refresh
+          in: query
+          description: Force la récupération depuis pokeapi.co
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: Le Pokémon
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Pokemon" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "502": { $ref: "#/components/responses/BadGateway" }
+
+  /pokemon/import:
+    post:
+      tags: [Pokémon]
+      summary: Import en masse depuis pokeapi.co
+      description: Les Pokémon déjà en base sont ignorés.
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 2000, default: 151 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200":
+          description: Résultat de l'import
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ImportResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "502": { $ref: "#/components/responses/BadGateway" }
+
+  /teams:
+    get:
+      tags: [Équipes]
+      summary: Liste des équipes
+      responses:
+        "200":
+          description: Les équipes
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Team" }
+    post:
+      tags: [Équipes]
+      summary: Crée une équipe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateTeamRequest" }
+      responses:
+        "201":
+          description: Équipe créée
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Team" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /teams/{teamId}:
+    parameters:
+      - $ref: "#/components/parameters/TeamId"
+    get:
+      tags: [Équipes]
+      summary: Détail d'une équipe
+      responses:
+        "200":
+          description: L'équipe
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Team" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [Équipes]
+      summary: Renomme une équipe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RenameTeamRequest" }
+      responses:
+        "200":
+          description: Équipe renommée
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Team" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Équipes]
+      summary: Supprime une équipe
+      responses:
+        "204": { description: Équipe supprimée }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /teams/{teamId}/pokemon/{idOrName}:
+    post:
+      tags: [Équipes]
+      summary: Ajoute un Pokémon à l'équipe
+      parameters:
+        - $ref: "#/components/parameters/TeamId"
+        - name: idOrName
+          in: path
+          required: true
+          schema: { type: string }
+          example: pikachu
+      responses:
+        "201":
+          description: Équipe mise à jour
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Team" }
+        "400":
+          description: Pokémon inconnu ou équipe complète
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /teams/{teamId}/members/{position}:
+    delete:
+      tags: [Équipes]
+      summary: Retire le Pokémon à une position
+      parameters:
+        - $ref: "#/components/parameters/TeamId"
+        - name: position
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1, maximum: 6 }
+      responses:
+        "200":
+          description: Équipe mise à jour
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Team" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+components:
+  parameters:
+    TeamId:
+      name: teamId
+      in: path
+      required: true
+      schema: { type: integer }
+      example: 1
+
+  responses:
+    BadRequest:
+      description: Requête invalide
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Ressource introuvable
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    BadGateway:
+      description: PokéAPI indisponible
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Pokemon:
+      type: object
+      properties:
+        id: { type: integer, example: 25 }
+        name: { type: string, example: pikachu }
+        height: { type: integer, description: En décimètres, example: 4 }
+        weight: { type: integer, description: En hectogrammes, example: 60 }
+        baseExperience: { type: integer, nullable: true, example: 112 }
+        spriteUrl: { type: string, nullable: true }
+        artworkUrl: { type: string, nullable: true }
+        types:
+          type: array
+          items: { type: string }
+          example: [electric]
+        stats:
+          type: object
+          additionalProperties: { type: integer }
+          example: { hp: 35, attack: 55, defense: 40, special-attack: 50, special-defense: 50, speed: 90 }
+        abilities:
+          type: array
+          items: { $ref: "#/components/schemas/Ability" }
+    Ability:
+      type: object
+      properties:
+        name: { type: string, example: static }
+        hidden: { type: boolean, example: false }
+    PokemonSummary:
+      type: object
+      properties:
+        id: { type: integer, example: 25 }
+        name: { type: string, example: pikachu }
+        types:
+          type: array
+          items: { type: string }
+          example: [electric]
+        spriteUrl: { type: string, nullable: true }
+    PokemonPage:
+      type: object
+      properties:
+        total: { type: integer, example: 151 }
+        limit: { type: integer, example: 20 }
+        offset: { type: integer, example: 0 }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/PokemonSummary" }
+    ImportResult:
+      type: object
+      properties:
+        requested: { type: integer, example: 151 }
+        imported: { type: integer, example: 148 }
+        alreadyCached: { type: integer, example: 3 }
+        failed:
+          type: array
+          items: { type: string }
+          example: []
+    Team:
+      type: object
+      properties:
+        id: { type: integer, example: 1 }
+        name: { type: string, example: Starters }
+        createdAt: { type: string, format: date-time }
+        members:
+          type: array
+          items: { $ref: "#/components/schemas/PokemonSummary" }
+    CreateTeamRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100, example: Starters }
+        pokemon:
+          type: array
+          maxItems: 6
+          description: Ids ou noms de Pokémon
+          items: { type: string }
+          example: [bulbasaur, charmander, squirtle]
+    RenameTeamRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100, example: Kanto }
+    Health:
+      type: object
+      properties:
+        status: { type: string, example: UP }
+        database: { type: string, example: UP }
+    Error:
+      type: object
+      properties:
+        error: { type: string }
