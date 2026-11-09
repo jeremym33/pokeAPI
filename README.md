@@ -42,7 +42,23 @@ docker compose up -d db
 ./gradlew run
 ```
 
-L'API écoute sur `http://localhost:8080`.
+L'API écoute sur `http://localhost:8080`. Le PostgreSQL du compose est exposé sur le port **5433** de la machine (pour ne pas entrer en conflit avec un PostgreSQL déjà installé sur 5432).
+
+Pour changer les identifiants ou les ports, copier `.env.example` en `.env` et l'adapter : la base et l'application utilisent les mêmes valeurs.
+
+### Dépannage : `authentification par mot de passe échouée pour l'utilisateur « pokeapi »`
+
+Les variables `POSTGRES_*` ne sont appliquées **qu'à la première initialisation** du volume. Si le volume a été créé avec un autre mot de passe, il faut le recréer (⚠️ supprime les données de la base) :
+
+```bash
+docker compose down -v
+```
+
+```bash
+docker compose up --build
+```
+
+Si l'application est lancée avec `./gradlew run`, vérifier qu'elle pointe bien sur le PostgreSQL du compose (`localhost:5433`) et non sur un PostgreSQL local.
 
 ## Configuration
 
@@ -51,7 +67,7 @@ Variables d'environnement (valeurs par défaut dans `src/main/resources/applicat
 | Variable | Défaut |
 |---|---|
 | `PORT` | `8080` |
-| `DATABASE_URL` | `jdbc:postgresql://localhost:5432/pokeapi` |
+| `DATABASE_URL` | `jdbc:postgresql://localhost:5433/pokeapi` |
 | `DATABASE_USER` / `DATABASE_PASSWORD` | `pokeapi` / `pokeapi` |
 | `DATABASE_POOL_SIZE` | `10` |
 | `POKEAPI_BASE_URL` | `https://pokeapi.co/api/v2` |

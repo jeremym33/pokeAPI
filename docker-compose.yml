@@ -1,16 +1,19 @@
+# Les identifiants sont lus depuis .env (voir .env.example), avec des valeurs par défaut.
+# Ils sont partagés entre la base et l'application pour rester cohérents.
 services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: pokeapi
-      POSTGRES_USER: pokeapi
-      POSTGRES_PASSWORD: pokeapi
+      POSTGRES_DB: ${POSTGRES_DB:-pokeapi}
+      POSTGRES_USER: ${POSTGRES_USER:-pokeapi}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pokeapi}
     ports:
-      - "5432:5432"
+      # 5433 côté machine pour ne pas entrer en conflit avec un PostgreSQL installé localement
+      - "${POSTGRES_HOST_PORT:-5433}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U pokeapi -d pokeapi"]
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -21,11 +24,13 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: jdbc:postgresql://db:5432/pokeapi
-      DATABASE_USER: pokeapi
-      DATABASE_PASSWORD: pokeapi
+      DATABASE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB:-pokeapi}
+      DATABASE_USER: ${POSTGRES_USER:-pokeapi}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-pokeapi}
     ports:
-      - "8080:8080"
+      - "${APP_PORT:-8080}:8080"
 
 volumes:
   pgdata:
+    # Nom explicite : évite de réutiliser un volume « pokeapi_pgdata » créé par un autre projet
+    name: ktor-pokeapi-pgdata
