@@ -183,9 +183,8 @@ data class LearnedMove(
 @Serializable
 data class PokemonMoves(
     val pokemonId: Int,
+    /** Jeu le plus récent où le Pokémon apparaît (source des attaques), null s'il n'en a aucune. */
     val versionGroup: VersionGroup?,
-    /** Versions de jeu disponibles pour ce Pokémon, dans l'ordre chronologique. */
-    val versionGroups: List<VersionGroup>,
     val moves: List<LearnedMove>,
 )
 

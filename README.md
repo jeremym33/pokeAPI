@@ -94,7 +94,7 @@ La spécification OpenAPI se trouve dans `src/main/resources/openapi/documentati
 | `GET` | `/types` | Types présents en base avec leur effectif |
 | `GET` | `/pokemon/{idOrName}` | Détail d'un Pokémon (récupéré sur PokéAPI si absent), avec ses talents détaillés en français. `?refresh=true` force la mise à jour |
 | `GET` | `/pokemon/{idOrName}/evolutions` | Arbre d'évolution de la famille, avec les conditions en français (« Niveau 16 », « Utiliser Pierre Foudre »…). Mis en cache en base |
-| `GET` | `/pokemon/{idOrName}/moves?version=scarlet-violet` | Attaques apprises dans une version de jeu (par défaut la plus récente) : nom FR, type, catégorie, puissance, précision, PP, méthode et niveau |
+| `GET` | `/pokemon/{idOrName}/moves` | Attaques apprises dans le jeu le plus récent (Écarlate / Violet pour la plupart) : nom FR, type, catégorie, puissance, précision, PP, méthode et niveau |
 | `GET` | `/abilities/{name}` | Talent détaillé (nom FR, texte du jeu, effet) et liste des Pokémon qui le possèdent |
 | `GET` | `/pokemon/{idOrName}/type-defenses` | Faiblesses (×2, ×4), résistances (×½, ×¼) et immunités de type, avec les talents qui les modifient |
 | `POST` | `/pokemon/import?limit=151&offset=0` | Importe une plage de Pokémon depuis PokéAPI (max 2000 par appel) |
@@ -142,7 +142,7 @@ curl -X POST http://localhost:8080/teams -H 'Content-Type: application/json' -d 
 - `team`, `team_member` (position 1 à 6)
 - `type_relation` (dégâts reçus par type, pour le calcul des faiblesses)
 - `ability` (détail des talents et Pokémon qui les possèdent, partagé)
-- `pokemon_learnset` (attaques apprises par version de jeu, JSON), `move` (détail des attaques, partagé)
+- `pokemon_learnset` (attaques apprises dans le jeu le plus récent, JSON), `move` (détail des attaques, partagé)
 - `evolution_chain` (chaînes d'évolution PokéAPI en JSON), `translation` (noms français des objets, capacités, lieux)
 
 ## Tests

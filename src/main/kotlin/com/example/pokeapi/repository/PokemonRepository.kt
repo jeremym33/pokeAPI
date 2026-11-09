@@ -141,6 +141,13 @@ class PokemonRepository(private val database: Database) {
             ?.let { pokeApiJson.decodeFromString(StoredLearnset.serializer(), it[LearnsetTable.data]) }
     }
 
+    suspend fun saveLearnset(pokemonId: Int, learnset: StoredLearnset): Unit = dbQuery {
+        LearnsetTable.upsert {
+            it[LearnsetTable.pokemonId] = pokemonId
+            it[data] = pokeApiJson.encodeToString(StoredLearnset.serializer(), learnset)
+        }
+    }
+
     suspend fun summaries(ids: List<Int>): List<PokemonSummary> = dbQuery { summariesFor(ids) }
 
     /** Régions présentes en base avec leur nombre de Pokémon. */

@@ -3,22 +3,32 @@ package com.example.pokeapi.model
 import com.example.pokeapi.client.PokeApiMoveSlot
 import kotlinx.serialization.Serializable
 
-/** Format de stockage compact : version de jeu -> attaques (m = attaque, k = méthode, l = niveau). */
+/**
+ * Format de stockage compact : version de jeu -> attaques (m = attaque, k = méthode, l = niveau).
+ * Seule la version la plus récente est conservée (voir [learnsetOf]) ; d'anciennes bases peuvent en contenir plusieurs.
+ */
 @Serializable
 data class StoredLearnset(val versionGroups: Map<String, List<StoredLearn>> = emptyMap())
 
 @Serializable
 data class StoredLearn(val m: String, val k: String, val l: Int = 0)
 
+/** Attaques apprises dans le jeu le plus récent uniquement (voir [latestVersionGroup]). */
 fun learnsetOf(moves: List<PokeApiMoveSlot>): StoredLearnset {
-    val byVersion = mutableMapOf<String, MutableList<StoredLearn>>()
-    for (slot in moves) {
-        for (d in slot.versionGroupDetails) {
-            byVersion.getOrPut(d.versionGroup.name) { mutableListOf() }
-                .add(StoredLearn(slot.move.name, d.moveLearnMethod.name, d.levelLearnedAt))
-        }
-    }
-    return StoredLearnset(byVersion.mapValues { (_, v) -> v.distinct() })
+    val latest = latestVersionGroup(moves.flatMap { slot -> slot.versionGroupDetails.map { it.versionGroup.name } })
+        ?: return StoredLearnset()
+    val entries = moves.flatMap { slot ->
+        slot.versionGroupDetails
+            .filter { it.versionGroup.name == latest }
+            .map { StoredLearn(slot.move.name, it.moveLearnMethod.name, it.levelLearnedAt) }
+    }.distinct()
+    return StoredLearnset(mapOf(latest to entries))
+}
+
+/** Jeu principal le plus récent parmi ces versions (les spin-offs seulement s'il n'y a rien d'autre). */
+fun latestVersionGroup(names: Collection<String>): String? {
+    val sorted = names.distinct().sortedWith(compareBy({ VersionGroupInfo.order(it) }, { it }))
+    return sorted.lastOrNull { VersionGroupInfo.of(it)?.spinOff != true } ?: sorted.lastOrNull()
 }
 
 /** Versions de jeu (groupes de versions PokéAPI) dans l'ordre chronologique, avec leur nom français. */

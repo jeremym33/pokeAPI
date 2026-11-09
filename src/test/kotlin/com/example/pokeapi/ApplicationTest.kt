@@ -2,7 +2,11 @@ package com.example.pokeapi
 
 import com.example.pokeapi.client.PokeApiClient
 import com.example.pokeapi.client.configurePokeApiClient
+import com.example.pokeapi.client.NamedApiResource
+import com.example.pokeapi.client.PokeApiMoveSlot
+import com.example.pokeapi.client.PokeApiMoveVersionDetail
 import com.example.pokeapi.model.AbilityDetail
+import com.example.pokeapi.model.learnsetOf
 import com.example.pokeapi.model.EvolutionChain
 import com.example.pokeapi.model.ImportResult
 import com.example.pokeapi.model.Page
@@ -396,13 +400,13 @@ class ApplicationTest {
     }
 
     @Test
-    fun `attaques apprises par version de jeu`() = appTest {
+    fun `attaques apprises dans le jeu le plus recent`() = appTest {
         val response = client.get("/pokemon/bulbasaur/moves")
         assertEquals(HttpStatusCode.OK, response.status)
         val moves = json.decodeFromString<PokemonMoves>(response.bodyAsText())
 
-        // Ordre chronologique ; par défaut le jeu principal le plus récent (pas le spin-off Champions)
-        assertEquals(listOf("red-blue", "scarlet-violet", "champions"), moves.versionGroups.map { it.name })
+        // Jeu principal le plus récent (pas Rouge/Bleu, pas le spin-off Champions)
+        assertEquals("scarlet-violet", moves.versionGroup?.name)
         assertEquals("Écarlate / Violet", moves.versionGroup?.label)
         // Par niveau (triées par niveau), puis œufs
         assertEquals(listOf("Charge", "Fouet Lianes", "Danse Fleurs"), moves.moves.map { it.nameFr })
@@ -417,14 +421,31 @@ class ApplicationTest {
         assertEquals("Œufs", moves.moves.last().methodLabel)
         assertEquals(null, moves.moves.last().level)
 
-        // Autre version : depuis le cache pour les attaques déjà connues
-        val callsBefore = remoteCalls.get()
-        val redBlue = json.decodeFromString<PokemonMoves>(client.get("/pokemon/1/moves?version=red-blue").bodyAsText())
-        assertEquals(listOf("Charge" to "level-up", "Tranch'Herbe" to "machine"), redBlue.moves.map { it.nameFr to it.method })
-        assertEquals(callsBefore + 1, remoteCalls.get()) // seule Tranch'Herbe est récupérée
+        // Tranch'Herbe (seulement dans Rouge/Bleu) n'apparaît pas et n'est jamais récupérée
+        assertTrue(moves.moves.none { it.name == "razor-leaf" })
 
-        assertEquals(HttpStatusCode.BadRequest, client.get("/pokemon/bulbasaur/moves?version=sun-moon").status)
+        // Deuxième appel : tout vient de la base
+        val callsBefore = remoteCalls.get()
+        assertEquals(moves, json.decodeFromString<PokemonMoves>(client.get("/pokemon/1/moves").bodyAsText()))
+        assertEquals(callsBefore, remoteCalls.get())
+
         assertEquals(HttpStatusCode.NotFound, client.get("/pokemon/missingno/moves").status)
+    }
+
+    @Test
+    fun `seul le jeu le plus recent est stocke`() {
+        fun slot(move: String, vararg versions: String) = PokeApiMoveSlot(
+            NamedApiResource(move, "x"),
+            versions.map { PokeApiMoveVersionDetail(1, NamedApiResource("level-up", "x"), NamedApiResource(it, "x")) },
+        )
+        val learnset = learnsetOf(
+            listOf(slot("tackle", "red-blue", "scarlet-violet", "champions"), slot("razor-leaf", "red-blue"))
+        )
+        assertEquals(setOf("scarlet-violet"), learnset.versionGroups.keys)
+        assertEquals(listOf("tackle"), learnset.versionGroups.getValue("scarlet-violet").map { it.m })
+        // Un Pokémon absent des jeux principaux garde son spin-off le plus récent
+        assertEquals(setOf("champions"), learnsetOf(listOf(slot("tackle", "champions"))).versionGroups.keys)
+        assertTrue(learnsetOf(emptyList()).versionGroups.isEmpty())
     }
 
     @Test

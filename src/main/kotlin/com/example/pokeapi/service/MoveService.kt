@@ -6,11 +6,12 @@ import com.example.pokeapi.model.LearnedMove
 import com.example.pokeapi.model.PokemonMoves
 import com.example.pokeapi.model.VersionGroup
 import com.example.pokeapi.model.VersionGroupInfo
+import com.example.pokeapi.model.StoredLearnset
+import com.example.pokeapi.model.latestVersionGroup
 import com.example.pokeapi.model.learnMethodLabel
 import com.example.pokeapi.repository.MoveInfo
 import com.example.pokeapi.repository.MoveRepository
 import com.example.pokeapi.repository.PokemonRepository
-import io.ktor.server.plugins.*
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -18,7 +19,7 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import org.slf4j.LoggerFactory
 
-/** Attaques apprises par un Pokémon dans une version de jeu ; le détail des attaques est mis en cache en base. */
+/** Attaques apprises par un Pokémon dans le jeu le plus récent ; le détail des attaques est mis en cache en base. */
 class MoveService(
     private val pokemonService: PokemonService,
     private val pokemonRepository: PokemonRepository,
@@ -29,7 +30,7 @@ class MoveService(
     private val log = LoggerFactory.getLogger(MoveService::class.java)
     private val semaphore = Semaphore(concurrency.coerceAtLeast(1))
 
-    suspend fun moves(idOrName: String, versionGroup: String?): PokemonMoves? {
+    suspend fun moves(idOrName: String): PokemonMoves? {
         val pokemon = pokemonService.getPokemon(idOrName) ?: return null
 
         val learnset = pokemonRepository.learnset(pokemon.id)
@@ -38,18 +39,14 @@ class MoveService(
                 pokemonService.getPokemon(pokemon.id.toString(), refresh = true)
                 pokemonRepository.learnset(pokemon.id)
             }
-        val available = learnset?.versionGroups?.keys.orEmpty()
-            .sortedWith(compareBy({ VersionGroupInfo.order(it) }, { it }))
-        val versionGroups = available.map { VersionGroup(it, VersionGroupInfo.label(it)) }
+        val selected = learnset?.let { latestVersionGroup(it.versionGroups.keys) }
+            ?: return PokemonMoves(pokemon.id, null, emptyList())
+        val entries = learnset.versionGroups.getValue(selected)
 
-        val selected = when {
-            versionGroup != null -> versionGroup.takeIf { it in available }
-                ?: throw BadRequestException("Version '$versionGroup' indisponible pour ce Pokémon (${available.joinToString()})")
-            // Par défaut : le jeu principal le plus récent (sinon la version la plus récente).
-            else -> available.lastOrNull { VersionGroupInfo.of(it)?.spinOff != true } ?: available.lastOrNull()
-        } ?: return PokemonMoves(pokemon.id, null, versionGroups, emptyList())
-
-        val entries = learnset!!.versionGroups.getValue(selected)
+        // Bases remplies avant ce changement : on ne garde que la version la plus récente.
+        if (learnset.versionGroups.size > 1) {
+            pokemonRepository.saveLearnset(pokemon.id, StoredLearnset(mapOf(selected to entries)))
+        }
         val details = loadMoves(entries.map { it.m }.distinct())
 
         val methodOrder = LEARN_METHOD_LABELS.keys.toList()
@@ -77,7 +74,7 @@ class MoveService(
             )
         )
 
-        return PokemonMoves(pokemon.id, VersionGroup(selected, VersionGroupInfo.label(selected)), versionGroups, moves)
+        return PokemonMoves(pokemon.id, VersionGroup(selected, VersionGroupInfo.label(selected)), moves)
     }
 
     /** Détails des attaques : depuis la base, sinon PokéAPI (puis mise en cache). */

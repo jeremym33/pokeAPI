@@ -65,11 +65,10 @@ fun Route.pokemonRoutes(
             call.respond(chain)
         }
 
-        // GET /pokemon/{idOrName}/moves?version=scarlet-violet  -> attaques apprises dans une version de jeu
+        // GET /pokemon/{idOrName}/moves  -> attaques apprises dans le jeu le plus récent
         get("/{idOrName}/moves") {
             val idOrName = call.parameters["idOrName"]!!
-            val version = call.request.queryParameters["version"]?.takeIf { it.isNotBlank() }
-            val moves = moveService.moves(idOrName, version)
+            val moves = moveService.moves(idOrName)
                 ?: throw NotFoundException("Pokémon '$idOrName' introuvable")
             call.respond(moves)
         }

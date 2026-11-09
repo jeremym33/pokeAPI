@@ -173,10 +173,10 @@ paths:
   /pokemon/{idOrName}/moves:
     get:
       tags: [Pokémon]
-      summary: Attaques apprises dans une version de jeu
+      summary: Attaques apprises dans le jeu le plus récent
       description: |
-        Par défaut, le jeu principal le plus récent où le Pokémon est présent. Les attaques sont triées
-        par méthode (par niveau, CT/CS, œufs, tuteur…) puis par niveau. Le détail des attaques
+        Attaques du jeu principal le plus récent où le Pokémon apparaît (Écarlate / Violet pour la plupart).
+        Triées par méthode (par niveau, CT/CS, œufs, tuteur…) puis par niveau. Le détail des attaques
         (nom français, type, catégorie, puissance, précision, PP, description) est mis en cache en base.
       parameters:
         - name: idOrName
@@ -184,18 +184,12 @@ paths:
           required: true
           schema: { type: string }
           example: pikachu
-        - name: version
-          in: query
-          description: Version de jeu (valeurs possibles dans versionGroups de la réponse)
-          schema: { type: string }
-          example: scarlet-violet
       responses:
         "200":
           description: Attaques apprises
           content:
             application/json:
               schema: { $ref: "#/components/schemas/PokemonMoves" }
-        "400": { $ref: "#/components/responses/BadRequest" }
         "404": { $ref: "#/components/responses/NotFound" }
         "502": { $ref: "#/components/responses/BadGateway" }
 
@@ -495,9 +489,7 @@ components:
         versionGroup:
           allOf: [{ $ref: "#/components/schemas/VersionGroup" }]
           nullable: true
-        versionGroups:
-          type: array
-          items: { $ref: "#/components/schemas/VersionGroup" }
+          description: Jeu dont proviennent les attaques (null si aucune)
         moves:
           type: array
           items: { $ref: "#/components/schemas/LearnedMove" }
