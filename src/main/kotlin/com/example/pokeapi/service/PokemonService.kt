@@ -1,10 +1,15 @@
 package com.example.pokeapi.service
 
 import com.example.pokeapi.client.PokeApiClient
+import com.example.pokeapi.client.PokeApiPokemon
+import com.example.pokeapi.client.PokeApiSpecies
 import com.example.pokeapi.model.ImportResult
 import com.example.pokeapi.model.Page
 import com.example.pokeapi.model.Pokemon
+import com.example.pokeapi.model.PokemonQuery
 import com.example.pokeapi.model.PokemonSummary
+import com.example.pokeapi.model.RegionCount
+import com.example.pokeapi.model.TypeCount
 import com.example.pokeapi.repository.PokemonRepository
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -34,7 +39,7 @@ class PokemonService(
         }
         val remote = pokeApi.getPokemon(key) ?: return null
         try {
-            repository.save(remote)
+            repository.save(remote, fetchSpecies(remote))
         } catch (e: ExposedSQLException) {
             // Une requête concurrente a pu enregistrer le même Pokémon entre-temps.
             log.debug("Enregistrement concurrent de {} : {}", remote.name, e.message)
@@ -42,13 +47,24 @@ class PokemonService(
         return repository.findByIdOrName(remote.id.toString())
     }
 
-    suspend fun list(limit: Int, offset: Int, type: String?, name: String?): Page<PokemonSummary> =
-        repository.list(limit, offset, type, name)
+    suspend fun list(query: PokemonQuery): Page<PokemonSummary> = repository.list(query)
+
+    suspend fun regions(): List<RegionCount> = repository.regions()
+
+    suspend fun types(): List<TypeCount> = repository.types()
+
+    /** L'espèce apporte la génération (donc la région) et le nom français ; son absence n'est pas bloquante. */
+    private suspend fun fetchSpecies(pokemon: PokeApiPokemon): PokeApiSpecies? {
+        val speciesName = pokemon.species?.name ?: pokemon.name
+        return runCatching { pokeApi.getSpecies(speciesName) }
+            .onFailure { log.warn("Espèce indisponible pour {} : {}", pokemon.name, it.message) }
+            .getOrNull()
+    }
 
     /** Importe une plage de Pokémon depuis pokeapi.co dans la base. */
     suspend fun import(limit: Int, offset: Int): ImportResult = coroutineScope {
         val names = pokeApi.listPokemon(limit, offset).results.map { it.name }
-        val cached = repository.existingNames(names)
+        val cached = repository.completeNames(names)
         val toFetch = names.filterNot { it in cached }
 
         val outcomes = toFetch.map { name ->
@@ -56,7 +72,7 @@ class PokemonService(
                 importSemaphore.withPermit {
                     runCatching {
                         val dto = pokeApi.getPokemon(name) ?: error("introuvable")
-                        repository.save(dto)
+                        repository.save(dto, fetchSpecies(dto))
                     }.onFailure { log.warn("Échec de l'import de {} : {}", name, it.message) }
                         .isSuccess to name
                 }

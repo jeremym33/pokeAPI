@@ -8,6 +8,7 @@ import io.ktor.server.application.*
 import io.ktor.server.plugins.*
 import io.ktor.server.plugins.calllogging.*
 import io.ktor.server.plugins.contentnegotiation.*
+import io.ktor.server.plugins.cors.routing.*
 import io.ktor.server.plugins.statuspages.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
@@ -28,6 +29,25 @@ fun Application.configureMonitoring() {
     install(CallLogging) {
         level = Level.INFO
         filter { it.request.path() != "/health" }
+    }
+}
+
+/**
+ * Autorise les appels depuis l'application web (pokeApp).
+ * hosts : "*" pour tout autoriser (développement), sinon une liste comme "localhost:8081,pokedex.example.com".
+ */
+fun Application.configureCors(hosts: List<String>) {
+    install(CORS) {
+        allowMethod(HttpMethod.Get)
+        allowMethod(HttpMethod.Post)
+        allowMethod(HttpMethod.Patch)
+        allowMethod(HttpMethod.Delete)
+        allowHeader(HttpHeaders.ContentType)
+        if (hosts.isEmpty() || "*" in hosts) {
+            anyHost()
+        } else {
+            hosts.forEach { allowHost(it, schemes = listOf("http", "https")) }
+        }
     }
 }
 

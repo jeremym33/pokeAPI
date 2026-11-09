@@ -3,6 +3,9 @@ package com.example.pokeapi.routes
 import com.example.pokeapi.model.CreateTeamRequest
 import com.example.pokeapi.model.ErrorResponse
 import com.example.pokeapi.model.HealthResponse
+import com.example.pokeapi.model.PokemonQuery
+import com.example.pokeapi.model.PokemonSort
+import com.example.pokeapi.model.Region
 import com.example.pokeapi.model.RenameTeamRequest
 import com.example.pokeapi.service.PokemonService
 import com.example.pokeapi.service.TeamService
@@ -30,13 +33,9 @@ fun Route.healthRoutes(database: Database) {
 
 fun Route.pokemonRoutes(service: PokemonService) {
     route("/pokemon") {
-        // GET /pokemon?limit=20&offset=0&type=fire&name=char  -> Pokémon présents en base
+        // GET /pokemon?type=fire,flying&region=kanto&name=char&sort=statTotal&order=desc
         get {
-            val limit = call.intParam("limit", 20).coerceIn(1, MAX_PAGE_SIZE)
-            val offset = call.intParam("offset", 0).coerceAtLeast(0)
-            val type = call.request.queryParameters["type"]
-            val name = call.request.queryParameters["name"]
-            call.respond(service.list(limit, offset, type, name))
+            call.respond(service.list(call.pokemonQuery()))
         }
 
         // GET /pokemon/{idOrName}?refresh=true  -> base, sinon pokeapi.co (puis mise en cache)
@@ -67,6 +66,50 @@ fun Route.pokemonRoutes(service: PokemonService) {
             )
         }
     }
+}
+
+fun Route.referenceRoutes(service: PokemonService) {
+    get("/regions") { call.respond(service.regions()) }
+    get("/types") { call.respond(service.types()) }
+}
+
+private fun RoutingCall.pokemonQuery(): PokemonQuery {
+    val params = request.queryParameters
+    // type=fire,flying ou type=fire&type=flying
+    val types = params.getAll("type").orEmpty()
+        .flatMap { it.split(',') }
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+    if (types.size > 2) throw BadRequestException("Un Pokémon a au plus 2 types")
+
+    val region = params["region"]?.takeIf { it.isNotBlank() }?.let {
+        Region.ofName(it)?.apiName
+            ?: throw BadRequestException("Région inconnue : '$it' (${Region.entries.joinToString { r -> r.apiName }})")
+    }
+    val sort = params["sort"]?.let {
+        PokemonSort.ofParam(it)
+            ?: throw BadRequestException("Tri inconnu : '$it' (${PokemonSort.entries.joinToString { s -> s.param }})")
+    } ?: PokemonSort.ID
+    val descending = when (params["order"]?.lowercase()) {
+        null, "asc" -> false
+        "desc" -> true
+        else -> throw BadRequestException("order doit valoir 'asc' ou 'desc'")
+    }
+    val generation = params["generation"]?.let {
+        it.toIntOrNull()?.takeIf { g -> g in 1..Region.entries.size }
+            ?: throw BadRequestException("generation doit être compris entre 1 et ${Region.entries.size}")
+    }
+
+    return PokemonQuery(
+        limit = intParam("limit", 20).coerceIn(1, MAX_PAGE_SIZE),
+        offset = intParam("offset", 0).coerceAtLeast(0),
+        types = types,
+        region = region,
+        generation = generation,
+        name = params["name"],
+        sort = sort,
+        descending = descending,
+    )
 }
 
 fun Route.teamRoutes(service: TeamService) {

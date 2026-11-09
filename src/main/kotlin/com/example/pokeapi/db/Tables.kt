@@ -9,11 +9,18 @@ import org.jetbrains.exposed.sql.javatime.timestamp
 object PokemonTable : Table("pokemon") {
     val id = integer("id")
     val name = varchar("name", 100).uniqueIndex()
+    /** Nom français (issu de pokemon-species), null si indisponible. */
+    val nameFr = varchar("name_fr", 100).nullable()
+    /** Numéro de génération (1 = Kanto … 9 = Paldea), null si l'espèce n'a pas encore été récupérée. */
+    val generation = integer("generation").nullable().index()
+    val region = varchar("region", 50).nullable().index()
     val height = integer("height")
     val weight = integer("weight")
     val baseExperience = integer("base_experience").nullable()
     val spriteUrl = varchar("sprite_url", 500).nullable()
     val artworkUrl = varchar("artwork_url", 500).nullable()
+    /** Somme des statistiques de base, stockée pour pouvoir trier dessus. */
+    val statTotal = integer("stat_total").default(0)
     val fetchedAt = timestamp("fetched_at")
 
     override val primaryKey = PrimaryKey(id)

@@ -32,10 +32,11 @@ object DatabaseFactory {
         return Database.connect(ds)
     }
 
-    /** Crée les tables manquantes (idempotent). */
+    /** Crée les tables et colonnes manquantes (idempotent, ajoute les nouvelles colonnes aux bases existantes). */
+    @Suppress("DEPRECATION")
     fun createSchema(database: Database) {
         transaction(database) {
-            SchemaUtils.create(
+            SchemaUtils.createMissingTablesAndColumns(
                 PokemonTable,
                 PokemonTypeTable,
                 PokemonStatTable,

@@ -35,7 +35,7 @@ paths:
   /pokemon:
     get:
       tags: [Pokémon]
-      summary: Liste paginée des Pokémon en base
+      summary: Pokédex — liste paginée, filtrable et triable
       description: Ne renvoie que les Pokémon déjà enregistrés (importés ou consultés).
       parameters:
         - name: limit
@@ -46,14 +46,30 @@ paths:
           schema: { type: integer, minimum: 0, default: 0 }
         - name: type
           in: query
-          description: Filtre par type (fire, water, grass…)
+          description: Filtre par type (fire, water, grass…). Deux types séparés par une virgule = le Pokémon doit avoir les deux.
           schema: { type: string }
           example: fire
+        - name: region
+          in: query
+          description: Région d'origine de l'espèce
+          schema: { $ref: "#/components/schemas/RegionName" }
+        - name: generation
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 9 }
         - name: name
           in: query
-          description: Filtre sur une partie du nom
+          description: Recherche partielle sur le nom anglais ou français
           schema: { type: string }
-          example: char
+          example: sala
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [id, name, nameFr, height, weight, baseExperience, statTotal]
+            default: id
+        - name: order
+          in: query
+          schema: { type: string, enum: [asc, desc], default: asc }
       responses:
         "200":
           description: Page de résultats
@@ -61,6 +77,32 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/PokemonPage" }
         "400": { $ref: "#/components/responses/BadRequest" }
+
+  /regions:
+    get:
+      tags: [Pokémon]
+      summary: Les 9 régions et le nombre de Pokémon en base pour chacune
+      responses:
+        "200":
+          description: Régions
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RegionCount" }
+
+  /types:
+    get:
+      tags: [Pokémon]
+      summary: Types présents en base et nombre de Pokémon par type
+      responses:
+        "200":
+          description: Types
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/TypeCount" }
 
   /pokemon/{idOrName}:
     get:
@@ -246,6 +288,10 @@ components:
       properties:
         id: { type: integer, example: 25 }
         name: { type: string, example: pikachu }
+        nameFr: { type: string, nullable: true, example: Pikachu }
+        generation: { type: integer, nullable: true, example: 1 }
+        region: { type: string, nullable: true, example: kanto }
+        statTotal: { type: integer, example: 320 }
         height: { type: integer, description: En décimètres, example: 4 }
         weight: { type: integer, description: En hectogrammes, example: 60 }
         baseExperience: { type: integer, nullable: true, example: 112 }
@@ -272,11 +318,30 @@ components:
       properties:
         id: { type: integer, example: 25 }
         name: { type: string, example: pikachu }
+        nameFr: { type: string, nullable: true, example: Pikachu }
+        generation: { type: integer, nullable: true, example: 1 }
+        region: { type: string, nullable: true, example: kanto }
         types:
           type: array
           items: { type: string }
           example: [electric]
+        statTotal: { type: integer, example: 320 }
         spriteUrl: { type: string, nullable: true }
+        artworkUrl: { type: string, nullable: true }
+    RegionName:
+      type: string
+      enum: [kanto, johto, hoenn, sinnoh, unova, kalos, alola, galar, paldea]
+    RegionCount:
+      type: object
+      properties:
+        name: { $ref: "#/components/schemas/RegionName" }
+        generation: { type: integer, example: 1 }
+        count: { type: integer, example: 151 }
+    TypeCount:
+      type: object
+      properties:
+        name: { type: string, example: fire }
+        count: { type: integer, example: 64 }
     PokemonPage:
       type: object
       properties:

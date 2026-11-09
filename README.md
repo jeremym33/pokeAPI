@@ -72,8 +72,9 @@ Variables d'environnement (valeurs par défaut dans `src/main/resources/applicat
 | `DATABASE_POOL_SIZE` | `10` |
 | `POKEAPI_BASE_URL` | `https://pokeapi.co/api/v2` |
 | `POKEAPI_IMPORT_CONCURRENCY` | `8` |
+| `CORS_ALLOWED_HOSTS` | `*` (toutes origines ; en production : `pokedex.example.com,localhost:8081`) |
 
-Le schéma est créé automatiquement au démarrage (`SchemaUtils.create`).
+Le schéma est créé automatiquement au démarrage ; les colonnes ajoutées par une nouvelle version sont créées sur une base existante. Après une mise à jour, relancez `POST /pokemon/import` : les Pokémon sans région (importés avec une ancienne version) sont complétés.
 
 ## Swagger
 
@@ -88,7 +89,9 @@ La spécification OpenAPI se trouve dans `src/main/resources/openapi/documentati
 
 | Méthode | Route | Description |
 |---|---|---|
-| `GET` | `/pokemon?limit=20&offset=0&type=fire&name=char` | Liste paginée des Pokémon **en base**, filtres optionnels par type et par nom |
+| `GET` | `/pokemon?type=fire,flying&region=kanto&name=sala&sort=statTotal&order=desc` | Pokédex : liste paginée des Pokémon **en base** (filtres : 1 ou 2 types, région, génération, nom FR/EN ; tri : `id`, `name`, `nameFr`, `height`, `weight`, `baseExperience`, `statTotal`) |
+| `GET` | `/regions` | Les 9 régions avec le nombre de Pokémon en base |
+| `GET` | `/types` | Types présents en base avec leur effectif |
 | `GET` | `/pokemon/{idOrName}` | Détail d'un Pokémon (récupéré sur PokéAPI si absent). `?refresh=true` force la mise à jour |
 | `POST` | `/pokemon/import?limit=151&offset=0` | Importe une plage de Pokémon depuis PokéAPI (max 2000 par appel) |
 

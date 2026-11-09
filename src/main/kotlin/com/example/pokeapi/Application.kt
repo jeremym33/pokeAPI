@@ -4,6 +4,7 @@ import com.example.pokeapi.client.PokeApiClient
 import com.example.pokeapi.client.createPokeApiHttpClient
 import com.example.pokeapi.db.DatabaseConfig
 import com.example.pokeapi.db.DatabaseFactory
+import com.example.pokeapi.plugins.configureCors
 import com.example.pokeapi.plugins.configureMonitoring
 import com.example.pokeapi.plugins.configureSerialization
 import com.example.pokeapi.plugins.configureStatusPages
@@ -11,6 +12,7 @@ import com.example.pokeapi.repository.PokemonRepository
 import com.example.pokeapi.repository.TeamRepository
 import com.example.pokeapi.routes.healthRoutes
 import com.example.pokeapi.routes.pokemonRoutes
+import com.example.pokeapi.routes.referenceRoutes
 import com.example.pokeapi.routes.teamRoutes
 import com.example.pokeapi.service.PokemonService
 import com.example.pokeapi.service.TeamService
@@ -34,13 +36,15 @@ fun Application.module() {
     val httpClient = createPokeApiHttpClient()
     val pokeApiClient = PokeApiClient(httpClient, config.property("pokeapi.baseUrl").getString())
     val importConcurrency = config.property("pokeapi.importConcurrency").getString().toInt()
+    val corsAllowedHosts = config.property("cors.allowedHosts").getString()
+        .split(',').map { it.trim() }.filter { it.isNotEmpty() }
 
     monitor.subscribe(ApplicationStopped) {
         httpClient.close()
         DatabaseFactory.close()
     }
 
-    configureApp(database, pokeApiClient, importConcurrency)
+    configureApp(database, pokeApiClient, importConcurrency, corsAllowedHosts)
 }
 
 /** Configuration de l'application, séparée de [module] pour pouvoir injecter des dépendances en test. */
@@ -48,6 +52,7 @@ fun Application.configureApp(
     database: Database,
     pokeApiClient: PokeApiClient,
     importConcurrency: Int = 8,
+    corsAllowedHosts: List<String> = listOf("*"),
 ) {
     DatabaseFactory.createSchema(database)
 
@@ -57,6 +62,7 @@ fun Application.configureApp(
 
     configureSerialization()
     configureMonitoring()
+    configureCors(corsAllowedHosts)
     configureStatusPages()
 
     routing {
@@ -66,6 +72,7 @@ fun Application.configureApp(
 
         healthRoutes(database)
         pokemonRoutes(pokemonService)
+        referenceRoutes(pokemonService)
         teamRoutes(teamService)
     }
 }

@@ -27,7 +27,19 @@ data class PokeApiPokemon(
     val types: List<PokeApiTypeSlot> = emptyList(),
     val stats: List<PokeApiStat> = emptyList(),
     val abilities: List<PokeApiAbilitySlot> = emptyList(),
+    val species: NamedApiResource? = null,
 )
+
+@Serializable
+data class PokeApiSpecies(
+    val id: Int,
+    val name: String,
+    val names: List<PokeApiLocalizedName> = emptyList(),
+    val generation: NamedApiResource? = null,
+)
+
+@Serializable
+data class PokeApiLocalizedName(val name: String, val language: NamedApiResource)
 
 @Serializable
 data class PokeApiSprites(

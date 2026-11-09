@@ -29,6 +29,16 @@ class PokeApiClient(
         }
     }
 
+    /** Espèce d'un Pokémon (génération, noms traduits). Retourne null si elle n'existe pas. */
+    suspend fun getSpecies(idOrName: String): PokeApiSpecies? {
+        val response = httpClient.get("$baseUrl/pokemon-species/${idOrName.lowercase().encodeURLPathPart()}")
+        return when {
+            response.status == HttpStatusCode.NotFound -> null
+            response.status.isSuccess() -> response.body()
+            else -> throw PokeApiException("PokéAPI a répondu ${response.status} pour l'espèce '$idOrName'")
+        }
+    }
+
     /** Liste paginée des Pokémon (noms + URLs). */
     suspend fun listPokemon(limit: Int, offset: Int): NamedApiResourceList {
         val response = httpClient.get("$baseUrl/pokemon") {
