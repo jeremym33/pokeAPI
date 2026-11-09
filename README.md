@@ -93,6 +93,7 @@ La spécification OpenAPI se trouve dans `src/main/resources/openapi/documentati
 | `GET` | `/regions` | Les 9 régions avec le nombre de Pokémon en base |
 | `GET` | `/types` | Types présents en base avec leur effectif |
 | `GET` | `/pokemon/{idOrName}` | Détail d'un Pokémon (récupéré sur PokéAPI si absent). `?refresh=true` force la mise à jour |
+| `GET` | `/pokemon/{idOrName}/evolutions` | Arbre d'évolution de la famille, avec les conditions en français (« Niveau 16 », « Utiliser Pierre Foudre »…). Mis en cache en base |
 | `POST` | `/pokemon/import?limit=151&offset=0` | Importe une plage de Pokémon depuis PokéAPI (max 2000 par appel) |
 
 ### Équipes
@@ -136,6 +137,7 @@ curl -X POST http://localhost:8080/teams -H 'Content-Type: application/json' -d 
 - `pokemon` (id PokéAPI, nom, taille, poids, expérience, sprites, date de récupération)
 - `pokemon_type`, `pokemon_stat`, `pokemon_ability` (liés à `pokemon`, suppression en cascade)
 - `team`, `team_member` (position 1 à 6)
+- `evolution_chain` (chaînes d'évolution PokéAPI en JSON), `translation` (noms français des objets, capacités, lieux)
 
 ## Tests
 

@@ -2,6 +2,7 @@ package com.example.pokeapi
 
 import com.example.pokeapi.client.PokeApiClient
 import com.example.pokeapi.client.configurePokeApiClient
+import com.example.pokeapi.model.EvolutionChain
 import com.example.pokeapi.model.ImportResult
 import com.example.pokeapi.model.Page
 import com.example.pokeapi.model.Pokemon
@@ -32,13 +33,42 @@ class ApplicationTest {
         "squirtle" to pokemonJson(7, "squirtle", listOf("water"), hp = 44),
         "chikorita" to pokemonJson(152, "chikorita", listOf("grass"), hp = 60),
     )
+    /** Pokémon accessibles individuellement mais absents de la liste (/pokemon), pour les évolutions. */
+    private val extraPokemon = mapOf(
+        "ivysaur" to pokemonJson(2, "ivysaur", listOf("grass", "poison"), hp = 60),
+        "venusaur" to pokemonJson(3, "venusaur", listOf("grass", "poison"), hp = 80),
+    )
     private val fakeSpecies = mapOf(
-        "bulbasaur" to speciesJson(1, "bulbasaur", "Bulbizarre", "generation-i"),
+        "bulbasaur" to speciesJson(1, "bulbasaur", "Bulbizarre", "generation-i", chainId = 1),
+        "ivysaur" to speciesJson(2, "ivysaur", "Herbizarre", "generation-i", chainId = 1),
+        "venusaur" to speciesJson(3, "venusaur", "Florizarre", "generation-i", chainId = 1),
         "charmander" to speciesJson(4, "charmander", "Salamèche", "generation-i"),
         "squirtle" to speciesJson(7, "squirtle", "Carapuce", "generation-i"),
         "chikorita" to speciesJson(152, "chikorita", "Germignon", "generation-ii"),
     )
-    private val byId = mapOf("1" to "bulbasaur", "4" to "charmander", "7" to "squirtle", "152" to "chikorita")
+    private val byId = mapOf(
+        "1" to "bulbasaur", "2" to "ivysaur", "3" to "venusaur", "4" to "charmander", "7" to "squirtle", "152" to "chikorita",
+    )
+
+    /** Chaîne de Bulbizarre : la condition non par défaut doit être ignorée, l'objet traduit. */
+    private val bulbasaurChain = """
+        {"id": 1, "chain": {
+          "is_baby": false, "species": {"name": "bulbasaur", "url": "https://pokeapi.co/api/v2/pokemon-species/1/"},
+          "evolution_details": [],
+          "evolves_to": [{
+            "is_baby": false, "species": {"name": "ivysaur", "url": "https://pokeapi.co/api/v2/pokemon-species/2/"},
+            "evolution_details": [
+              {"trigger": {"name": "level-up", "url": "x"}, "min_level": 16, "is_default": true, "time_of_day": ""},
+              {"trigger": {"name": "level-up", "url": "x"}, "location": {"name": "eterna-forest", "url": "x"}, "is_default": false}
+            ],
+            "evolves_to": [{
+              "is_baby": false, "species": {"name": "venusaur", "url": "https://pokeapi.co/api/v2/pokemon-species/3/"},
+              "evolution_details": [{"trigger": {"name": "use-item", "url": "x"}, "item": {"name": "thunder-stone", "url": "x"}}],
+              "evolves_to": []
+            }]
+          }]
+        }}
+    """.trimIndent()
     private val remoteCalls = AtomicInteger()
 
     private fun mockPokeApi(): PokeApiClient {
@@ -53,6 +83,9 @@ class ApplicationTest {
                     }
                     respond("""{"count":4,"next":null,"previous":null,"results":[$results]}""", HttpStatusCode.OK, headers)
                 }
+                path == "/api/v2/evolution-chain/1" -> respond(bulbasaurChain, HttpStatusCode.OK, headers)
+                path == "/api/v2/item/thunder-stone" ->
+                    respond("""{"names":[{"name":"Pierre Foudre","language":{"name":"fr","url":"x"}}]}""", HttpStatusCode.OK, headers)
                 path.startsWith("/api/v2/pokemon-species/") -> {
                     val key = path.removePrefix("/api/v2/pokemon-species/")
                     val body = fakeSpecies[byId[key] ?: key]
@@ -61,7 +94,8 @@ class ApplicationTest {
                 }
                 path.startsWith("/api/v2/pokemon/") -> {
                     val key = path.removePrefix("/api/v2/pokemon/")
-                    val body = fakePokemon[byId[key] ?: key]
+                    val name = byId[key] ?: key
+                    val body = fakePokemon[name] ?: extraPokemon[name]
                     if (body != null) respond(body, HttpStatusCode.OK, headers)
                     else respond("Not Found", HttpStatusCode.NotFound)
                 }
@@ -190,6 +224,39 @@ class ApplicationTest {
     }
 
     @Test
+    fun `arbre d'evolution avec conditions en francais, mis en cache`() = appTest {
+        val response = client.get("/pokemon/ivysaur/evolutions")
+        assertEquals(HttpStatusCode.OK, response.status)
+        val chain = json.decodeFromString<EvolutionChain>(response.bodyAsText())
+
+        assertEquals(1, chain.id)
+        val root = chain.root
+        assertEquals("Bulbizarre", root.pokemon?.nameFr) // récupéré automatiquement
+        assertTrue(root.conditions.isEmpty())
+        val ivysaur = root.evolvesTo.single()
+        assertEquals("Herbizarre", ivysaur.pokemon?.nameFr)
+        assertEquals(listOf("Niveau 16"), ivysaur.conditions) // la condition non par défaut est ignorée
+        val venusaur = ivysaur.evolvesTo.single()
+        assertEquals(3, venusaur.speciesId)
+        assertEquals(listOf("Utiliser Pierre Foudre"), venusaur.conditions)
+
+        // Deuxième appel (depuis un autre membre) : tout vient de la base
+        val callsBefore = remoteCalls.get()
+        val again = json.decodeFromString<EvolutionChain>(client.get("/pokemon/venusaur/evolutions").bodyAsText())
+        assertEquals(chain, again)
+        assertEquals(callsBefore, remoteCalls.get())
+    }
+
+    @Test
+    fun `pokemon sans chaine d'evolution`() = appTest {
+        val chain = json.decodeFromString<EvolutionChain>(client.get("/pokemon/squirtle/evolutions").bodyAsText())
+        assertEquals(null, chain.id)
+        assertEquals("squirtle", chain.root.name)
+        assertTrue(chain.root.evolvesTo.isEmpty())
+        assertEquals(HttpStatusCode.NotFound, client.get("/pokemon/missingno/evolutions").status)
+    }
+
+    @Test
     fun `gestion d'une equipe`() = appTest {
         val created = client.post("/teams") {
             contentType(ContentType.Application.Json)
@@ -257,14 +324,14 @@ class ApplicationTest {
         assertEquals(HttpStatusCode.BadRequest, response.status)
     }
 
-    private fun speciesJson(id: Int, name: String, frenchName: String, generation: String) = """
+    private fun speciesJson(id: Int, name: String, frenchName: String, generation: String, chainId: Int? = null) = """
         {
           "id": $id, "name": "$name",
           "names": [
             {"name": "${name.replaceFirstChar { it.uppercase() }}", "language": {"name": "en", "url": "x"}},
             {"name": "$frenchName", "language": {"name": "fr", "url": "x"}}
           ],
-          "generation": {"name": "$generation", "url": "x"}
+          "generation": {"name": "$generation", "url": "x"}${chainId?.let { ",\n          \"evolution_chain\": {\"url\": \"https://pokeapi.co/api/v2/evolution-chain/$it/\"}" } ?: ""}
         }
     """.trimIndent()
 

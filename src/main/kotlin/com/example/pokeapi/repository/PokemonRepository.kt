@@ -2,6 +2,7 @@ package com.example.pokeapi.repository
 
 import com.example.pokeapi.client.PokeApiPokemon
 import com.example.pokeapi.client.PokeApiSpecies
+import com.example.pokeapi.client.resourceId
 import com.example.pokeapi.db.PokemonAbilityTable
 import com.example.pokeapi.db.PokemonStatTable
 import com.example.pokeapi.db.PokemonTable
@@ -52,6 +53,7 @@ class PokemonRepository(private val database: Database) {
             it[baseExperience] = dto.baseExperience
             it[spriteUrl] = dto.sprites.frontDefault
             it[artworkUrl] = dto.sprites.other?.officialArtwork?.frontDefault
+            it[evolutionChainId] = species?.evolutionChain?.url?.let { url -> resourceId(url) }
             it[statTotal] = dto.stats.distinctBy { s -> s.stat.name }.sumOf { s -> s.baseStat }
             it[fetchedAt] = Instant.now()
         }
@@ -117,6 +119,14 @@ class PokemonRepository(private val database: Database) {
 
         Page(total = total, limit = query.limit, offset = query.offset, items = summariesFor(ids))
     }
+
+    suspend fun evolutionChainId(pokemonId: Int): Int? = dbQuery {
+        PokemonTable.select(PokemonTable.evolutionChainId)
+            .where { PokemonTable.id eq pokemonId }
+            .singleOrNull()?.get(PokemonTable.evolutionChainId)
+    }
+
+    suspend fun summaries(ids: List<Int>): List<PokemonSummary> = dbQuery { summariesFor(ids) }
 
     /** Régions présentes en base avec leur nombre de Pokémon. */
     suspend fun regions(): List<RegionCount> = dbQuery {

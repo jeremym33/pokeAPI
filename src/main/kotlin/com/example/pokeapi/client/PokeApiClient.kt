@@ -39,6 +39,21 @@ class PokeApiClient(
         }
     }
 
+    suspend fun getEvolutionChain(id: Int): PokeApiEvolutionChain? = getOrNull("evolution-chain/$id")
+
+    /** Noms traduits d'une ressource : kind = "item", "move", "location", "pokemon-species"… */
+    suspend fun getNames(kind: String, name: String): PokeApiNamedResource? =
+        getOrNull("$kind/${name.lowercase().encodeURLPathPart()}")
+
+    private suspend inline fun <reified T> getOrNull(path: String): T? {
+        val response = httpClient.get("$baseUrl/$path")
+        return when {
+            response.status == HttpStatusCode.NotFound -> null
+            response.status.isSuccess() -> response.body()
+            else -> throw PokeApiException("PokéAPI a répondu ${response.status} pour '$path'")
+        }
+    }
+
     /** Liste paginée des Pokémon (noms + URLs). */
     suspend fun listPokemon(limit: Int, offset: Int): NamedApiResourceList {
         val response = httpClient.get("$baseUrl/pokemon") {

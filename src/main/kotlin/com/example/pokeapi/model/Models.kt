@@ -106,3 +106,22 @@ data class ErrorResponse(val error: String)
 
 @Serializable
 data class HealthResponse(val status: String, val database: String)
+
+@Serializable
+data class EvolutionChain(
+    /** Id de la chaîne PokéAPI (null si l'espèce n'en a pas). */
+    val id: Int?,
+    val root: EvolutionNode,
+)
+
+@Serializable
+data class EvolutionNode(
+    val speciesId: Int,
+    val name: String,
+    /** Résumé du Pokémon (null s'il n'a pas pu être récupéré). */
+    val pokemon: PokemonSummary?,
+    val isBaby: Boolean,
+    /** Comment le Pokémon précédent évolue en celui-ci (en français). Plusieurs entrées = plusieurs méthodes possibles. */
+    val conditions: List<String>,
+    val evolvesTo: List<EvolutionNode>,
+)

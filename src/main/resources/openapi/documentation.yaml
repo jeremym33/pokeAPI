@@ -129,6 +129,29 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "502": { $ref: "#/components/responses/BadGateway" }
 
+  /pokemon/{idOrName}/evolutions:
+    get:
+      tags: [Pokémon]
+      summary: Arbre d'évolution et conditions d'évolution (en français)
+      description: |
+        Renvoie toute la famille du Pokémon, depuis la forme de base. Les membres absents de la base
+        sont récupérés automatiquement. Chaque nœud indique comment son prédécesseur évolue en lui
+        (« Niveau 16 », « Utiliser Pierre Foudre », « Échange, en tenant Roche Royale »…).
+      parameters:
+        - name: idOrName
+          in: path
+          required: true
+          schema: { type: string }
+          example: eevee
+      responses:
+        "200":
+          description: La chaîne d'évolution
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EvolutionChain" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "502": { $ref: "#/components/responses/BadGateway" }
+
   /pokemon/import:
     post:
       tags: [Pokémon]
@@ -328,6 +351,28 @@ components:
         statTotal: { type: integer, example: 320 }
         spriteUrl: { type: string, nullable: true }
         artworkUrl: { type: string, nullable: true }
+    EvolutionChain:
+      type: object
+      properties:
+        id: { type: integer, nullable: true, description: Id de la chaîne PokéAPI, example: 67 }
+        root: { $ref: "#/components/schemas/EvolutionNode" }
+    EvolutionNode:
+      type: object
+      properties:
+        speciesId: { type: integer, example: 134 }
+        name: { type: string, example: vaporeon }
+        pokemon:
+          allOf: [{ $ref: "#/components/schemas/PokemonSummary" }]
+          nullable: true
+        isBaby: { type: boolean, example: false }
+        conditions:
+          type: array
+          description: Comment le Pokémon précédent évolue en celui-ci (vide pour la forme de base). Plusieurs entrées = plusieurs méthodes.
+          items: { type: string }
+          example: [Utiliser Pierre Eau]
+        evolvesTo:
+          type: array
+          items: { $ref: "#/components/schemas/EvolutionNode" }
     RegionName:
       type: string
       enum: [kanto, johto, hoenn, sinnoh, unova, kalos, alola, galar, paldea]

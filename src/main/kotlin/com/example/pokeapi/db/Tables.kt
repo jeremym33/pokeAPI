@@ -19,6 +19,8 @@ object PokemonTable : Table("pokemon") {
     val baseExperience = integer("base_experience").nullable()
     val spriteUrl = varchar("sprite_url", 500).nullable()
     val artworkUrl = varchar("artwork_url", 500).nullable()
+    /** Chaîne d'évolution PokéAPI de l'espèce (null tant que l'espèce n'a pas été récupérée). */
+    val evolutionChainId = integer("evolution_chain_id").nullable()
     /** Somme des statistiques de base, stockée pour pouvoir trier dessus. */
     val statTotal = integer("stat_total").default(0)
     val fetchedAt = timestamp("fetched_at")
@@ -63,4 +65,23 @@ object TeamMemberTable : Table("team_member") {
     val pokemonId = integer("pokemon_id").references(PokemonTable.id, onDelete = ReferenceOption.CASCADE)
 
     override val primaryKey = PrimaryKey(teamId, position)
+}
+
+/** Chaînes d'évolution, stockées telles que renvoyées par PokéAPI (JSON). */
+object EvolutionChainTable : Table("evolution_chain") {
+    val id = integer("id")
+    val data = text("data")
+    val fetchedAt = timestamp("fetched_at")
+
+    override val primaryKey = PrimaryKey(id)
+}
+
+/** Cache des noms français (objets, capacités, lieux, espèces) utilisés dans les conditions d'évolution. */
+object TranslationTable : Table("translation") {
+    val kind = varchar("kind", 30)
+    val slug = varchar("slug", 100)
+    /** null si PokéAPI n'a pas de nom français : on ne redemande pas. */
+    val nameFr = varchar("name_fr", 100).nullable()
+
+    override val primaryKey = PrimaryKey(kind, slug)
 }

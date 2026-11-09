@@ -43,6 +43,8 @@ object DatabaseFactory {
                 PokemonAbilityTable,
                 TeamTable,
                 TeamMemberTable,
+                EvolutionChainTable,
+                TranslationTable,
             )
         }
     }
