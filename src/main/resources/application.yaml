@@ -1,0 +1,17 @@
+ktor:
+  deployment:
+    port: "$PORT:8080"
+  application:
+    modules:
+      - com.example.pokeapi.ApplicationKt.module
+
+database:
+  url: "$DATABASE_URL:jdbc:postgresql://localhost:5432/pokeapi"
+  user: "$DATABASE_USER:pokeapi"
+  password: "$DATABASE_PASSWORD:pokeapi"
+  maxPoolSize: "$DATABASE_POOL_SIZE:10"
+
+pokeapi:
+  baseUrl: "$POKEAPI_BASE_URL:https://pokeapi.co/api/v2"
+  # Nombre maximum d'appels simultanés vers pokeapi.co lors d'un import
+  importConcurrency: "$POKEAPI_IMPORT_CONCURRENCY:8"

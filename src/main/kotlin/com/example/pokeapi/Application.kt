@@ -1,0 +1,65 @@
+package com.example.pokeapi
+
+import com.example.pokeapi.client.PokeApiClient
+import com.example.pokeapi.client.createPokeApiHttpClient
+import com.example.pokeapi.db.DatabaseConfig
+import com.example.pokeapi.db.DatabaseFactory
+import com.example.pokeapi.plugins.configureMonitoring
+import com.example.pokeapi.plugins.configureSerialization
+import com.example.pokeapi.plugins.configureStatusPages
+import com.example.pokeapi.repository.PokemonRepository
+import com.example.pokeapi.repository.TeamRepository
+import com.example.pokeapi.routes.healthRoutes
+import com.example.pokeapi.routes.pokemonRoutes
+import com.example.pokeapi.routes.teamRoutes
+import com.example.pokeapi.service.PokemonService
+import com.example.pokeapi.service.TeamService
+import io.ktor.server.application.*
+import io.ktor.server.routing.*
+import org.jetbrains.exposed.sql.Database
+
+/** Point d'entrée Ktor référencé dans application.yaml. */
+fun Application.module() {
+    val config = environment.config
+    val database = DatabaseFactory.connect(
+        DatabaseConfig(
+            url = config.property("database.url").getString(),
+            user = config.property("database.user").getString(),
+            password = config.property("database.password").getString(),
+            maxPoolSize = config.property("database.maxPoolSize").getString().toInt(),
+        )
+    )
+    val httpClient = createPokeApiHttpClient()
+    val pokeApiClient = PokeApiClient(httpClient, config.property("pokeapi.baseUrl").getString())
+    val importConcurrency = config.property("pokeapi.importConcurrency").getString().toInt()
+
+    monitor.subscribe(ApplicationStopped) {
+        httpClient.close()
+        DatabaseFactory.close()
+    }
+
+    configureApp(database, pokeApiClient, importConcurrency)
+}
+
+/** Configuration de l'application, séparée de [module] pour pouvoir injecter des dépendances en test. */
+fun Application.configureApp(
+    database: Database,
+    pokeApiClient: PokeApiClient,
+    importConcurrency: Int = 8,
+) {
+    DatabaseFactory.createSchema(database)
+
+    val pokemonRepository = PokemonRepository(database)
+    val pokemonService = PokemonService(pokemonRepository, pokeApiClient, importConcurrency)
+    val teamService = TeamService(TeamRepository(database), pokemonService)
+
+    configureSerialization()
+    configureMonitoring()
+    configureStatusPages()
+
+    routing {
+        healthRoutes(database)
+        pokemonRoutes(pokemonService)
+        teamRoutes(teamService)
+    }
+}
