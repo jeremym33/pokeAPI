@@ -3,6 +3,8 @@ package com.example.pokeapi.repository
 import com.example.pokeapi.client.PokeApiPokemon
 import com.example.pokeapi.client.PokeApiSpecies
 import com.example.pokeapi.client.resourceId
+import com.example.pokeapi.client.pokeApiJson
+import com.example.pokeapi.db.LearnsetTable
 import com.example.pokeapi.db.PokemonAbilityTable
 import com.example.pokeapi.db.PokemonStatTable
 import com.example.pokeapi.db.PokemonTable
@@ -72,6 +74,11 @@ class PokemonRepository(private val database: Database) {
             this[PokemonStatTable.baseStat] = s.baseStat
         }
 
+        LearnsetTable.upsert {
+            it[pokemonId] = dto.id
+            it[data] = pokeApiJson.encodeToString(StoredLearnset.serializer(), learnsetOf(dto.moves))
+        }
+
         PokemonAbilityTable.deleteWhere { pokemonId eq dto.id }
         PokemonAbilityTable.batchInsert(dto.abilities.distinctBy { it.slot }) { a ->
             this[PokemonAbilityTable.pokemonId] = dto.id
@@ -124,6 +131,14 @@ class PokemonRepository(private val database: Database) {
         PokemonTable.select(PokemonTable.evolutionChainId)
             .where { PokemonTable.id eq pokemonId }
             .singleOrNull()?.get(PokemonTable.evolutionChainId)
+    }
+
+    /** null si le Pokémon a été importé avant la gestion des attaques. */
+    suspend fun learnset(pokemonId: Int): StoredLearnset? = dbQuery {
+        LearnsetTable.select(LearnsetTable.data)
+            .where { LearnsetTable.pokemonId eq pokemonId }
+            .singleOrNull()
+            ?.let { pokeApiJson.decodeFromString(StoredLearnset.serializer(), it[LearnsetTable.data]) }
     }
 
     suspend fun summaries(ids: List<Int>): List<PokemonSummary> = dbQuery { summariesFor(ids) }

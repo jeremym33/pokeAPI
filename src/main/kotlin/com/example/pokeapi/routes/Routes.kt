@@ -8,6 +8,7 @@ import com.example.pokeapi.model.PokemonSort
 import com.example.pokeapi.model.Region
 import com.example.pokeapi.model.RenameTeamRequest
 import com.example.pokeapi.service.EvolutionService
+import com.example.pokeapi.service.MoveService
 import com.example.pokeapi.service.PokemonService
 import com.example.pokeapi.service.TeamService
 import io.ktor.http.*
@@ -32,7 +33,7 @@ fun Route.healthRoutes(database: Database) {
     }
 }
 
-fun Route.pokemonRoutes(service: PokemonService, evolutionService: EvolutionService) {
+fun Route.pokemonRoutes(service: PokemonService, evolutionService: EvolutionService, moveService: MoveService) {
     route("/pokemon") {
         // GET /pokemon?type=fire,flying&region=kanto&name=char&sort=statTotal&order=desc
         get {
@@ -54,6 +55,15 @@ fun Route.pokemonRoutes(service: PokemonService, evolutionService: EvolutionServ
             val chain = evolutionService.evolutions(idOrName)
                 ?: throw NotFoundException("Pokémon '$idOrName' introuvable")
             call.respond(chain)
+        }
+
+        // GET /pokemon/{idOrName}/moves?version=scarlet-violet  -> attaques apprises dans une version de jeu
+        get("/{idOrName}/moves") {
+            val idOrName = call.parameters["idOrName"]!!
+            val version = call.request.queryParameters["version"]?.takeIf { it.isNotBlank() }
+            val moves = moveService.moves(idOrName, version)
+                ?: throw NotFoundException("Pokémon '$idOrName' introuvable")
+            call.respond(moves)
         }
 
         // POST /pokemon/import?limit=151&offset=0  -> import en masse depuis pokeapi.co

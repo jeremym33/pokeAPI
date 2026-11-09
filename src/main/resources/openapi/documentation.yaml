@@ -152,6 +152,35 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "502": { $ref: "#/components/responses/BadGateway" }
 
+  /pokemon/{idOrName}/moves:
+    get:
+      tags: [Pokémon]
+      summary: Attaques apprises dans une version de jeu
+      description: |
+        Par défaut, le jeu principal le plus récent où le Pokémon est présent. Les attaques sont triées
+        par méthode (par niveau, CT/CS, œufs, tuteur…) puis par niveau. Le détail des attaques
+        (nom français, type, catégorie, puissance, précision, PP, description) est mis en cache en base.
+      parameters:
+        - name: idOrName
+          in: path
+          required: true
+          schema: { type: string }
+          example: pikachu
+        - name: version
+          in: query
+          description: Version de jeu (valeurs possibles dans versionGroups de la réponse)
+          schema: { type: string }
+          example: scarlet-violet
+      responses:
+        "200":
+          description: Attaques apprises
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PokemonMoves" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "502": { $ref: "#/components/responses/BadGateway" }
+
   /pokemon/import:
     post:
       tags: [Pokémon]
@@ -373,6 +402,39 @@ components:
         evolvesTo:
           type: array
           items: { $ref: "#/components/schemas/EvolutionNode" }
+    VersionGroup:
+      type: object
+      properties:
+        name: { type: string, example: scarlet-violet }
+        label: { type: string, example: Écarlate / Violet }
+    LearnedMove:
+      type: object
+      properties:
+        name: { type: string, example: thunderbolt }
+        nameFr: { type: string, nullable: true, example: Tonnerre }
+        type: { type: string, nullable: true, example: electric }
+        damageClass: { type: string, nullable: true, enum: [physical, special, status], example: special }
+        power: { type: integer, nullable: true, example: 90 }
+        accuracy: { type: integer, nullable: true, example: 100 }
+        pp: { type: integer, nullable: true, example: 15 }
+        priority: { type: integer, example: 0 }
+        description: { type: string, nullable: true }
+        method: { type: string, example: machine, description: "level-up, machine, egg, tutor…" }
+        methodLabel: { type: string, example: CT / CS }
+        level: { type: integer, nullable: true, description: "Niveau (méthode level-up) ; 0 = à l'évolution", example: 26 }
+    PokemonMoves:
+      type: object
+      properties:
+        pokemonId: { type: integer, example: 25 }
+        versionGroup:
+          allOf: [{ $ref: "#/components/schemas/VersionGroup" }]
+          nullable: true
+        versionGroups:
+          type: array
+          items: { $ref: "#/components/schemas/VersionGroup" }
+        moves:
+          type: array
+          items: { $ref: "#/components/schemas/LearnedMove" }
     RegionName:
       type: string
       enum: [kanto, johto, hoenn, sinnoh, unova, kalos, alola, galar, paldea]

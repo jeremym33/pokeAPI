@@ -35,6 +35,40 @@ data class PokeApiPokemon(
     val stats: List<PokeApiStat> = emptyList(),
     val abilities: List<PokeApiAbilitySlot> = emptyList(),
     val species: NamedApiResource? = null,
+    val moves: List<PokeApiMoveSlot> = emptyList(),
+)
+
+@Serializable
+data class PokeApiMoveSlot(
+    val move: NamedApiResource,
+    @SerialName("version_group_details") val versionGroupDetails: List<PokeApiMoveVersionDetail> = emptyList(),
+)
+
+@Serializable
+data class PokeApiMoveVersionDetail(
+    @SerialName("level_learned_at") val levelLearnedAt: Int = 0,
+    @SerialName("move_learn_method") val moveLearnMethod: NamedApiResource,
+    @SerialName("version_group") val versionGroup: NamedApiResource,
+)
+
+@Serializable
+data class PokeApiMove(
+    val id: Int,
+    val name: String,
+    val names: List<PokeApiLocalizedName> = emptyList(),
+    val type: NamedApiResource? = null,
+    @SerialName("damage_class") val damageClass: NamedApiResource? = null,
+    val power: Int? = null,
+    val accuracy: Int? = null,
+    val pp: Int? = null,
+    val priority: Int = 0,
+    @SerialName("flavor_text_entries") val flavorTextEntries: List<PokeApiFlavorText> = emptyList(),
+)
+
+@Serializable
+data class PokeApiFlavorText(
+    @SerialName("flavor_text") val flavorText: String,
+    val language: NamedApiResource,
 )
 
 @Serializable

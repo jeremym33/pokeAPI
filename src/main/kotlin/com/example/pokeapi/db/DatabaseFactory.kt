@@ -45,6 +45,8 @@ object DatabaseFactory {
                 TeamMemberTable,
                 EvolutionChainTable,
                 TranslationTable,
+                MoveTable,
+                LearnsetTable,
             )
         }
     }

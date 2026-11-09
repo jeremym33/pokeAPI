@@ -6,6 +6,7 @@ import com.example.pokeapi.model.EvolutionChain
 import com.example.pokeapi.model.ImportResult
 import com.example.pokeapi.model.Page
 import com.example.pokeapi.model.Pokemon
+import com.example.pokeapi.model.PokemonMoves
 import com.example.pokeapi.model.PokemonSummary
 import com.example.pokeapi.model.RegionCount
 import com.example.pokeapi.model.TypeCount
@@ -28,11 +29,40 @@ class ApplicationTest {
     private val json = Json { ignoreUnknownKeys = true }
 
     private val fakePokemon = mapOf(
-        "bulbasaur" to pokemonJson(1, "bulbasaur", listOf("grass", "poison"), hp = 45),
+        "bulbasaur" to pokemonJson(1, "bulbasaur", listOf("grass", "poison"), hp = 45, moves = bulbasaurMoves),
         "charmander" to pokemonJson(4, "charmander", listOf("fire"), hp = 39),
         "squirtle" to pokemonJson(7, "squirtle", listOf("water"), hp = 44),
         "chikorita" to pokemonJson(152, "chikorita", listOf("grass"), hp = 60),
     )
+    private fun learn(level: Int, method: String, version: String) =
+        """{"level_learned_at": $level, "move_learn_method": {"name": "$method", "url": "x"}, "version_group": {"name": "$version", "url": "x"}}"""
+
+    private val bulbasaurMoves get() = """
+        [
+          {"move": {"name": "tackle", "url": "x"}, "version_group_details": [${learn(1, "level-up", "red-blue")}, ${learn(1, "level-up", "scarlet-violet")}, ${learn(0, "machine", "champions")}]},
+          {"move": {"name": "vine-whip", "url": "x"}, "version_group_details": [${learn(3, "level-up", "scarlet-violet")}]},
+          {"move": {"name": "petal-dance", "url": "x"}, "version_group_details": [${learn(0, "egg", "scarlet-violet")}]},
+          {"move": {"name": "razor-leaf", "url": "x"}, "version_group_details": [${learn(0, "machine", "red-blue")}]}
+        ]
+    """.trimIndent()
+
+    private fun moveJson(name: String, fr: String, type: String, damageClass: String, power: Int?) = """
+        {"id": 1, "name": "$name", "power": ${power ?: "null"}, "accuracy": 100, "pp": 25, "priority": 0,
+         "type": {"name": "$type", "url": "x"}, "damage_class": {"name": "$damageClass", "url": "x"},
+         "names": [{"name": "$fr", "language": {"name": "fr", "url": "x"}}],
+         "flavor_text_entries": [
+           {"flavor_text": "Old text.", "language": {"name": "fr", "url": "x"}},
+           {"flavor_text": "Charge l'ennemi\navec un violent\nplaquage.", "language": {"name": "fr", "url": "x"}}
+         ]}
+    """.trimIndent()
+
+    private val fakeMoves = mapOf(
+        "tackle" to moveJson("tackle", "Charge", "normal", "physical", 40),
+        "vine-whip" to moveJson("vine-whip", "Fouet Lianes", "grass", "physical", 45),
+        "petal-dance" to moveJson("petal-dance", "Danse Fleurs", "grass", "special", 120),
+        "razor-leaf" to moveJson("razor-leaf", "Tranch'Herbe", "grass", "physical", 55),
+    )
+
     /** Pokémon accessibles individuellement mais absents de la liste (/pokemon), pour les évolutions. */
     private val extraPokemon = mapOf(
         "ivysaur" to pokemonJson(2, "ivysaur", listOf("grass", "poison"), hp = 60),
@@ -82,6 +112,11 @@ class ApplicationTest {
                         """{"name":"$it","url":"https://pokeapi.co/api/v2/pokemon/$it/"}"""
                     }
                     respond("""{"count":4,"next":null,"previous":null,"results":[$results]}""", HttpStatusCode.OK, headers)
+                }
+                path.startsWith("/api/v2/move/") -> {
+                    val body = fakeMoves[path.removePrefix("/api/v2/move/")]
+                    if (body != null) respond(body, HttpStatusCode.OK, headers)
+                    else respond("Not Found", HttpStatusCode.NotFound)
                 }
                 path == "/api/v2/evolution-chain/1" -> respond(bulbasaurChain, HttpStatusCode.OK, headers)
                 path == "/api/v2/item/thunder-stone" ->
@@ -257,6 +292,45 @@ class ApplicationTest {
     }
 
     @Test
+    fun `attaques apprises par version de jeu`() = appTest {
+        val response = client.get("/pokemon/bulbasaur/moves")
+        assertEquals(HttpStatusCode.OK, response.status)
+        val moves = json.decodeFromString<PokemonMoves>(response.bodyAsText())
+
+        // Ordre chronologique ; par défaut le jeu principal le plus récent (pas le spin-off Champions)
+        assertEquals(listOf("red-blue", "scarlet-violet", "champions"), moves.versionGroups.map { it.name })
+        assertEquals("Écarlate / Violet", moves.versionGroup?.label)
+        // Par niveau (triées par niveau), puis œufs
+        assertEquals(listOf("Charge", "Fouet Lianes", "Danse Fleurs"), moves.moves.map { it.nameFr })
+        val tackle = moves.moves.first()
+        assertEquals(1, tackle.level)
+        assertEquals("level-up", tackle.method)
+        assertEquals("Par niveau", tackle.methodLabel)
+        assertEquals("normal", tackle.type)
+        assertEquals("physical", tackle.damageClass)
+        assertEquals(40, tackle.power)
+        assertEquals("Charge l'ennemi avec un violent plaquage.", tackle.description)
+        assertEquals("Œufs", moves.moves.last().methodLabel)
+        assertEquals(null, moves.moves.last().level)
+
+        // Autre version : depuis le cache pour les attaques déjà connues
+        val callsBefore = remoteCalls.get()
+        val redBlue = json.decodeFromString<PokemonMoves>(client.get("/pokemon/1/moves?version=red-blue").bodyAsText())
+        assertEquals(listOf("Charge" to "level-up", "Tranch'Herbe" to "machine"), redBlue.moves.map { it.nameFr to it.method })
+        assertEquals(callsBefore + 1, remoteCalls.get()) // seule Tranch'Herbe est récupérée
+
+        assertEquals(HttpStatusCode.BadRequest, client.get("/pokemon/bulbasaur/moves?version=sun-moon").status)
+        assertEquals(HttpStatusCode.NotFound, client.get("/pokemon/missingno/moves").status)
+    }
+
+    @Test
+    fun `pokemon sans attaque connue`() = appTest {
+        val moves = json.decodeFromString<PokemonMoves>(client.get("/pokemon/squirtle/moves").bodyAsText())
+        assertEquals(null, moves.versionGroup)
+        assertTrue(moves.moves.isEmpty())
+    }
+
+    @Test
     fun `gestion d'une equipe`() = appTest {
         val created = client.post("/teams") {
             contentType(ContentType.Application.Json)
@@ -335,7 +409,7 @@ class ApplicationTest {
         }
     """.trimIndent()
 
-    private fun pokemonJson(id: Int, name: String, types: List<String>, hp: Int): String {
+    private fun pokemonJson(id: Int, name: String, types: List<String>, hp: Int, moves: String = "[]"): String {
         val typesJson = types.withIndex().joinToString(",") { (i, t) ->
             """{"slot":${i + 1},"type":{"name":"$t","url":"https://pokeapi.co/api/v2/type/$t/"}}"""
         }
@@ -353,6 +427,7 @@ class ApplicationTest {
             {"base_stat": 49, "effort": 0, "stat": {"name": "attack", "url": "x"}}
           ],
           "species": {"name": "$name", "url": "https://pokeapi.co/api/v2/pokemon-species/$id/"},
+          "moves": $moves,
           "abilities": [
             {"ability": {"name": "overgrow", "url": "x"}, "is_hidden": false, "slot": 1},
             {"ability": {"name": "chlorophyll", "url": "x"}, "is_hidden": true, "slot": 3}

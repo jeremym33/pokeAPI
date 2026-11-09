@@ -85,3 +85,28 @@ object TranslationTable : Table("translation") {
 
     override val primaryKey = PrimaryKey(kind, slug)
 }
+
+/** Attaques (partagées par tous les Pokémon), récupérées à la demande. */
+object MoveTable : Table("move") {
+    val name = varchar("name", 100)
+    val nameFr = varchar("name_fr", 100).nullable()
+    val type = varchar("type", 30).nullable()
+    /** physical, special ou status */
+    val damageClass = varchar("damage_class", 20).nullable()
+    val power = integer("power").nullable()
+    val accuracy = integer("accuracy").nullable()
+    val pp = integer("pp").nullable()
+    val priority = integer("priority").default(0)
+    val descriptionFr = text("description_fr").nullable()
+    val fetchedAt = timestamp("fetched_at")
+
+    override val primaryKey = PrimaryKey(name)
+}
+
+/** Attaques apprises par un Pokémon dans chaque version de jeu (JSON compact, voir StoredLearnset). */
+object LearnsetTable : Table("pokemon_learnset") {
+    val pokemonId = integer("pokemon_id").references(PokemonTable.id, onDelete = ReferenceOption.CASCADE)
+    val data = text("data")
+
+    override val primaryKey = PrimaryKey(pokemonId)
+}

@@ -125,3 +125,34 @@ data class EvolutionNode(
     val conditions: List<String>,
     val evolvesTo: List<EvolutionNode>,
 )
+
+@Serializable
+data class VersionGroup(val name: String, val label: String)
+
+@Serializable
+data class LearnedMove(
+    val name: String,
+    val nameFr: String?,
+    val type: String?,
+    /** physical, special ou status */
+    val damageClass: String?,
+    val power: Int?,
+    val accuracy: Int?,
+    val pp: Int?,
+    val priority: Int,
+    val description: String?,
+    /** level-up, machine, egg, tutor… */
+    val method: String,
+    val methodLabel: String,
+    /** Niveau d'apprentissage (méthode level-up). 0 = à l'évolution. */
+    val level: Int?,
+)
+
+@Serializable
+data class PokemonMoves(
+    val pokemonId: Int,
+    val versionGroup: VersionGroup?,
+    /** Versions de jeu disponibles pour ce Pokémon, dans l'ordre chronologique. */
+    val versionGroups: List<VersionGroup>,
+    val moves: List<LearnedMove>,
+)

@@ -39,6 +39,8 @@ class PokeApiClient(
         }
     }
 
+    suspend fun getMove(name: String): PokeApiMove? = getOrNull("move/${name.lowercase().encodeURLPathPart()}")
+
     suspend fun getEvolutionChain(id: Int): PokeApiEvolutionChain? = getOrNull("evolution-chain/$id")
 
     /** Noms traduits d'une ressource : kind = "item", "move", "location", "pokemon-species"… */
