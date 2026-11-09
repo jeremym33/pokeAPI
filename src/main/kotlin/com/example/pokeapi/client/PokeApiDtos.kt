@@ -170,3 +170,45 @@ data class PokeApiEvolutionDetail(
 data class PokeApiConditionExpression(
     @SerialName("percentage_chance") val percentageChance: Double? = null,
 )
+
+@Serializable
+data class PokeApiAbility(
+    val id: Int,
+    val name: String,
+    val names: List<PokeApiLocalizedName> = emptyList(),
+    val generation: NamedApiResource? = null,
+    @SerialName("flavor_text_entries") val flavorTextEntries: List<PokeApiFlavorText> = emptyList(),
+    @SerialName("effect_entries") val effectEntries: List<PokeApiEffectEntry> = emptyList(),
+    val pokemon: List<PokeApiAbilityPokemon> = emptyList(),
+)
+
+@Serializable
+data class PokeApiEffectEntry(
+    val effect: String = "",
+    @SerialName("short_effect") val shortEffect: String = "",
+    val language: NamedApiResource,
+)
+
+@Serializable
+data class PokeApiAbilityPokemon(
+    @SerialName("is_hidden") val isHidden: Boolean = false,
+    val pokemon: NamedApiResource,
+)
+
+/**
+ * Nettoie un texte des jeux : retours à la ligne (réels ou « \n » littéraux présents dans certaines données),
+ * sauts de page, césures et espaces multiples.
+ */
+fun cleanGameText(text: String): String =
+    text.replace("\\n", " ")
+        .replace("\u00ad\n", "")
+        .replace(Regex("[\\s\u000c]+"), " ")
+        .trim()
+
+/** Comme [cleanGameText], mais garde les paragraphes (lignes vides) des descriptions d'effet. */
+fun cleanEffectText(text: String): String =
+    text.replace("\\n", "\n")
+        .split(Regex("\n\\s*\n"))
+        .map { cleanGameText(it) }
+        .filter { it.isNotEmpty() }
+        .joinToString("\n\n")

@@ -78,6 +78,24 @@ paths:
               schema: { $ref: "#/components/schemas/PokemonPage" }
         "400": { $ref: "#/components/responses/BadRequest" }
 
+  /abilities/{name}:
+    get:
+      tags: [Pokémon]
+      summary: Talent détaillé et Pokémon qui le possèdent
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+          example: static
+      responses:
+        "200":
+          description: Le talent
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AbilityDetail" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /regions:
     get:
       tags: [Pokémon]
@@ -365,6 +383,31 @@ components:
       properties:
         name: { type: string, example: static }
         hidden: { type: boolean, example: false }
+        nameFr: { type: string, nullable: true, example: Statik }
+        description: { type: string, nullable: true, description: Texte du jeu le plus récent (français) }
+        effect: { type: string, nullable: true, description: Effet détaillé (paragraphes séparés par une ligne vide) }
+        effectLanguage: { type: string, nullable: true, enum: [fr, en], description: "Langue de l'effet (anglais si pas de traduction)" }
+        generation: { type: integer, nullable: true, example: 3 }
+    AbilityDetail:
+      type: object
+      properties:
+        name: { type: string, example: static }
+        nameFr: { type: string, nullable: true, example: Statik }
+        description: { type: string, nullable: true }
+        effect: { type: string, nullable: true }
+        effectLanguage: { type: string, nullable: true, enum: [fr, en] }
+        generation: { type: integer, nullable: true, example: 3 }
+        pokemon:
+          type: array
+          description: Pokémon ayant ce talent (formes alternatives exclues), triés par numéro
+          items:
+            type: object
+            properties:
+              id: { type: integer, example: 25 }
+              name: { type: string, example: pikachu }
+              nameFr: { type: string, nullable: true, description: Renseigné si le Pokémon est en base, example: Pikachu }
+              hidden: { type: boolean, example: false }
+              spriteUrl: { type: string, nullable: true }
     PokemonSummary:
       type: object
       properties:

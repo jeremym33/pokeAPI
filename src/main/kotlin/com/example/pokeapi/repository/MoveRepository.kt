@@ -1,6 +1,7 @@
 package com.example.pokeapi.repository
 
 import com.example.pokeapi.client.PokeApiMove
+import com.example.pokeapi.client.cleanGameText
 import com.example.pokeapi.db.MoveTable
 import kotlinx.coroutines.Dispatchers
 import org.jetbrains.exposed.sql.*
@@ -37,7 +38,7 @@ class MoveRepository(private val database: Database) {
                 accuracy = it[MoveTable.accuracy],
                 pp = it[MoveTable.pp],
                 priority = it[MoveTable.priority],
-                descriptionFr = it[MoveTable.descriptionFr],
+                descriptionFr = it[MoveTable.descriptionFr]?.let(::cleanGameText),
             )
         }
     }
@@ -54,7 +55,7 @@ class MoveRepository(private val database: Database) {
             priority = move.priority,
             // Dernière description française ; les retours à la ligne viennent des écrans des jeux.
             descriptionFr = move.flavorTextEntries.lastOrNull { it.language.name == "fr" }
-                ?.flavorText?.replace(Regex("\\s+"), " ")?.trim(),
+                ?.flavorText?.let(::cleanGameText),
         )
         dbQuery {
             MoveTable.upsert {

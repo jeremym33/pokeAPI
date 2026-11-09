@@ -2,6 +2,7 @@ package com.example.pokeapi
 
 import com.example.pokeapi.client.PokeApiClient
 import com.example.pokeapi.client.configurePokeApiClient
+import com.example.pokeapi.model.AbilityDetail
 import com.example.pokeapi.model.EvolutionChain
 import com.example.pokeapi.model.ImportResult
 import com.example.pokeapi.model.Page
@@ -63,6 +64,33 @@ class ApplicationTest {
         "razor-leaf" to moveJson("razor-leaf", "Tranch'Herbe", "grass", "physical", 55),
     )
 
+    /** Engrais : texte avec « \n » littéraux et effet en plusieurs paragraphes. Chlorophylle : effet en anglais seulement. */
+    private val fakeAbilities = mapOf(
+        "overgrow" to """
+            {"id": 65, "name": "overgrow", "generation": {"name": "generation-iii", "url": "x"},
+             "names": [{"name": "Engrais", "language": {"name": "fr", "url": "x"}}],
+             "flavor_text_entries": [
+               {"flavor_text": "Ancien texte.", "language": {"name": "fr", "url": "x"}},
+               {"flavor_text": "Augmente la puissance des capacités\\nde type Plante en cas de besoin.", "language": {"name": "fr", "url": "x"}}
+             ],
+             "effect_entries": [
+               {"effect": "Bonus de 50 %.\n\nNe s'applique\nqu'en dessous de 1/3 des PV.", "short_effect": "Court.", "language": {"name": "fr", "url": "x"}}
+             ],
+             "pokemon": [
+               {"is_hidden": false, "pokemon": {"name": "ivysaur", "url": "https://pokeapi.co/api/v2/pokemon/2/"}},
+               {"is_hidden": false, "pokemon": {"name": "bulbasaur", "url": "https://pokeapi.co/api/v2/pokemon/1/"}},
+               {"is_hidden": false, "pokemon": {"name": "venusaur-mega", "url": "https://pokeapi.co/api/v2/pokemon/10033/"}}
+             ]}
+        """.trimIndent(),
+        "chlorophyll" to """
+            {"id": 34, "name": "chlorophyll", "generation": {"name": "generation-iii", "url": "x"},
+             "names": [{"name": "Chlorophylle", "language": {"name": "fr", "url": "x"}}],
+             "flavor_text_entries": [],
+             "effect_entries": [{"effect": "", "short_effect": "Doubles Speed in sun.", "language": {"name": "en", "url": "x"}}],
+             "pokemon": [{"is_hidden": true, "pokemon": {"name": "bulbasaur", "url": "https://pokeapi.co/api/v2/pokemon/1/"}}]}
+        """.trimIndent(),
+    )
+
     /** Pokémon accessibles individuellement mais absents de la liste (/pokemon), pour les évolutions. */
     private val extraPokemon = mapOf(
         "ivysaur" to pokemonJson(2, "ivysaur", listOf("grass", "poison"), hp = 60),
@@ -112,6 +140,11 @@ class ApplicationTest {
                         """{"name":"$it","url":"https://pokeapi.co/api/v2/pokemon/$it/"}"""
                     }
                     respond("""{"count":4,"next":null,"previous":null,"results":[$results]}""", HttpStatusCode.OK, headers)
+                }
+                path.startsWith("/api/v2/ability/") -> {
+                    val body = fakeAbilities[path.removePrefix("/api/v2/ability/")]
+                    if (body != null) respond(body, HttpStatusCode.OK, headers)
+                    else respond("Not Found", HttpStatusCode.NotFound)
                 }
                 path.startsWith("/api/v2/move/") -> {
                     val body = fakeMoves[path.removePrefix("/api/v2/move/")]
@@ -169,13 +202,52 @@ class ApplicationTest {
         assertEquals("kanto", pokemon.region)
         assertEquals(1, pokemon.generation)
         assertEquals(45 + 49, pokemon.statTotal)
-        assertEquals(2, remoteCalls.get()) // pokemon + pokemon-species
+        assertEquals(4, remoteCalls.get()) // pokemon + pokemon-species + 2 talents
 
         // Deuxième appel (par id) : aucune requête supplémentaire vers PokéAPI
         val second = client.get("/pokemon/1")
         assertEquals(HttpStatusCode.OK, second.status)
         assertEquals("bulbasaur", json.decodeFromString<Pokemon>(second.bodyAsText()).name)
-        assertEquals(2, remoteCalls.get())
+        assertEquals(4, remoteCalls.get())
+    }
+
+    @Test
+    fun `talents detailles dans la fiche du pokemon`() = appTest {
+        val pokemon = json.decodeFromString<Pokemon>(client.get("/pokemon/bulbasaur").bodyAsText())
+        val (overgrow, chlorophyll) = pokemon.abilities
+
+        assertEquals("Engrais", overgrow.nameFr)
+        assertEquals(false, overgrow.hidden)
+        assertEquals(3, overgrow.generation)
+        // Texte le plus récent, « \n » littéraux nettoyés
+        assertEquals("Augmente la puissance des capacités de type Plante en cas de besoin.", overgrow.description)
+        // Paragraphes de l'effet conservés, retours à la ligne simples supprimés
+        assertEquals("Bonus de 50 %.\n\nNe s'applique qu'en dessous de 1/3 des PV.", overgrow.effect)
+        assertEquals("fr", overgrow.effectLanguage)
+
+        assertEquals("Chlorophylle", chlorophyll.nameFr)
+        assertEquals(true, chlorophyll.hidden)
+        assertEquals(null, chlorophyll.description)
+        assertEquals("Doubles Speed in sun.", chlorophyll.effect) // repli sur short_effect anglais
+        assertEquals("en", chlorophyll.effectLanguage)
+
+        // Talents en cache : pas de nouvel appel
+        val callsBefore = remoteCalls.get()
+        client.get("/pokemon/1")
+        assertEquals(callsBefore, remoteCalls.get())
+    }
+
+    @Test
+    fun `fiche d'un talent avec les pokemon qui l'ont`() = appTest {
+        client.get("/pokemon/bulbasaur") // Bulbizarre en base
+        val detail = json.decodeFromString<AbilityDetail>(client.get("/abilities/overgrow").bodyAsText())
+        assertEquals("Engrais", detail.nameFr)
+        // Triés par numéro, forme méga exclue ; nom français seulement pour les Pokémon en base
+        assertEquals(listOf(1, 2), detail.pokemon.map { it.id })
+        assertEquals("Bulbizarre", detail.pokemon[0].nameFr)
+        assertEquals(null, detail.pokemon[1].nameFr)
+
+        assertEquals(HttpStatusCode.NotFound, client.get("/abilities/unknown-ability").status)
     }
 
     @Test

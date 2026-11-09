@@ -110,3 +110,20 @@ object LearnsetTable : Table("pokemon_learnset") {
 
     override val primaryKey = PrimaryKey(pokemonId)
 }
+
+/** Talents (partagés par tous les Pokémon), récupérés à la demande. */
+object AbilityTable : Table("ability") {
+    val name = varchar("name", 100)
+    val nameFr = varchar("name_fr", 100).nullable()
+    /** Texte du jeu le plus récent, en français. */
+    val descriptionFr = text("description_fr").nullable()
+    /** Effet détaillé (français si disponible, sinon anglais : voir effectLanguage). */
+    val effect = text("effect").nullable()
+    val effectLanguage = varchar("effect_language", 5).nullable()
+    val generation = integer("generation").nullable()
+    /** Pokémon ayant ce talent (JSON : liste de {id, name, hidden}). */
+    val pokemon = text("pokemon")
+    val fetchedAt = timestamp("fetched_at")
+
+    override val primaryKey = PrimaryKey(name)
+}

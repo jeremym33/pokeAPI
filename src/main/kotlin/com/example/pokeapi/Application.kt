@@ -8,14 +8,17 @@ import com.example.pokeapi.plugins.configureCors
 import com.example.pokeapi.plugins.configureMonitoring
 import com.example.pokeapi.plugins.configureSerialization
 import com.example.pokeapi.plugins.configureStatusPages
+import com.example.pokeapi.repository.AbilityRepository
 import com.example.pokeapi.repository.EvolutionRepository
 import com.example.pokeapi.repository.MoveRepository
 import com.example.pokeapi.repository.PokemonRepository
 import com.example.pokeapi.repository.TeamRepository
+import com.example.pokeapi.routes.abilityRoutes
 import com.example.pokeapi.routes.healthRoutes
 import com.example.pokeapi.routes.pokemonRoutes
 import com.example.pokeapi.routes.referenceRoutes
 import com.example.pokeapi.routes.teamRoutes
+import com.example.pokeapi.service.AbilityService
 import com.example.pokeapi.service.EvolutionService
 import com.example.pokeapi.service.MoveService
 import com.example.pokeapi.service.PokemonService
@@ -64,6 +67,7 @@ fun Application.configureApp(
     val pokemonService = PokemonService(pokemonRepository, pokeApiClient, importConcurrency)
     val teamService = TeamService(TeamRepository(database), pokemonService)
     val evolutionService = EvolutionService(pokemonService, pokemonRepository, EvolutionRepository(database), pokeApiClient)
+    val abilityService = AbilityService(AbilityRepository(database), pokemonRepository, pokeApiClient)
     val moveService = MoveService(pokemonService, pokemonRepository, MoveRepository(database), pokeApiClient, importConcurrency)
 
     configureSerialization()
@@ -77,7 +81,8 @@ fun Application.configureApp(
         get("/") { call.respondRedirect("/swagger") }
 
         healthRoutes(database)
-        pokemonRoutes(pokemonService, evolutionService, moveService)
+        pokemonRoutes(pokemonService, evolutionService, moveService, abilityService)
+        abilityRoutes(abilityService)
         referenceRoutes(pokemonService)
         teamRoutes(teamService)
     }

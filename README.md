@@ -92,9 +92,10 @@ La spécification OpenAPI se trouve dans `src/main/resources/openapi/documentati
 | `GET` | `/pokemon?type=fire,flying&region=kanto&name=sala&sort=statTotal&order=desc` | Pokédex : liste paginée des Pokémon **en base** (filtres : 1 ou 2 types, région, génération, nom FR/EN ; tri : `id`, `name`, `nameFr`, `height`, `weight`, `baseExperience`, `statTotal`) |
 | `GET` | `/regions` | Les 9 régions avec le nombre de Pokémon en base |
 | `GET` | `/types` | Types présents en base avec leur effectif |
-| `GET` | `/pokemon/{idOrName}` | Détail d'un Pokémon (récupéré sur PokéAPI si absent). `?refresh=true` force la mise à jour |
+| `GET` | `/pokemon/{idOrName}` | Détail d'un Pokémon (récupéré sur PokéAPI si absent), avec ses talents détaillés en français. `?refresh=true` force la mise à jour |
 | `GET` | `/pokemon/{idOrName}/evolutions` | Arbre d'évolution de la famille, avec les conditions en français (« Niveau 16 », « Utiliser Pierre Foudre »…). Mis en cache en base |
 | `GET` | `/pokemon/{idOrName}/moves?version=scarlet-violet` | Attaques apprises dans une version de jeu (par défaut la plus récente) : nom FR, type, catégorie, puissance, précision, PP, méthode et niveau |
+| `GET` | `/abilities/{name}` | Talent détaillé (nom FR, texte du jeu, effet) et liste des Pokémon qui le possèdent |
 | `POST` | `/pokemon/import?limit=151&offset=0` | Importe une plage de Pokémon depuis PokéAPI (max 2000 par appel) |
 
 ### Équipes
@@ -138,6 +139,7 @@ curl -X POST http://localhost:8080/teams -H 'Content-Type: application/json' -d 
 - `pokemon` (id PokéAPI, nom, taille, poids, expérience, sprites, date de récupération)
 - `pokemon_type`, `pokemon_stat`, `pokemon_ability` (liés à `pokemon`, suppression en cascade)
 - `team`, `team_member` (position 1 à 6)
+- `ability` (détail des talents et Pokémon qui les possèdent, partagé)
 - `pokemon_learnset` (attaques apprises par version de jeu, JSON), `move` (détail des attaques, partagé)
 - `evolution_chain` (chaînes d'évolution PokéAPI en JSON), `translation` (noms français des objets, capacités, lieux)
 

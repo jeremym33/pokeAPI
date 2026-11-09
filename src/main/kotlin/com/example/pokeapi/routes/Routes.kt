@@ -7,6 +7,7 @@ import com.example.pokeapi.model.PokemonQuery
 import com.example.pokeapi.model.PokemonSort
 import com.example.pokeapi.model.Region
 import com.example.pokeapi.model.RenameTeamRequest
+import com.example.pokeapi.service.AbilityService
 import com.example.pokeapi.service.EvolutionService
 import com.example.pokeapi.service.MoveService
 import com.example.pokeapi.service.PokemonService
@@ -33,7 +34,12 @@ fun Route.healthRoutes(database: Database) {
     }
 }
 
-fun Route.pokemonRoutes(service: PokemonService, evolutionService: EvolutionService, moveService: MoveService) {
+fun Route.pokemonRoutes(
+    service: PokemonService,
+    evolutionService: EvolutionService,
+    moveService: MoveService,
+    abilityService: AbilityService,
+) {
     route("/pokemon") {
         // GET /pokemon?type=fire,flying&region=kanto&name=char&sort=statTotal&order=desc
         get {
@@ -46,7 +52,7 @@ fun Route.pokemonRoutes(service: PokemonService, evolutionService: EvolutionServ
             val refresh = call.request.queryParameters["refresh"]?.toBooleanStrictOrNull() ?: false
             val pokemon = service.getPokemon(idOrName, refresh)
                 ?: throw NotFoundException("Pokémon '$idOrName' introuvable")
-            call.respond(pokemon)
+            call.respond(abilityService.withAbilityDetails(pokemon))
         }
 
         // GET /pokemon/{idOrName}/evolutions  -> arbre d'évolution avec les conditions en français
@@ -84,6 +90,15 @@ fun Route.pokemonRoutes(service: PokemonService, evolutionService: EvolutionServ
                 ErrorResponse("L'import se lance en POST, par exemple : curl -X POST \"http://localhost:8080/pokemon/import?limit=151\""),
             )
         }
+    }
+}
+
+fun Route.abilityRoutes(service: AbilityService) {
+    // GET /abilities/{name}  -> talent détaillé et Pokémon qui le possèdent
+    get("/abilities/{name}") {
+        val name = call.parameters["name"]!!
+        val ability = service.ability(name) ?: throw NotFoundException("Talent '$name' introuvable")
+        call.respond(ability)
     }
 }
 

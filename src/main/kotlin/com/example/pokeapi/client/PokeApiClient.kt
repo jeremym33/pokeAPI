@@ -39,6 +39,8 @@ class PokeApiClient(
         }
     }
 
+    suspend fun getAbility(name: String): PokeApiAbility? = getOrNull("ability/${name.lowercase().encodeURLPathPart()}")
+
     suspend fun getMove(name: String): PokeApiMove? = getOrNull("move/${name.lowercase().encodeURLPathPart()}")
 
     suspend fun getEvolutionChain(id: Int): PokeApiEvolutionChain? = getOrNull("evolution-chain/$id")

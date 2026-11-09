@@ -21,7 +21,39 @@ data class Pokemon(
 )
 
 @Serializable
-data class Ability(val name: String, val hidden: Boolean)
+data class Ability(
+    val name: String,
+    val hidden: Boolean,
+    val nameFr: String? = null,
+    /** Texte du jeu (français). */
+    val description: String? = null,
+    /** Effet détaillé, en français si disponible (voir effectLanguage). */
+    val effect: String? = null,
+    val effectLanguage: String? = null,
+    /** Génération d'apparition du talent. */
+    val generation: Int? = null,
+)
+
+@Serializable
+data class AbilityPokemon(
+    val id: Int,
+    val name: String,
+    val nameFr: String?,
+    val hidden: Boolean,
+    val spriteUrl: String?,
+)
+
+@Serializable
+data class AbilityDetail(
+    val name: String,
+    val nameFr: String?,
+    val description: String?,
+    val effect: String?,
+    val effectLanguage: String?,
+    val generation: Int?,
+    /** Pokémon ayant ce talent (formes alternatives exclues), triés par numéro. */
+    val pokemon: List<AbilityPokemon>,
+)
 
 @Serializable
 data class PokemonSummary(
