@@ -1,6 +1,7 @@
 package com.example.pokeapi.routes
 
 import com.example.pokeapi.model.CreateTeamRequest
+import com.example.pokeapi.model.ErrorResponse
 import com.example.pokeapi.model.HealthResponse
 import com.example.pokeapi.model.RenameTeamRequest
 import com.example.pokeapi.service.PokemonService
@@ -55,6 +56,15 @@ fun Route.pokemonRoutes(service: PokemonService) {
             }
             val offset = call.intParam("offset", 0).coerceAtLeast(0)
             call.respond(service.import(limit, offset))
+        }
+
+        // Sans cette route, GET /pokemon/import serait interprété comme le Pokémon nommé « import ».
+        get("/import") {
+            call.response.header(HttpHeaders.Allow, "POST")
+            call.respond(
+                HttpStatusCode.MethodNotAllowed,
+                ErrorResponse("L'import se lance en POST, par exemple : curl -X POST \"http://localhost:8080/pokemon/import?limit=151\""),
+            )
         }
     }
 }

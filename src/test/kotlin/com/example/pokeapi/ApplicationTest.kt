@@ -160,6 +160,14 @@ class ApplicationTest {
     }
 
     @Test
+    fun `GET sur import renvoie 405 sans appeler PokeAPI`() = appTest {
+        val response = client.get("/pokemon/import")
+        assertEquals(HttpStatusCode.MethodNotAllowed, response.status)
+        assertEquals("POST", response.headers[HttpHeaders.Allow])
+        assertEquals(0, remoteCalls.get())
+    }
+
+    @Test
     fun `corps JSON invalide renvoie 400`() = appTest {
         val response = client.post("/teams") {
             contentType(ContentType.Application.Json)
