@@ -66,7 +66,7 @@ class EvolutionDescriberTest {
             describe(PokeApiEvolutionDetail(trigger = r("level-up"), minLevel = 18, minSteps = 1000)),
         )
         assertEquals(
-            "Niveau 7, (50 % de chance)",
+            "Niveau 7 (50 % de chance)",
             describe(PokeApiEvolutionDetail(trigger = r("level-up"), minLevel = 7, conditionExpression = PokeApiConditionExpression(50.0))),
         )
     }

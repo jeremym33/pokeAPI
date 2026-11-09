@@ -106,12 +106,12 @@ fun describeEvolution(detail: PokeApiEvolutionDetail, t: Translator): String {
         detail.tradeSpecies?.let { add("contre ${t.fr(TranslationKind.SPECIES, it.name)}") }
         if (detail.needsMultiplayer) add("en multijoueur (Union)")
         detail.region?.let { add("dans la région ${REGIONS_FR[it.name] ?: prettySlug(it.name)}") }
-        detail.conditionExpression?.percentageChance
-            ?.takeIf { it < 100.0 }
-            ?.let { add("(${formatPercent(it)} % de chance)") }
     }
+    val chance = detail.conditionExpression?.percentageChance
+        ?.takeIf { it < 100.0 }
+        ?.let { " (${formatPercent(it)} % de chance)" } ?: ""
 
-    return (listOf(base) + details).joinToString(", ")
+    return (listOf(base) + details).joinToString(", ") + chance
 }
 
 private fun formatPercent(value: Double): String =
