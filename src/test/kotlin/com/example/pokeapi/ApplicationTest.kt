@@ -11,6 +11,8 @@ import com.example.pokeapi.model.PokemonMoves
 import com.example.pokeapi.model.PokemonSummary
 import com.example.pokeapi.model.RegionCount
 import com.example.pokeapi.model.TypeCount
+import com.example.pokeapi.model.TypeDefenses
+import com.example.pokeapi.model.TypeMultiplier
 import com.example.pokeapi.model.Team
 import io.ktor.client.*
 import io.ktor.client.engine.mock.*
@@ -141,6 +143,14 @@ class ApplicationTest {
                     }
                     respond("""{"count":4,"next":null,"previous":null,"results":[$results]}""", HttpStatusCode.OK, headers)
                 }
+                path == "/api/v2/type/grass" -> respond(
+                    typeJson("grass", double = "flying poison bug fire ice", half = "ground water grass electric"),
+                    HttpStatusCode.OK, headers,
+                )
+                path == "/api/v2/type/poison" -> respond(
+                    typeJson("poison", double = "ground psychic", half = "fighting poison bug grass fairy"),
+                    HttpStatusCode.OK, headers,
+                )
                 path.startsWith("/api/v2/ability/") -> {
                     val body = fakeAbilities[path.removePrefix("/api/v2/ability/")]
                     if (body != null) respond(body, HttpStatusCode.OK, headers)
@@ -248,6 +258,28 @@ class ApplicationTest {
         assertEquals(null, detail.pokemon[1].nameFr)
 
         assertEquals(HttpStatusCode.NotFound, client.get("/abilities/unknown-ability").status)
+    }
+
+    @Test
+    fun `faiblesses et resistances de type, mises en cache`() = appTest {
+        val response = client.get("/pokemon/bulbasaur/type-defenses")
+        assertEquals(HttpStatusCode.OK, response.status)
+        val defenses = json.decodeFromString<TypeDefenses>(response.bodyAsText())
+
+        assertEquals(listOf("grass", "poison"), defenses.types)
+        assertEquals(18, defenses.multipliers.size)
+        assertEquals(setOf("fire", "ice", "flying", "psychic"), defenses.weaknesses.map { it.type }.toSet())
+        assertTrue(defenses.weaknesses.all { it.multiplier == 2.0 })
+        // Résistances : la plus forte d'abord (Plante ×¼)
+        assertEquals(TypeMultiplier("grass", 0.25), defenses.resistances.first())
+        assertEquals(5, defenses.resistances.size)
+        assertTrue(defenses.immunities.isEmpty())
+        assertTrue(defenses.abilityNotes.isEmpty()) // Engrais et Chlorophylle ne changent rien
+
+        val callsBefore = remoteCalls.get()
+        client.get("/pokemon/1/type-defenses")
+        assertEquals(callsBefore, remoteCalls.get()) // types en cache
+        assertEquals(HttpStatusCode.NotFound, client.get("/pokemon/missingno/type-defenses").status)
     }
 
     @Test
@@ -468,6 +500,14 @@ class ApplicationTest {
             setBody("""{"nom":"oops"}""")
         }
         assertEquals(HttpStatusCode.BadRequest, response.status)
+    }
+
+    private fun typeJson(name: String, double: String, half: String, none: String = ""): String {
+        fun list(types: String) = types.split(' ').filter { it.isNotBlank() }
+            .joinToString(",") { """{"name":"$it","url":"x"}""" }
+        return """{"name": "$name", "damage_relations": {
+            "double_damage_from": [${list(double)}], "half_damage_from": [${list(half)}], "no_damage_from": [${list(none)}],
+            "double_damage_to": [], "half_damage_to": [], "no_damage_to": []}}"""
     }
 
     private fun speciesJson(id: Int, name: String, frenchName: String, generation: String, chainId: Int? = null) = """

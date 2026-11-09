@@ -39,6 +39,8 @@ class PokeApiClient(
         }
     }
 
+    suspend fun getType(name: String): PokeApiType? = getOrNull("type/${name.lowercase().encodeURLPathPart()}")
+
     suspend fun getAbility(name: String): PokeApiAbility? = getOrNull("ability/${name.lowercase().encodeURLPathPart()}")
 
     suspend fun getMove(name: String): PokeApiMove? = getOrNull("move/${name.lowercase().encodeURLPathPart()}")

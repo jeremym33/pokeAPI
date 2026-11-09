@@ -127,3 +127,14 @@ object AbilityTable : Table("ability") {
 
     override val primaryKey = PrimaryKey(name)
 }
+
+/** Relations de dégâts reçus par type (côté défense), noms de types séparés par des virgules. */
+object TypeRelationTable : Table("type_relation") {
+    val type = varchar("type", 30)
+    val doubleFrom = text("double_from")
+    val halfFrom = text("half_from")
+    val noFrom = text("no_from")
+    val fetchedAt = timestamp("fetched_at")
+
+    override val primaryKey = PrimaryKey(type)
+}

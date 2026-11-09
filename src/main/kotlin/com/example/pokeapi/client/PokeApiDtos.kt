@@ -212,3 +212,17 @@ fun cleanEffectText(text: String): String =
         .map { cleanGameText(it) }
         .filter { it.isNotEmpty() }
         .joinToString("\n\n")
+
+@Serializable
+data class PokeApiType(
+    val name: String,
+    @SerialName("damage_relations") val damageRelations: PokeApiDamageRelations = PokeApiDamageRelations(),
+)
+
+/** Côté défense uniquement : ce que ce type subit des types attaquants. */
+@Serializable
+data class PokeApiDamageRelations(
+    @SerialName("double_damage_from") val doubleDamageFrom: List<NamedApiResource> = emptyList(),
+    @SerialName("half_damage_from") val halfDamageFrom: List<NamedApiResource> = emptyList(),
+    @SerialName("no_damage_from") val noDamageFrom: List<NamedApiResource> = emptyList(),
+)

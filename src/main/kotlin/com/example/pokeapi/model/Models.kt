@@ -188,3 +188,29 @@ data class PokemonMoves(
     val versionGroups: List<VersionGroup>,
     val moves: List<LearnedMove>,
 )
+
+@Serializable
+data class TypeMultiplier(
+    /** Type attaquant */
+    val type: String,
+    /** 0, 0.25, 0.5, 1, 2 ou 4 */
+    val multiplier: Double,
+)
+
+@Serializable
+data class AbilityTypeNote(val ability: String, val abilityFr: String?, val note: String)
+
+@Serializable
+data class TypeDefenses(
+    val pokemonId: Int,
+    val types: List<String>,
+    /** Les 18 types attaquants, dans l'ordre officiel. */
+    val multipliers: List<TypeMultiplier>,
+    /** Multiplicateur > 1, du plus fort au plus faible. */
+    val weaknesses: List<TypeMultiplier>,
+    /** 0 < multiplicateur < 1, de la plus forte résistance à la plus faible. */
+    val resistances: List<TypeMultiplier>,
+    val immunities: List<String>,
+    /** Talents du Pokémon qui modifient ces relations (non pris en compte dans les multiplicateurs). */
+    val abilityNotes: List<AbilityTypeNote>,
+)

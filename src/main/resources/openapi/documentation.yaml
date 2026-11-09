@@ -199,6 +199,29 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "502": { $ref: "#/components/responses/BadGateway" }
 
+  /pokemon/{idOrName}/type-defenses:
+    get:
+      tags: [Pokémon]
+      summary: Faiblesses, résistances et immunités de type
+      description: |
+        Multiplicateur de dégâts de chacun des 18 types attaquants contre ce Pokémon (produit des
+        facteurs de ses types). Les talents qui modifient ces relations (Lévitation, Absorb Eau…)
+        sont signalés dans abilityNotes mais pas appliqués aux multiplicateurs.
+      parameters:
+        - name: idOrName
+          in: path
+          required: true
+          schema: { type: string }
+          example: gyarados
+      responses:
+        "200":
+          description: Relations de type
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TypeDefenses" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "502": { $ref: "#/components/responses/BadGateway" }
+
   /pokemon/import:
     post:
       tags: [Pokémon]
@@ -478,6 +501,43 @@ components:
         moves:
           type: array
           items: { $ref: "#/components/schemas/LearnedMove" }
+    TypeMultiplier:
+      type: object
+      properties:
+        type: { type: string, description: Type attaquant, example: electric }
+        multiplier: { type: number, enum: [0, 0.25, 0.5, 1, 2, 4], example: 4 }
+    TypeDefenses:
+      type: object
+      properties:
+        pokemonId: { type: integer, example: 130 }
+        types:
+          type: array
+          items: { type: string }
+          example: [water, flying]
+        multipliers:
+          type: array
+          description: Les 18 types attaquants, dans l'ordre officiel
+          items: { $ref: "#/components/schemas/TypeMultiplier" }
+        weaknesses:
+          type: array
+          description: Multiplicateur > 1, du plus fort au plus faible
+          items: { $ref: "#/components/schemas/TypeMultiplier" }
+        resistances:
+          type: array
+          description: 0 < multiplicateur < 1, de la plus forte résistance à la plus faible
+          items: { $ref: "#/components/schemas/TypeMultiplier" }
+        immunities:
+          type: array
+          items: { type: string }
+          example: [ground]
+        abilityNotes:
+          type: array
+          items:
+            type: object
+            properties:
+              ability: { type: string, example: levitate }
+              abilityFr: { type: string, nullable: true, example: Lévitation }
+              note: { type: string, example: immunisé contre le type Sol }
     RegionName:
       type: string
       enum: [kanto, johto, hoenn, sinnoh, unova, kalos, alola, galar, paldea]

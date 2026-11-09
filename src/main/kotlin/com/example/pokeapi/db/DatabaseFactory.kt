@@ -48,6 +48,7 @@ object DatabaseFactory {
                 MoveTable,
                 LearnsetTable,
                 AbilityTable,
+                TypeRelationTable,
             )
         }
     }
