@@ -74,7 +74,7 @@ Variables d'environnement (valeurs par défaut dans `src/main/resources/applicat
 | `POKEAPI_IMPORT_CONCURRENCY` | `8` |
 | `CORS_ALLOWED_HOSTS` | `*` (toutes origines ; en production : `pokedex.example.com,localhost:8081`) |
 
-Le schéma est créé automatiquement au démarrage ; les colonnes ajoutées par une nouvelle version sont créées sur une base existante. Après une mise à jour, relancez `POST /pokemon/import` : les Pokémon sans région (importés avec une ancienne version) sont complétés.
+Le schéma est créé automatiquement au démarrage ; les colonnes ajoutées par une nouvelle version sont créées sur une base existante. Après une mise à jour, relancez `POST /pokemon/import` : les Pokémon importés avec une ancienne version sont complétés (région, formes régionales…).
 
 ## Swagger
 
