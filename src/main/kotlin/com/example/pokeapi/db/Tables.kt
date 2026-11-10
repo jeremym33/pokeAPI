@@ -78,6 +78,8 @@ object TeamMemberTable : Table("team_member") {
 object EvolutionChainTable : Table("evolution_chain") {
     val id = integer("id")
     val data = text("data")
+    /** Version du format stocké : les chaînes d'un format plus ancien sont récupérées à nouveau. */
+    val format = integer("format").default(1)
     val fetchedAt = timestamp("fetched_at")
 
     override val primaryKey = PrimaryKey(id)

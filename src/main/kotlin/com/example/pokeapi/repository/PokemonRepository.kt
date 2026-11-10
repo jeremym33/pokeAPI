@@ -169,6 +169,16 @@ class PokemonRepository(private val database: Database) {
         }
     }
 
+    /** Formes régionales en base des espèces données. */
+    suspend fun regionalForms(speciesIds: Collection<Int>): List<PokemonSummary> = dbQuery {
+        if (speciesIds.isEmpty()) return@dbQuery emptyList()
+        val ids = PokemonTable.select(PokemonTable.id)
+            .where { (PokemonTable.speciesId inList speciesIds) and PokemonTable.regionalForm.isNotNull() }
+            .orderBy(PokemonTable.id)
+            .map { it[PokemonTable.id] }
+        summariesFor(ids)
+    }
+
     suspend fun summaries(ids: List<Int>): List<PokemonSummary> = dbQuery { summariesFor(ids) }
 
     /** Régions présentes en base avec leur nombre de Pokémon. */

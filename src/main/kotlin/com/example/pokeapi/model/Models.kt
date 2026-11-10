@@ -151,12 +151,17 @@ data class HealthResponse(val status: String, val database: String)
 data class EvolutionChain(
     /** Id de la chaîne PokéAPI (null si l'espèce n'en a pas). */
     val id: Int?,
-    val root: EvolutionNode,
+    /**
+     * Lignées de la famille : la forme de base d'abord, puis les formes régionales qui ont leur propre lignée
+     * (Miaouss → Persian, Miaouss d'Alola → Persian d'Alola, Miaouss de Galar → Berserkatt).
+     */
+    val roots: List<EvolutionNode>,
 )
 
 @Serializable
 data class EvolutionNode(
     val speciesId: Int,
+    /** Nom PokéAPI de la forme (« raichu-alola ») ou de l'espèce. */
     val name: String,
     /** Résumé du Pokémon (null s'il n'a pas pu être récupéré). */
     val pokemon: PokemonSummary?,

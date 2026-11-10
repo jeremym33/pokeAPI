@@ -93,7 +93,7 @@ La spécification OpenAPI se trouve dans `src/main/resources/openapi/documentati
 | `GET` | `/regions` | Les 9 régions avec le nombre de Pokémon en base |
 | `GET` | `/types` | Types présents en base avec leur effectif |
 | `GET` | `/pokemon/{idOrName}` | Détail d'un Pokémon (récupéré sur PokéAPI si absent), avec ses talents détaillés en français. `?refresh=true` force la mise à jour |
-| `GET` | `/pokemon/{idOrName}/evolutions` | Arbre d'évolution de la famille, avec les conditions en français (« Niveau 16 », « Utiliser Pierre Foudre »…). Mis en cache en base |
+| `GET` | `/pokemon/{idOrName}/evolutions` | Arbre d'évolution de la famille, formes régionales comprises (Raichu d'Alola…), avec les conditions en français (« Niveau 16 », « Utiliser Pierre Foudre »…). Mis en cache en base |
 | `GET` | `/pokemon/{idOrName}/moves` | Attaques apprises dans le jeu le plus récent (Écarlate / Violet pour la plupart) : nom FR, type, catégorie, puissance, précision, PP, méthode et niveau |
 | `GET` | `/abilities/{name}` | Talent détaillé (nom FR, texte du jeu, effet) et liste des Pokémon qui le possèdent |
 | `GET` | `/pokemon/{idOrName}/type-defenses` | Faiblesses (×2, ×4), résistances (×½, ×¼) et immunités de type, avec les talents qui les modifient |

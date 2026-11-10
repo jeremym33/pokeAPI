@@ -5,18 +5,22 @@ import com.example.pokeapi.db.TranslationTable
 import kotlinx.coroutines.Dispatchers
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.greaterEq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.inList
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
 import java.time.Instant
+
+const val CHAIN_FORMAT = 2
 
 class EvolutionRepository(private val database: Database) {
 
     private suspend fun <T> dbQuery(block: suspend Transaction.() -> T): T =
         newSuspendedTransaction(Dispatchers.IO, database) { block() }
 
+    /** Chaîne en cache, si elle est au format actuel (2 : formes de départ et d'arrivée des évolutions). */
     suspend fun findChainJson(id: Int): String? = dbQuery {
         EvolutionChainTable.select(EvolutionChainTable.data)
-            .where { EvolutionChainTable.id eq id }
+            .where { (EvolutionChainTable.id eq id) and (EvolutionChainTable.format greaterEq CHAIN_FORMAT) }
             .singleOrNull()?.get(EvolutionChainTable.data)
     }
 
@@ -24,6 +28,7 @@ class EvolutionRepository(private val database: Database) {
         EvolutionChainTable.upsert {
             it[EvolutionChainTable.id] = id
             it[data] = json
+            it[format] = CHAIN_FORMAT
             it[fetchedAt] = Instant.now()
         }
     }

@@ -118,10 +118,12 @@ private fun formatPercent(value: Double): String =
     if (value % 1.0 == 0.0) value.toInt().toString() else value.toString().replace('.', ',')
 
 /** Conditions à afficher : la méthode actuelle (is_default) si PokéAPI la précise, sans doublons. */
-fun describeEvolutions(details: List<PokeApiEvolutionDetail>, t: Translator): List<String> {
-    val current = details.filter { it.isDefault }.ifEmpty { details }
-    return current.map { describeEvolution(it, t) }.distinct()
-}
+fun describeEvolutions(details: List<PokeApiEvolutionDetail>, t: Translator): List<String> =
+    currentDetails(details).map { describeEvolution(it, t) }.distinct()
+
+/** Méthode actuelle (is_default) si PokéAPI la précise, sinon toutes les conditions. */
+fun currentDetails(details: List<PokeApiEvolutionDetail>): List<PokeApiEvolutionDetail> =
+    details.filter { it.isDefault }.ifEmpty { details }
 
 /** Slugs à traduire pour une liste de conditions. */
 fun slugsToTranslate(details: List<PokeApiEvolutionDetail>): Set<Pair<TranslationKind, String>> = buildSet {

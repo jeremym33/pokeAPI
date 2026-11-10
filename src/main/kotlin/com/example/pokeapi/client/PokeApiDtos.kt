@@ -179,6 +179,10 @@ data class PokeApiEvolutionDetail(
     val region: NamedApiResource? = null,
     @SerialName("is_default") val isDefault: Boolean = false,
     @SerialName("condition_expression") val conditionExpression: PokeApiConditionExpression? = null,
+    /** Forme qui évolue (« meowth-galar ») ; null = forme par défaut. */
+    @SerialName("required_pokemon_form") val requiredPokemonForm: NamedApiResource? = null,
+    /** Forme obtenue (« raichu-alola ») ; null = forme par défaut. */
+    @SerialName("evolved_pokemon_form") val evolvedPokemonForm: NamedApiResource? = null,
 )
 
 @Serializable

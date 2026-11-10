@@ -102,6 +102,7 @@ class ApplicationTest {
         "ivysaur" to pokemonJson(2, "ivysaur", listOf("grass", "poison"), hp = 60),
         "venusaur" to pokemonJson(3, "venusaur", listOf("grass", "poison"), hp = 80),
         // Formes fictives de Germignon : une forme régionale (importée avec l'espèce) et une méga (ignorée)
+        "bayleef" to pokemonJson(153, "bayleef", listOf("grass"), hp = 60),
         "chikorita-hisui" to pokemonJson(10999, "chikorita-hisui", listOf("water"), hp = 10, species = "chikorita" to 152, isDefault = false),
         "chikorita-mega" to pokemonJson(10998, "chikorita-mega", listOf("grass"), hp = 90, species = "chikorita" to 152, isDefault = false),
     )
@@ -111,12 +112,34 @@ class ApplicationTest {
         "venusaur" to speciesJson(3, "venusaur", "Florizarre", "generation-i", chainId = 1),
         "charmander" to speciesJson(4, "charmander", "Salamèche", "generation-i"),
         "squirtle" to speciesJson(7, "squirtle", "Carapuce", "generation-i"),
-        "chikorita" to speciesJson(152, "chikorita", "Germignon", "generation-ii", forms = listOf("chikorita-hisui", "chikorita-mega")),
+        "chikorita" to speciesJson(152, "chikorita", "Germignon", "generation-ii", chainId = 2, forms = listOf("chikorita-hisui", "chikorita-mega")),
+        "bayleef" to speciesJson(153, "bayleef", "Macronium", "generation-ii", chainId = 2),
     )
     private val byId = mapOf(
         "1" to "bulbasaur", "2" to "ivysaur", "3" to "venusaur", "4" to "charmander", "7" to "squirtle", "152" to "chikorita",
-        "10999" to "chikorita-hisui", "10998" to "chikorita-mega",
+        "10999" to "chikorita-hisui", "10998" to "chikorita-mega", "153" to "bayleef",
     )
+
+    /**
+     * Chaîne de Germignon : la forme par défaut évolue au niveau 16, la forme de Hisui (fictive) avec une Pierre Foudre
+     * vers la forme par défaut de Macronium (comme Miaouss de Galar → Berserkatt).
+     */
+    private val chikoritaChain = """
+        {"id": 2, "chain": {
+          "is_baby": false, "species": {"name": "chikorita", "url": "https://pokeapi.co/api/v2/pokemon-species/152/"},
+          "evolution_details": [],
+          "evolves_to": [{
+            "is_baby": false, "species": {"name": "bayleef", "url": "https://pokeapi.co/api/v2/pokemon-species/153/"},
+            "evolution_details": [
+              {"trigger": {"name": "level-up", "url": "x"}, "min_level": 16, "is_default": true,
+               "required_pokemon_form": {"name": "chikorita", "url": "x"}},
+              {"trigger": {"name": "use-item", "url": "x"}, "item": {"name": "thunder-stone", "url": "x"}, "is_default": true,
+               "required_pokemon_form": {"name": "chikorita-hisui", "url": "x"}}
+            ],
+            "evolves_to": []
+          }]
+        }}
+    """.trimIndent()
 
     /** Chaîne de Bulbizarre : la condition non par défaut doit être ignorée, l'objet traduit. */
     private val bulbasaurChain = """
@@ -172,6 +195,7 @@ class ApplicationTest {
                     else respond("Not Found", HttpStatusCode.NotFound)
                 }
                 path == "/api/v2/evolution-chain/1" -> respond(bulbasaurChain, HttpStatusCode.OK, headers)
+                path == "/api/v2/evolution-chain/2" -> respond(chikoritaChain, HttpStatusCode.OK, headers)
                 path == "/api/v2/item/thunder-stone" ->
                     respond("""{"names":[{"name":"Pierre Foudre","language":{"name":"fr","url":"x"}}]}""", HttpStatusCode.OK, headers)
                 path.startsWith("/api/v2/pokemon-species/") -> {
@@ -406,7 +430,7 @@ class ApplicationTest {
         val chain = json.decodeFromString<EvolutionChain>(response.bodyAsText())
 
         assertEquals(1, chain.id)
-        val root = chain.root
+        val root = chain.roots.single()
         assertEquals("Bulbizarre", root.pokemon?.nameFr) // récupéré automatiquement
         assertTrue(root.conditions.isEmpty())
         val ivysaur = root.evolvesTo.single()
@@ -424,11 +448,29 @@ class ApplicationTest {
     }
 
     @Test
+    fun `lignee propre a une forme regionale`() = appTest {
+        val chain = json.decodeFromString<EvolutionChain>(client.get("/pokemon/chikorita/evolutions").bodyAsText())
+        // Deux lignées : la forme de base, puis la forme régionale ; la méga n'apparaît pas
+        assertEquals(listOf("chikorita", "chikorita-hisui"), chain.roots.map { it.name })
+        val (base, hisui) = chain.roots
+        assertEquals(listOf("Niveau 16"), base.evolvesTo.single().conditions)
+        assertEquals("Germignon de Hisui", hisui.pokemon?.nameFr)
+        assertEquals(152, hisui.speciesId)
+        assertEquals(10999, hisui.pokemon?.id)
+        val bayleef = hisui.evolvesTo.single()
+        assertEquals("Macronium", bayleef.pokemon?.nameFr)
+        assertEquals(listOf("Utiliser Pierre Foudre"), bayleef.conditions)
+
+        // Même arbre depuis la forme régionale
+        assertEquals(chain, json.decodeFromString<EvolutionChain>(client.get("/pokemon/10999/evolutions").bodyAsText()))
+    }
+
+    @Test
     fun `pokemon sans chaine d'evolution`() = appTest {
         val chain = json.decodeFromString<EvolutionChain>(client.get("/pokemon/squirtle/evolutions").bodyAsText())
         assertEquals(null, chain.id)
-        assertEquals("squirtle", chain.root.name)
-        assertTrue(chain.root.evolvesTo.isEmpty())
+        assertEquals("squirtle", chain.roots.single().name)
+        assertTrue(chain.roots.single().evolvesTo.isEmpty())
         assertEquals(HttpStatusCode.NotFound, client.get("/pokemon/missingno/evolutions").status)
     }
 

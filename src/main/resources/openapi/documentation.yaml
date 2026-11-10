@@ -155,7 +155,8 @@ paths:
       tags: [Pokémon]
       summary: Arbre d'évolution et conditions d'évolution (en français)
       description: |
-        Renvoie toute la famille du Pokémon, depuis la forme de base. Les membres absents de la base
+        Renvoie toute la famille du Pokémon, forme par forme : formes régionales comprises, chacune avec sa
+        propre lignée si elle évolue autrement (Raichu d'Alola, Miaouss de Galar → Berserkatt…). Les membres absents de la base
         sont récupérés automatiquement. Chaque nœud indique comment son prédécesseur évolue en lui
         (« Niveau 16 », « Utiliser Pierre Foudre », « Échange, en tenant Roche Royale »…).
       parameters:
@@ -451,13 +452,18 @@ components:
     EvolutionChain:
       type: object
       properties:
-        id: { type: integer, nullable: true, description: Id de la chaîne PokéAPI, example: 67 }
-        root: { $ref: "#/components/schemas/EvolutionNode" }
+        id: { type: integer, nullable: true, description: Id de la chaîne PokéAPI, example: 22 }
+        roots:
+          type: array
+          description: |
+            Lignées de la famille, forme par forme : la forme de base d'abord, puis les formes régionales
+            (Miaouss → Persian, Miaouss d'Alola → Persian d'Alola, Miaouss de Galar → Berserkatt).
+          items: { $ref: "#/components/schemas/EvolutionNode" }
     EvolutionNode:
       type: object
       properties:
-        speciesId: { type: integer, example: 134 }
-        name: { type: string, example: vaporeon }
+        speciesId: { type: integer, description: Numéro du Pokédex national, example: 53 }
+        name: { type: string, description: "Nom PokéAPI de la forme (« persian-alola ») ou de l'espèce", example: persian-alola }
         pokemon:
           allOf: [{ $ref: "#/components/schemas/PokemonSummary" }]
           nullable: true
