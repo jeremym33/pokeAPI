@@ -36,7 +36,10 @@ paths:
     get:
       tags: [Pokémon]
       summary: Pokédex — liste paginée, filtrable et triable
-      description: Ne renvoie que les Pokémon déjà enregistrés (importés ou consultés).
+      description: |
+        Ne renvoie que les Pokémon déjà enregistrés (importés ou consultés), formes régionales comprises
+        (Raichu d'Alola…), rangées dans la région de leur forme. Le tri par numéro suit le Pokédex national,
+        la forme régionale juste après la forme de base. Les méga-évolutions et autres formes n'y figurent pas.
       parameters:
         - name: limit
           in: query
@@ -225,6 +228,7 @@ paths:
         - name: limit
           in: query
           schema: { type: integer, minimum: 1, maximum: 2000, default: 151 }
+          description: Nombre d'espèces ; leurs formes régionales sont importées en plus
         - name: offset
           in: query
           schema: { type: integer, minimum: 0, default: 0 }
@@ -373,7 +377,9 @@ components:
     Pokemon:
       type: object
       properties:
-        id: { type: integer, example: 25 }
+        id: { type: integer, description: "Id PokéAPI (≥ 10001 pour une forme régionale)", example: 25 }
+        speciesId: { type: integer, description: Numéro du Pokédex national, example: 25 }
+        regionalForm: { type: string, nullable: true, enum: [alola, galar, hisui, paldea], description: Région de la forme régionale }
         name: { type: string, example: pikachu }
         nameFr: { type: string, nullable: true, example: Pikachu }
         generation: { type: integer, nullable: true, example: 1 }
@@ -428,7 +434,9 @@ components:
     PokemonSummary:
       type: object
       properties:
-        id: { type: integer, example: 25 }
+        id: { type: integer, description: "Id PokéAPI (≥ 10001 pour une forme régionale)", example: 25 }
+        speciesId: { type: integer, description: Numéro du Pokédex national, example: 25 }
+        regionalForm: { type: string, nullable: true, enum: [alola, galar, hisui, paldea], description: Région de la forme régionale }
         name: { type: string, example: pikachu }
         nameFr: { type: string, nullable: true, example: Pikachu }
         generation: { type: integer, nullable: true, example: 1 }
@@ -532,7 +540,7 @@ components:
               note: { type: string, example: immunisé contre le type Sol }
     RegionName:
       type: string
-      enum: [kanto, johto, hoenn, sinnoh, unova, kalos, alola, galar, paldea]
+      enum: [kanto, johto, hoenn, sinnoh, unova, kalos, alola, galar, hisui, paldea]
     RegionCount:
       type: object
       properties:
@@ -559,6 +567,7 @@ components:
         requested: { type: integer, example: 151 }
         imported: { type: integer, example: 148 }
         alreadyCached: { type: integer, example: 3 }
+        regionalForms: { type: integer, description: "Formes régionales importées en plus (Raichu d'Alola…)", example: 36 }
         failed:
           type: array
           items: { type: string }

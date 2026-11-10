@@ -5,6 +5,10 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class Pokemon(
     val id: Int,
+    /** Numéro du Pokédex national (différent de id pour les formes régionales). */
+    val speciesId: Int,
+    /** Région de la forme régionale (alola, galar, hisui, paldea), null pour la forme de base. */
+    val regionalForm: String?,
     val name: String,
     val nameFr: String?,
     val generation: Int?,
@@ -58,6 +62,8 @@ data class AbilityDetail(
 @Serializable
 data class PokemonSummary(
     val id: Int,
+    val speciesId: Int,
+    val regionalForm: String?,
     val name: String,
     val nameFr: String?,
     val generation: Int?,
@@ -117,6 +123,8 @@ data class ImportResult(
     val imported: Int,
     val alreadyCached: Int,
     val failed: List<String>,
+    /** Formes régionales importées en plus (Raichu d'Alola…). */
+    val regionalForms: Int = 0,
 )
 
 @Serializable

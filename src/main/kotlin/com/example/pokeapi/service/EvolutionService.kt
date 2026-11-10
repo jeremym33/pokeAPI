@@ -110,7 +110,10 @@ class EvolutionService(
     private fun singleNode(p: Pokemon) = EvolutionNode(
         speciesId = p.id,
         name = p.name,
-        pokemon = PokemonSummary(p.id, p.name, p.nameFr, p.generation, p.region, p.types, p.statTotal, p.spriteUrl, p.artworkUrl),
+        pokemon = PokemonSummary(
+            p.id, p.speciesId, p.regionalForm, p.name, p.nameFr, p.generation, p.region, p.types, p.statTotal,
+            p.spriteUrl, p.artworkUrl,
+        ),
         isBaby = false,
         conditions = emptyList(),
         evolvesTo = emptyList(),

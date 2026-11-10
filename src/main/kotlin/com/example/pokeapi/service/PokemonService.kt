@@ -8,6 +8,7 @@ import com.example.pokeapi.model.Page
 import com.example.pokeapi.model.Pokemon
 import com.example.pokeapi.model.PokemonQuery
 import com.example.pokeapi.model.PokemonSummary
+import com.example.pokeapi.model.Region
 import com.example.pokeapi.model.RegionCount
 import com.example.pokeapi.model.TypeCount
 import com.example.pokeapi.repository.PokemonRepository
@@ -39,12 +40,59 @@ class PokemonService(
         }
         val remote = pokeApi.getPokemon(key) ?: return null
         try {
-            repository.save(remote, fetchSpecies(remote))
+            saveWithForms(remote)
         } catch (e: ExposedSQLException) {
             // Une requête concurrente a pu enregistrer le même Pokémon entre-temps.
             log.debug("Enregistrement concurrent de {} : {}", remote.name, e.message)
         }
         return repository.findByIdOrName(remote.id.toString())
+    }
+
+    /**
+     * Enregistre un Pokémon. Une forme par défaut entraîne l'import de ses formes régionales
+     * (Raichu → Raichu d'Alola) ; une forme régionale demandée directement est enregistrée comme telle.
+     * Renvoie le nombre de formes régionales enregistrées en plus.
+     */
+    private suspend fun saveWithForms(dto: PokeApiPokemon): Int {
+        val species = fetchSpecies(dto)
+        if (!dto.isDefault) {
+            saveForm(dto, species)
+            return 0
+        }
+        repository.save(dto, species)
+        if (species == null) return 0
+
+        var saved = 0
+        species.varieties
+            .filter { !it.isDefault && Region.ofRegionalForm(species.name, it.pokemon.name) != null }
+            .forEach { variety ->
+                runCatching { pokeApi.getPokemon(variety.pokemon.name)?.let { saveForm(it, species); saved++ } }
+                    .onFailure { log.warn("Forme régionale {} indisponible : {}", variety.pokemon.name, it.message) }
+            }
+        repository.markFormsChecked(dto.id)
+        return saved
+    }
+
+    private suspend fun saveForm(dto: PokeApiPokemon, species: PokeApiSpecies?) {
+        val region = species?.let { Region.ofRegionalForm(it.name, dto.name) }
+        if (region == null) {
+            // Autre forme (méga, Gigamax…) : enregistrée pour sa fiche, mais absente du Pokédex.
+            repository.save(dto, species)
+            return
+        }
+        val nameFr = runCatching {
+            dto.forms.firstOrNull()?.let { pokeApi.getPokemonForm(it.name) }
+                ?.names?.firstOrNull { it.language.name == "fr" }?.name
+        }.getOrNull() ?: species.names.firstOrNull { it.language.name == "fr" }?.name?.let { "$it ${regionSuffixFr(region)}" }
+        repository.save(dto, species, region, nameFr)
+    }
+
+    private fun regionSuffixFr(region: Region): String = when (region) {
+        Region.ALOLA -> "d'Alola"
+        Region.GALAR -> "de Galar"
+        Region.HISUI -> "de Hisui"
+        Region.PALDEA -> "de Paldéa"
+        else -> "de ${region.apiName.replaceFirstChar(Char::uppercase)}"
     }
 
     suspend fun list(query: PokemonQuery): Page<PokemonSummary> = repository.list(query)
@@ -72,9 +120,9 @@ class PokemonService(
                 importSemaphore.withPermit {
                     runCatching {
                         val dto = pokeApi.getPokemon(name) ?: error("introuvable")
-                        repository.save(dto, fetchSpecies(dto))
+                        saveWithForms(dto)
                     }.onFailure { log.warn("Échec de l'import de {} : {}", name, it.message) }
-                        .isSuccess to name
+                        .let { result -> Triple(result.isSuccess, name, result.getOrDefault(0)) }
                 }
             }
         }.awaitAll()
@@ -84,6 +132,7 @@ class PokemonService(
             imported = outcomes.count { it.first },
             alreadyCached = cached.size,
             failed = outcomes.filterNot { it.first }.map { it.second },
+            regionalForms = outcomes.sumOf { it.third },
         )
     }
 }

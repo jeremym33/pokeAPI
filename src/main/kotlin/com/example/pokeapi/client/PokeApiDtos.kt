@@ -36,6 +36,19 @@ data class PokeApiPokemon(
     val abilities: List<PokeApiAbilitySlot> = emptyList(),
     val species: NamedApiResource? = null,
     val moves: List<PokeApiMoveSlot> = emptyList(),
+    /** false pour les formes alternatives (régionales, méga…), dont l'id commence à 10001. */
+    @SerialName("is_default") val isDefault: Boolean = true,
+    val forms: List<NamedApiResource> = emptyList(),
+)
+
+/** Forme d'un Pokémon : donne son nom complet traduit (« Raichu d'Alola »). */
+@Serializable
+data class PokeApiPokemonForm(val names: List<PokeApiLocalizedName> = emptyList())
+
+@Serializable
+data class PokeApiVariety(
+    @SerialName("is_default") val isDefault: Boolean = false,
+    val pokemon: NamedApiResource,
 )
 
 @Serializable
@@ -78,6 +91,8 @@ data class PokeApiSpecies(
     val names: List<PokeApiLocalizedName> = emptyList(),
     val generation: NamedApiResource? = null,
     @SerialName("evolution_chain") val evolutionChain: ApiResource? = null,
+    /** Pokémon de l'espèce : forme par défaut, formes régionales, méga-évolutions… */
+    val varieties: List<PokeApiVariety> = emptyList(),
 )
 
 @Serializable

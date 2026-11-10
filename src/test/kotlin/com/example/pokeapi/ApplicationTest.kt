@@ -101,6 +101,9 @@ class ApplicationTest {
     private val extraPokemon = mapOf(
         "ivysaur" to pokemonJson(2, "ivysaur", listOf("grass", "poison"), hp = 60),
         "venusaur" to pokemonJson(3, "venusaur", listOf("grass", "poison"), hp = 80),
+        // Formes fictives de Germignon : une forme régionale (importée avec l'espèce) et une méga (ignorée)
+        "chikorita-hisui" to pokemonJson(10999, "chikorita-hisui", listOf("water"), hp = 10, species = "chikorita" to 152, isDefault = false),
+        "chikorita-mega" to pokemonJson(10998, "chikorita-mega", listOf("grass"), hp = 90, species = "chikorita" to 152, isDefault = false),
     )
     private val fakeSpecies = mapOf(
         "bulbasaur" to speciesJson(1, "bulbasaur", "Bulbizarre", "generation-i", chainId = 1),
@@ -108,10 +111,11 @@ class ApplicationTest {
         "venusaur" to speciesJson(3, "venusaur", "Florizarre", "generation-i", chainId = 1),
         "charmander" to speciesJson(4, "charmander", "Salamèche", "generation-i"),
         "squirtle" to speciesJson(7, "squirtle", "Carapuce", "generation-i"),
-        "chikorita" to speciesJson(152, "chikorita", "Germignon", "generation-ii"),
+        "chikorita" to speciesJson(152, "chikorita", "Germignon", "generation-ii", forms = listOf("chikorita-hisui", "chikorita-mega")),
     )
     private val byId = mapOf(
         "1" to "bulbasaur", "2" to "ivysaur", "3" to "venusaur", "4" to "charmander", "7" to "squirtle", "152" to "chikorita",
+        "10999" to "chikorita-hisui", "10998" to "chikorita-mega",
     )
 
     /** Chaîne de Bulbizarre : la condition non par défaut doit être ignorée, l'objet traduit. */
@@ -155,6 +159,8 @@ class ApplicationTest {
                     typeJson("poison", double = "ground psychic", half = "fighting poison bug grass fairy"),
                     HttpStatusCode.OK, headers,
                 )
+                path == "/api/v2/pokemon-form/chikorita-hisui" ->
+                    respond("""{"names":[{"name":"Germignon de Hisui","language":{"name":"fr","url":"x"}}]}""", HttpStatusCode.OK, headers)
                 path.startsWith("/api/v2/ability/") -> {
                     val body = fakeAbilities[path.removePrefix("/api/v2/ability/")]
                     if (body != null) respond(body, HttpStatusCode.OK, headers)
@@ -287,6 +293,21 @@ class ApplicationTest {
     }
 
     @Test
+    fun `forme regionale demandee directement, autres formes hors du pokedex`() = appTest {
+        val form = json.decodeFromString<Pokemon>(client.get("/pokemon/chikorita-hisui").bodyAsText())
+        assertEquals(10999, form.id)
+        assertEquals(152, form.speciesId)
+        assertEquals("Germignon de Hisui", form.nameFr)
+        assertEquals("hisui", form.regionalForm)
+
+        // Une méga ouverte directement a sa fiche, mais n'apparaît pas dans le Pokédex
+        val mega = json.decodeFromString<Pokemon>(client.get("/pokemon/chikorita-mega").bodyAsText())
+        assertEquals(null, mega.regionalForm)
+        val list = json.decodeFromString<Page<PokemonSummary>>(client.get("/pokemon").bodyAsText())
+        assertEquals(listOf(10999), list.items.map { it.id })
+    }
+
+    @Test
     fun `pokemon inconnu renvoie 404`() = appTest {
         val response = client.get("/pokemon/missingno")
         assertEquals(HttpStatusCode.NotFound, response.status)
@@ -298,15 +319,24 @@ class ApplicationTest {
         assertEquals(HttpStatusCode.OK, importResponse.status)
         val result = json.decodeFromString<ImportResult>(importResponse.bodyAsText())
         assertEquals(4, result.imported)
+        assertEquals(1, result.regionalForms) // Germignon de Hisui (la méga est ignorée)
         assertTrue(result.failed.isEmpty())
 
         val again = json.decodeFromString<ImportResult>(client.post("/pokemon/import?limit=4").bodyAsText())
         assertEquals(0, again.imported)
         assertEquals(4, again.alreadyCached)
+        assertEquals(0, again.regionalForms)
 
         val all = json.decodeFromString<Page<PokemonSummary>>(client.get("/pokemon").bodyAsText())
-        assertEquals(4, all.total)
-        assertEquals(listOf(1, 4, 7, 152), all.items.map { it.id })
+        assertEquals(5, all.total)
+        // Ordre du Pokédex national : la forme régionale suit sa forme de base
+        assertEquals(listOf(1, 4, 7, 152, 10999), all.items.map { it.id })
+        val form = all.items.last()
+        assertEquals(152, form.speciesId)
+        assertEquals("hisui", form.regionalForm)
+        assertEquals("Germignon de Hisui", form.nameFr)
+        assertEquals("hisui", form.region)
+        assertEquals(listOf("water"), form.types)
 
         val fire = json.decodeFromString<Page<PokemonSummary>>(client.get("/pokemon?type=fire").bodyAsText())
         assertEquals(listOf("charmander"), fire.items.map { it.name })
@@ -324,14 +354,16 @@ class ApplicationTest {
 
         assertEquals(listOf(1, 4, 7), ids("region=kanto"))
         assertEquals(listOf(152), ids("region=johto"))
+        assertEquals(listOf(10999), ids("region=hisui"))
         assertEquals(listOf(152), ids("generation=2"))
         assertEquals(listOf(1, 152), ids("type=grass"))
         assertEquals(listOf(1), ids("type=grass,poison"))
         assertEquals(listOf(1), ids("type=grass&type=poison"))
         assertEquals(listOf(1, 152), ids("type=grass&region="))
         assertEquals(listOf(4), ids("name=salam")) // nom français
-        assertEquals(listOf(152, 1, 7, 4), ids("sort=statTotal&order=desc"))
-        assertEquals(listOf(1, 7, 152, 4), ids("sort=nameFr"))  // Bulbizarre, Carapuce, Germignon, Salamèche
+        assertEquals(listOf(152, 1, 7, 4, 10999), ids("sort=statTotal&order=desc"))
+        // Bulbizarre, Carapuce, Germignon, Germignon de Hisui, Salamèche
+        assertEquals(listOf(1, 7, 152, 10999, 4), ids("sort=nameFr"))
         assertEquals(listOf(1, 4), ids("sort=id&limit=2"))
         assertEquals(listOf(7, 152), ids("sort=id&limit=2&offset=2"))
 
@@ -346,7 +378,8 @@ class ApplicationTest {
         client.post("/pokemon/import?limit=4")
 
         val regions = json.decodeFromString<List<RegionCount>>(client.get("/regions").bodyAsText())
-        assertEquals(9, regions.size)
+        assertEquals(10, regions.size)
+        assertEquals(RegionCount("hisui", 8, 1), regions.first { it.name == "hisui" })
         assertEquals(RegionCount("kanto", 1, 3), regions[0])
         assertEquals(RegionCount("johto", 2, 1), regions[1])
         assertEquals(0, regions.last().count)
@@ -531,25 +564,31 @@ class ApplicationTest {
             "double_damage_to": [], "half_damage_to": [], "no_damage_to": []}}"""
     }
 
-    private fun speciesJson(id: Int, name: String, frenchName: String, generation: String, chainId: Int? = null) = """
+    private fun speciesJson(
+        id: Int, name: String, frenchName: String, generation: String, chainId: Int? = null, forms: List<String> = emptyList(),
+    ) = """
         {
           "id": $id, "name": "$name",
           "names": [
             {"name": "${name.replaceFirstChar { it.uppercase() }}", "language": {"name": "en", "url": "x"}},
             {"name": "$frenchName", "language": {"name": "fr", "url": "x"}}
           ],
+          "varieties": [{"is_default": true, "pokemon": {"name": "$name", "url": "x"}}${forms.joinToString("") { ",{\"is_default\": false, \"pokemon\": {\"name\": \"$it\", \"url\": \"x\"}}" }}],
           "generation": {"name": "$generation", "url": "x"}${chainId?.let { ",\n          \"evolution_chain\": {\"url\": \"https://pokeapi.co/api/v2/evolution-chain/$it/\"}" } ?: ""}
         }
     """.trimIndent()
 
-    private fun pokemonJson(id: Int, name: String, types: List<String>, hp: Int, moves: String = "[]"): String {
+    private fun pokemonJson(
+        id: Int, name: String, types: List<String>, hp: Int, moves: String = "[]",
+        species: Pair<String, Int> = name to id, isDefault: Boolean = true,
+    ): String {
         val typesJson = types.withIndex().joinToString(",") { (i, t) ->
             """{"slot":${i + 1},"type":{"name":"$t","url":"https://pokeapi.co/api/v2/type/$t/"}}"""
         }
         return """
         {
           "id": $id, "name": "$name", "height": 7, "weight": 69, "base_experience": 64,
-          "order": $id, "is_default": true,
+          "order": $id, "is_default": $isDefault, "forms": [{"name": "$name", "url": "x"}],
           "sprites": {
             "front_default": "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/$id.png",
             "other": {"official-artwork": {"front_default": "https://example.org/$id.png"}}
@@ -559,7 +598,7 @@ class ApplicationTest {
             {"base_stat": $hp, "effort": 0, "stat": {"name": "hp", "url": "x"}},
             {"base_stat": 49, "effort": 0, "stat": {"name": "attack", "url": "x"}}
           ],
-          "species": {"name": "$name", "url": "https://pokeapi.co/api/v2/pokemon-species/$id/"},
+          "species": {"name": "${species.first}", "url": "https://pokeapi.co/api/v2/pokemon-species/${species.second}/"},
           "moves": $moves,
           "abilities": [
             {"ability": {"name": "overgrow", "url": "x"}, "is_hidden": false, "slot": 1},

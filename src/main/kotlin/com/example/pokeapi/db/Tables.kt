@@ -19,6 +19,13 @@ object PokemonTable : Table("pokemon") {
     val baseExperience = integer("base_experience").nullable()
     val spriteUrl = varchar("sprite_url", 500).nullable()
     val artworkUrl = varchar("artwork_url", 500).nullable()
+    /** Espèce (numéro du Pokédex national) ; null pour les lignes importées avant les formes régionales (= id). */
+    val speciesId = integer("species_id").nullable()
+    val isDefault = bool("is_default").default(true)
+    /** Région de la forme régionale (alola, galar, hisui, paldea), null pour les autres Pokémon. */
+    val regionalForm = varchar("regional_form", 20).nullable()
+    /** Formes régionales de l'espèce déjà importées (Pokémon par défaut uniquement). */
+    val formsChecked = bool("forms_checked").default(false)
     /** Chaîne d'évolution PokéAPI de l'espèce (null tant que l'espèce n'a pas été récupérée). */
     val evolutionChainId = integer("evolution_chain_id").nullable()
     /** Somme des statistiques de base, stockée pour pouvoir trier dessus. */

@@ -139,8 +139,8 @@ private fun RoutingCall.pokemonQuery(): PokemonQuery {
         else -> throw BadRequestException("order doit valoir 'asc' ou 'desc'")
     }
     val generation = params["generation"]?.let {
-        it.toIntOrNull()?.takeIf { g -> g in 1..Region.entries.size }
-            ?: throw BadRequestException("generation doit être compris entre 1 et ${Region.entries.size}")
+        it.toIntOrNull()?.takeIf { g -> g in 1..Region.MAX_GENERATION }
+            ?: throw BadRequestException("generation doit être compris entre 1 et ${Region.MAX_GENERATION}")
     }
 
     return PokemonQuery(

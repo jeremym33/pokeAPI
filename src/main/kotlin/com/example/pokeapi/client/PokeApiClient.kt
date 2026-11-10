@@ -39,6 +39,9 @@ class PokeApiClient(
         }
     }
 
+    suspend fun getPokemonForm(name: String): PokeApiPokemonForm? =
+        getOrNull("pokemon-form/${name.lowercase().encodeURLPathPart()}")
+
     suspend fun getType(name: String): PokeApiType? = getOrNull("type/${name.lowercase().encodeURLPathPart()}")
 
     suspend fun getAbility(name: String): PokeApiAbility? = getOrNull("ability/${name.lowercase().encodeURLPathPart()}")

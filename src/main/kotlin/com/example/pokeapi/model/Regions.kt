@@ -10,10 +10,28 @@ enum class Region(val generation: Int, val apiName: String) {
     KALOS(6, "kalos"),
     ALOLA(7, "alola"),
     GALAR(8, "galar"),
+    /** Région des formes de Hisui (Légendes Pokémon : Arceus) ; aucune espèce n'y est rattachée par sa génération. */
+    HISUI(8, "hisui"),
     PALDEA(9, "paldea");
 
     companion object {
+        /** Région d'origine des espèces d'une génération (la 8e génération donne Galar, pas Hisui). */
         fun ofGeneration(generation: Int): Region? = entries.firstOrNull { it.generation == generation }
+        val MAX_GENERATION = entries.maxOf { it.generation }
+        /** Régions qui ont des formes régionales. */
+        private val FORM_REGIONS = listOf(ALOLA, GALAR, HISUI, PALDEA)
+
+        /**
+         * Région d'une forme régionale d'après son nom PokéAPI (« raichu-alola », « tauros-paldea-combat-breed »),
+         * null sinon. Exclut les formes qui n'en sont pas vraiment : dominantes (totem), Pikachu à casquette,
+         * mode Transe de Darumacho.
+         */
+        fun ofRegionalForm(speciesName: String, pokemonName: String): Region? {
+            val suffix = pokemonName.removePrefix("$speciesName-").takeIf { it != pokemonName } ?: return null
+            val parts = suffix.split('-')
+            if (parts.any { it in setOf("totem", "cap", "zen") }) return null
+            return FORM_REGIONS.firstOrNull { it.apiName == parts.first() }
+        }
         fun ofName(name: String): Region? = entries.firstOrNull { it.apiName == name.lowercase() }
     }
 }

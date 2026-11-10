@@ -97,7 +97,7 @@ La spécification OpenAPI se trouve dans `src/main/resources/openapi/documentati
 | `GET` | `/pokemon/{idOrName}/moves` | Attaques apprises dans le jeu le plus récent (Écarlate / Violet pour la plupart) : nom FR, type, catégorie, puissance, précision, PP, méthode et niveau |
 | `GET` | `/abilities/{name}` | Talent détaillé (nom FR, texte du jeu, effet) et liste des Pokémon qui le possèdent |
 | `GET` | `/pokemon/{idOrName}/type-defenses` | Faiblesses (×2, ×4), résistances (×½, ×¼) et immunités de type, avec les talents qui les modifient |
-| `POST` | `/pokemon/import?limit=151&offset=0` | Importe une plage de Pokémon depuis PokéAPI (max 2000 par appel) |
+| `POST` | `/pokemon/import?limit=151&offset=0` | Importe une plage de Pokémon depuis PokéAPI (max 2000 par appel), avec leurs formes régionales (Raichu d'Alola…) |
 
 ### Équipes
 

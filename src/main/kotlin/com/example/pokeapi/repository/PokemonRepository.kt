@@ -15,6 +15,7 @@ import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.inList
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.inSubQuery
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.isNotNull
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.like
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
 import java.time.Instant
@@ -32,24 +33,38 @@ class PokemonRepository(private val database: Database) {
         PokemonTable.selectAll().where(condition).singleOrNull()?.let { loadDetails(it) }
     }
 
-    /** Noms déjà en base avec leurs données d'espèce (région) : inutile de les réimporter. */
+    /** Noms déjà en base avec leurs données d'espèce et leurs formes régionales : inutile de les réimporter. */
     suspend fun completeNames(names: Collection<String>): Set<String> = dbQuery {
         if (names.isEmpty()) return@dbQuery emptySet()
         PokemonTable.select(PokemonTable.name)
-            .where { (PokemonTable.name inList names) and PokemonTable.region.isNotNull() }
+            .where {
+                (PokemonTable.name inList names) and PokemonTable.region.isNotNull() and
+                    (PokemonTable.formsChecked eq true)
+            }
             .map { it[PokemonTable.name] }
             .toSet()
     }
 
-    /** Insère ou met à jour un Pokémon et ses types / stats / talents. */
-    suspend fun save(dto: PokeApiPokemon, species: PokeApiSpecies?): Unit = dbQuery {
-        val generationNumber = species?.generation?.name?.let { parseGeneration(it) }
+    /**
+     * Insère ou met à jour un Pokémon et ses types / stats / talents.
+     * Pour une forme régionale, [regionalForm] donne sa région et [formNameFr] son nom (« Raichu d'Alola »).
+     */
+    suspend fun save(
+        dto: PokeApiPokemon,
+        species: PokeApiSpecies?,
+        regionalForm: Region? = null,
+        formNameFr: String? = null,
+    ): Unit = dbQuery {
+        val generationNumber = regionalForm?.generation ?: species?.generation?.name?.let { parseGeneration(it) }
         PokemonTable.upsert {
             it[id] = dto.id
+            it[speciesId] = dto.species?.url?.let { url -> resourceId(url) } ?: species?.id ?: dto.id
+            it[isDefault] = dto.isDefault
+            it[PokemonTable.regionalForm] = regionalForm?.apiName
             it[name] = dto.name
-            it[nameFr] = species?.names?.firstOrNull { n -> n.language.name == "fr" }?.name
+            it[nameFr] = formNameFr ?: species?.names?.firstOrNull { n -> n.language.name == "fr" }?.name
             it[generation] = generationNumber
-            it[region] = generationNumber?.let { g -> Region.ofGeneration(g)?.apiName }
+            it[region] = regionalForm?.apiName ?: generationNumber?.let { g -> Region.ofGeneration(g)?.apiName }
             it[height] = dto.height
             it[weight] = dto.weight
             it[baseExperience] = dto.baseExperience
@@ -90,7 +105,8 @@ class PokemonRepository(private val database: Database) {
 
     /** Pokédex : liste paginée filtrée (types, région, génération, nom) et triée. */
     suspend fun list(query: PokemonQuery): Page<PokemonSummary> = dbQuery {
-        var condition: Op<Boolean> = Op.TRUE
+        // Formes par défaut et formes régionales ; les méga-évolutions et autres formes restent hors du Pokédex.
+        var condition: Op<Boolean> = (PokemonTable.isDefault eq true) or PokemonTable.regionalForm.isNotNull()
         for (type in query.types.map { it.lowercase() }.distinct()) {
             condition = condition and (PokemonTable.id inSubQuery
                 PokemonTypeTable.select(PokemonTypeTable.pokemonId)
@@ -106,7 +122,8 @@ class PokemonRepository(private val database: Database) {
         }
 
         val sortColumn: Expression<*> = when (query.sort) {
-            PokemonSort.ID -> PokemonTable.id
+            // Numéro du Pokédex national : la forme régionale suit la forme de base (id de forme plus grand).
+            PokemonSort.ID -> Coalesce(PokemonTable.speciesId, PokemonTable.id)
             PokemonSort.NAME -> PokemonTable.name
             PokemonSort.NAME_FR -> Coalesce(PokemonTable.nameFr, PokemonTable.name)
             PokemonSort.HEIGHT -> PokemonTable.height
@@ -125,6 +142,10 @@ class PokemonRepository(private val database: Database) {
             .map { it[PokemonTable.id] }
 
         Page(total = total, limit = query.limit, offset = query.offset, items = summariesFor(ids))
+    }
+
+    suspend fun markFormsChecked(pokemonId: Int): Unit = dbQuery {
+        PokemonTable.update({ PokemonTable.id eq pokemonId }) { it[formsChecked] = true }
     }
 
     suspend fun evolutionChainId(pokemonId: Int): Int? = dbQuery {
@@ -185,6 +206,8 @@ class PokemonRepository(private val database: Database) {
 
         return Pokemon(
             id = id,
+            speciesId = row[PokemonTable.speciesId] ?: id,
+            regionalForm = row[PokemonTable.regionalForm],
             name = row[PokemonTable.name],
             nameFr = row[PokemonTable.nameFr],
             generation = row[PokemonTable.generation],
@@ -220,6 +243,8 @@ internal fun summariesFor(ids: List<Int>): List<PokemonSummary> {
         rowsById[id]?.let { row ->
             PokemonSummary(
                 id = id,
+                speciesId = row[PokemonTable.speciesId] ?: id,
+                regionalForm = row[PokemonTable.regionalForm],
                 name = row[PokemonTable.name],
                 nameFr = row[PokemonTable.nameFr],
                 generation = row[PokemonTable.generation],
