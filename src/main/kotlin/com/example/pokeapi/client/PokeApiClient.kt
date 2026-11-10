@@ -39,6 +39,15 @@ class PokeApiClient(
         }
     }
 
+    suspend fun getRegion(name: String): PokeApiRegion? = getOrNull("region/${name.lowercase().encodeURLPathPart()}")
+
+    suspend fun getLocation(name: String): PokeApiLocation? = getOrNull("location/${name.lowercase().encodeURLPathPart()}")
+
+    suspend fun getLocationArea(name: String): PokeApiLocationArea? =
+        getOrNull("location-area/${name.lowercase().encodeURLPathPart()}")
+
+    suspend fun getVersion(name: String): PokeApiVersion? = getOrNull("version/${name.lowercase().encodeURLPathPart()}")
+
     suspend fun getPokemonForm(name: String): PokeApiPokemonForm? =
         getOrNull("pokemon-form/${name.lowercase().encodeURLPathPart()}")
 

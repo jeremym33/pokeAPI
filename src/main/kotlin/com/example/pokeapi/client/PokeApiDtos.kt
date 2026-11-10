@@ -245,3 +245,54 @@ data class PokeApiDamageRelations(
     @SerialName("half_damage_from") val halfDamageFrom: List<NamedApiResource> = emptyList(),
     @SerialName("no_damage_from") val noDamageFrom: List<NamedApiResource> = emptyList(),
 )
+
+@Serializable
+data class PokeApiRegion(
+    val id: Int,
+    val name: String,
+    val names: List<PokeApiLocalizedName> = emptyList(),
+    val locations: List<NamedApiResource> = emptyList(),
+)
+
+@Serializable
+data class PokeApiLocation(
+    val id: Int,
+    val name: String,
+    val names: List<PokeApiLocalizedName> = emptyList(),
+    val areas: List<NamedApiResource> = emptyList(),
+    val region: NamedApiResource? = null,
+)
+
+@Serializable
+data class PokeApiLocationArea(
+    val name: String,
+    val names: List<PokeApiLocalizedName> = emptyList(),
+    @SerialName("pokemon_encounters") val pokemonEncounters: List<PokeApiPokemonEncounter> = emptyList(),
+)
+
+@Serializable
+data class PokeApiPokemonEncounter(
+    val pokemon: NamedApiResource,
+    @SerialName("version_details") val versionDetails: List<PokeApiVersionEncounter> = emptyList(),
+)
+
+@Serializable
+data class PokeApiVersionEncounter(
+    val version: NamedApiResource,
+    @SerialName("encounter_details") val encounterDetails: List<PokeApiEncounterDetail> = emptyList(),
+)
+
+@Serializable
+data class PokeApiEncounterDetail(
+    @SerialName("min_level") val minLevel: Int = 0,
+    @SerialName("max_level") val maxLevel: Int = 0,
+    val chance: Int = 0,
+    val method: NamedApiResource,
+)
+
+@Serializable
+data class PokeApiVersion(
+    val name: String,
+    val names: List<PokeApiLocalizedName> = emptyList(),
+    @SerialName("version_group") val versionGroup: NamedApiResource? = null,
+)

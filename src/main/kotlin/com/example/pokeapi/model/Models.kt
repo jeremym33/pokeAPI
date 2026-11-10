@@ -257,3 +257,75 @@ data class PokedexUpdateStatus(
     val finishedAt: String? = null,
     val error: String? = null,
 )
+
+@Serializable
+enum class LocationCategory {
+    @SerialName("city") CITY,
+    @SerialName("route") ROUTE,
+    @SerialName("nature") NATURE,
+    @SerialName("other") OTHER,
+}
+
+@Serializable
+data class LocationSummary(
+    val name: String,
+    val nameFr: String?,
+    val category: LocationCategory,
+    /** Numéro de route (tri des routes), null sinon. */
+    val routeNumber: Int?,
+    /** false si PokéAPI n'a aucune donnée de rencontre pour ce lieu. */
+    val hasEncounters: Boolean,
+    /** Précision quand plusieurs lieux ont le même nom (« Ekaeka » : Beachfront, Marina…). */
+    val detail: String? = null,
+)
+
+@Serializable
+data class RegionLocations(
+    val name: String,
+    val nameFr: String?,
+    val locations: List<LocationSummary>,
+)
+
+@Serializable
+data class GameVersion(val name: String, val label: String)
+
+@Serializable
+data class EncounterMethod(
+    val method: String,
+    val label: String,
+    val minLevel: Int,
+    val maxLevel: Int,
+    /** Somme des chances de rencontre de cette méthode (%), plafonnée à 100. */
+    val chance: Int,
+)
+
+@Serializable
+data class Encounter(
+    val version: String,
+    val pokemonId: Int,
+    val name: String,
+    /** Renseignés si le Pokémon est en base. */
+    val nameFr: String?,
+    val speciesId: Int?,
+    val spriteUrl: String?,
+    val types: List<String>,
+    val methods: List<EncounterMethod>,
+)
+
+@Serializable
+data class AreaEncounters(
+    val name: String,
+    /** Nom de la zone (« Manoir de Céladopole ») ; null pour la zone principale. */
+    val label: String?,
+    val encounters: List<Encounter>,
+)
+
+@Serializable
+data class LocationDetail(
+    val name: String,
+    val nameFr: String?,
+    val region: String,
+    /** Jeux qui ont des rencontres ici, du plus récent au plus ancien. */
+    val versions: List<GameVersion>,
+    val areas: List<AreaEncounters>,
+)

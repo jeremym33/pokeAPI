@@ -15,6 +15,7 @@ import com.example.pokeapi.repository.PokemonRepository
 import com.example.pokeapi.repository.TeamRepository
 import com.example.pokeapi.routes.abilityRoutes
 import com.example.pokeapi.routes.healthRoutes
+import com.example.pokeapi.routes.locationRoutes
 import com.example.pokeapi.routes.pokemonRoutes
 import com.example.pokeapi.routes.referenceRoutes
 import com.example.pokeapi.routes.teamRoutes
@@ -22,6 +23,7 @@ import com.example.pokeapi.routes.updateRoutes
 import com.example.pokeapi.service.AbilityService
 import com.example.pokeapi.service.EvolutionService
 import com.example.pokeapi.service.MoveService
+import com.example.pokeapi.service.LocationService
 import com.example.pokeapi.service.PokedexUpdateService
 import com.example.pokeapi.service.PokemonService
 import com.example.pokeapi.service.TypeService
@@ -69,7 +71,9 @@ fun Application.configureApp(
     val pokemonRepository = PokemonRepository(database)
     val pokemonService = PokemonService(pokemonRepository, pokeApiClient, importConcurrency)
     val teamService = TeamService(TeamRepository(database), pokemonService)
-    val evolutionService = EvolutionService(pokemonService, pokemonRepository, EvolutionRepository(database), pokeApiClient)
+    val evolutionRepository = EvolutionRepository(database)
+    val evolutionService = EvolutionService(pokemonService, pokemonRepository, evolutionRepository, pokeApiClient)
+    val locationService = LocationService(database, pokemonRepository, evolutionRepository, pokeApiClient)
     // Tourne dans la portée de l'application : arrêtée avec elle.
     val updateService = PokedexUpdateService(this, pokemonService, pokeApiClient, importConcurrency)
     val abilityRepository = AbilityRepository(database)
@@ -92,6 +96,7 @@ fun Application.configureApp(
         abilityRoutes(abilityService)
         referenceRoutes(pokemonService)
         updateRoutes(updateService)
+        locationRoutes(locationService)
         teamRoutes(teamService)
     }
 }

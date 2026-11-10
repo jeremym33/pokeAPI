@@ -9,6 +9,8 @@ info:
 servers:
   - url: /
 tags:
+  - name: Régions
+    description: Lieux des régions et Pokémon qu'on y rencontre
   - name: Pokémon
     description: Consultation et import des Pokémon
   - name: Équipes
@@ -141,6 +143,47 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/PokedexUpdateStatus" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /regions/{name}/locations:
+    get:
+      tags: [Régions]
+      summary: Lieux d'une région (villes, routes, grottes…)
+      description: |
+        Rangés par catégorie (villes, routes par numéro, grottes/forêts/mers, autres lieux), avec leur nom français.
+        Récupérés sur PokéAPI à la première consultation puis mis en cache.
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { $ref: "#/components/schemas/RegionName" }
+      responses:
+        "200":
+          description: Lieux de la région
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RegionLocations" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /locations/{name}:
+    get:
+      tags: [Régions]
+      summary: Pokémon rencontrés dans un lieu, zone par zone et jeu par jeu
+      description: |
+        Pour chaque jeu : méthode de rencontre (en français), niveaux et chance cumulée par méthode.
+        PokéAPI n'a pas de données de rencontre pour certains lieux (notamment à Paldea).
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+          example: kanto-route-1
+      responses:
+        "200":
+          description: Rencontres du lieu
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LocationDetail" }
         "404": { $ref: "#/components/responses/NotFound" }
 
   /regions:
@@ -606,6 +649,65 @@ components:
         startedAt: { type: string, format: date-time, nullable: true }
         finishedAt: { type: string, format: date-time, nullable: true }
         error: { type: string, nullable: true }
+    RegionLocations:
+      type: object
+      properties:
+        name: { $ref: "#/components/schemas/RegionName" }
+        nameFr: { type: string, nullable: true, example: Kanto }
+        locations:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string, example: kanto-route-1 }
+              nameFr: { type: string, nullable: true, example: Route 1 }
+              category: { type: string, enum: [city, route, nature, other] }
+              routeNumber: { type: integer, nullable: true, example: 1 }
+              hasEncounters: { type: boolean, description: "false si PokéAPI n'a aucune rencontre pour ce lieu" }
+              detail: { type: string, nullable: true, description: Précision quand plusieurs lieux ont le même nom, example: Marina }
+    LocationDetail:
+      type: object
+      properties:
+        name: { type: string, example: kanto-route-1 }
+        nameFr: { type: string, nullable: true, example: Route 1 }
+        region: { type: string, example: kanto }
+        versions:
+          type: array
+          description: Jeux qui ont des rencontres ici, du plus récent au plus ancien
+          items:
+            type: object
+            properties:
+              name: { type: string, example: red }
+              label: { type: string, example: Rouge }
+        areas:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string, example: kanto-route-1-area }
+              label: { type: string, nullable: true, description: Nom de la zone (null pour la zone principale) }
+              encounters:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    version: { type: string, example: red }
+                    pokemonId: { type: integer, example: 16 }
+                    name: { type: string, example: pidgey }
+                    nameFr: { type: string, nullable: true, example: Roucool }
+                    speciesId: { type: integer, nullable: true, example: 16 }
+                    spriteUrl: { type: string, nullable: true }
+                    types: { type: array, items: { type: string } }
+                    methods:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          method: { type: string, example: walk }
+                          label: { type: string, example: En marchant dans les herbes hautes ou une grotte }
+                          minLevel: { type: integer, example: 2 }
+                          maxLevel: { type: integer, example: 4 }
+                          chance: { type: integer, description: Chance cumulée (%), example: 50 }
     RegionName:
       type: string
       enum: [kanto, johto, hoenn, sinnoh, unova, kalos, alola, galar, hisui, paldea]

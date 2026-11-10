@@ -10,6 +10,7 @@ import com.example.pokeapi.model.RenameTeamRequest
 import com.example.pokeapi.service.AbilityService
 import com.example.pokeapi.service.EvolutionService
 import com.example.pokeapi.service.MoveService
+import com.example.pokeapi.service.LocationService
 import com.example.pokeapi.service.PokedexUpdateService
 import com.example.pokeapi.service.PokemonService
 import com.example.pokeapi.service.TeamService
@@ -137,6 +138,22 @@ fun Route.updateRoutes(service: PokedexUpdateService) {
             if (!service.cancel()) throw NotFoundException("Aucune mise à jour en cours")
             call.respond(HttpStatusCode.Accepted, service.status())
         }
+    }
+}
+
+fun Route.locationRoutes(service: LocationService) {
+    // GET /regions/{name}/locations  -> lieux de la région (villes, routes, grottes…)
+    get("/regions/{name}/locations") {
+        val name = call.parameters["name"]!!
+        val region = service.regionLocations(name) ?: throw NotFoundException("Région '$name' introuvable")
+        call.respond(region)
+    }
+
+    // GET /locations/{name}  -> Pokémon rencontrés dans le lieu, zone par zone et jeu par jeu
+    get("/locations/{name}") {
+        val name = call.parameters["name"]!!
+        val location = service.location(name) ?: throw NotFoundException("Lieu '$name' introuvable")
+        call.respond(location)
     }
 }
 

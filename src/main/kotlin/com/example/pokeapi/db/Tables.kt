@@ -147,3 +147,38 @@ object TypeRelationTable : Table("type_relation") {
 
     override val primaryKey = PrimaryKey(type)
 }
+
+/** Régions dont la liste des lieux est en cache (nombre de lieux attendu). */
+object RegionCacheTable : Table("region_cache") {
+    val name = varchar("name", 30)
+    val nameFr = varchar("name_fr", 50).nullable()
+    val locationCount = integer("location_count")
+    val fetchedAt = timestamp("fetched_at")
+
+    override val primaryKey = PrimaryKey(name)
+}
+
+/** Lieux des régions (villes, routes, grottes…) et, une fois consultées, leurs rencontres. */
+object LocationTable : Table("location") {
+    val name = varchar("name", 100)
+    val region = varchar("region", 30).index()
+    /** Position dans la liste PokéAPI de la région. */
+    val position = integer("position")
+    val nameFr = varchar("name_fr", 100).nullable()
+    /** Zones du lieu, séparées par des virgules (vide = pas de données de rencontre). */
+    val areas = text("areas")
+    /** Rencontres regroupées (JSON, voir StoredLocationEncounters), null tant que le lieu n'a pas été consulté. */
+    val encounters = text("encounters").nullable()
+    val fetchedAt = timestamp("fetched_at")
+
+    override val primaryKey = PrimaryKey(name)
+}
+
+/** Versions de jeu (Rouge, Bleu…) : nom français et groupe de versions (pour l'ordre chronologique). */
+object VersionTable : Table("version_info") {
+    val name = varchar("name", 50)
+    val nameFr = varchar("name_fr", 100).nullable()
+    val versionGroup = varchar("version_group", 50).nullable()
+
+    override val primaryKey = PrimaryKey(name)
+}

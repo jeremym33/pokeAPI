@@ -49,6 +49,9 @@ object DatabaseFactory {
                 LearnsetTable,
                 AbilityTable,
                 TypeRelationTable,
+                RegionCacheTable,
+                LocationTable,
+                VersionTable,
             )
         }
     }

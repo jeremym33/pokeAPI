@@ -7,7 +7,11 @@ import com.example.pokeapi.client.PokeApiMoveSlot
 import com.example.pokeapi.client.PokeApiMoveVersionDetail
 import com.example.pokeapi.model.AbilityDetail
 import com.example.pokeapi.model.learnsetOf
+import com.example.pokeapi.model.EncounterMethod
 import com.example.pokeapi.model.EvolutionChain
+import com.example.pokeapi.model.LocationCategory
+import com.example.pokeapi.model.LocationDetail
+import com.example.pokeapi.model.RegionLocations
 import com.example.pokeapi.model.ImportResult
 import com.example.pokeapi.model.Page
 import com.example.pokeapi.model.Pokemon
@@ -99,6 +103,29 @@ class ApplicationTest {
         """.trimIndent(),
     )
 
+    private fun fr(name: String) = """[{"name": "$name", "language": {"name": "fr", "url": "x"}}]"""
+    private fun res(name: String) = """{"name": "$name", "url": "x"}"""
+    private fun walk(min: Int, max: Int, chance: Int) =
+        """{"min_level": $min, "max_level": $max, "chance": $chance, "method": ${res("walk")}}"""
+
+    /** Région simulée : une ville sans rencontres, deux routes (dans le désordre) et une grotte. */
+    private val fakeGeo = mapOf(
+        "region/kanto" to """{"id": 1, "name": "kanto", "names": ${fr("Kanto")}, "locations": [
+            ${res("kanto-route-2")}, ${res("pallet-town")}, ${res("kanto-route-1")}, ${res("mt-moon")}]}""",
+        "location/pallet-town" to """{"id": 1, "name": "pallet-town", "names": ${fr("Bourg Palette")}, "areas": [], "region": ${res("kanto")}}""",
+        "location/kanto-route-1" to """{"id": 2, "name": "kanto-route-1", "names": ${fr("Route 1")}, "areas": [${res("kanto-route-1-area")}], "region": ${res("kanto")}}""",
+        "location/kanto-route-2" to """{"id": 3, "name": "kanto-route-2", "names": ${fr("Route 2")}, "areas": [], "region": ${res("kanto")}}""",
+        "location/mt-moon" to """{"id": 4, "name": "mt-moon", "names": ${fr("Mont Sélénite")}, "areas": [], "region": ${res("kanto")}}""",
+        "location-area/kanto-route-1-area" to """{"name": "kanto-route-1-area", "names": [], "pokemon_encounters": [
+            {"pokemon": {"name": "bulbasaur", "url": "https://pokeapi.co/api/v2/pokemon/1/"}, "version_details": [
+              {"version": ${res("red")}, "max_chance": 50, "encounter_details": [${walk(2, 3, 20)}, ${walk(3, 4, 30)}]},
+              {"version": ${res("lets-go-pikachu")}, "max_chance": 100, "encounter_details": [${walk(3, 5, 100)}]}
+            ]}]}""",
+        "version/red" to """{"name": "red", "names": ${fr("Rouge")}, "version_group": ${res("red-blue")}}""",
+        "version/lets-go-pikachu" to """{"name": "lets-go-pikachu", "names": ${fr("Let's Go, Pikachu")}, "version_group": ${res("lets-go-pikachu-lets-go-eevee")}}""",
+        "encounter-method/walk" to """{"name": "walk", "names": ${fr("Herbes hautes")}}""",
+    )
+
     /** Pokémon accessibles individuellement mais absents de la liste (/pokemon), pour les évolutions. */
     private val extraPokemon = mapOf(
         "ivysaur" to pokemonJson(2, "ivysaur", listOf("grass", "poison"), hp = 60),
@@ -186,6 +213,13 @@ class ApplicationTest {
                 )
                 path == "/api/v2/pokemon-form/chikorita-hisui" ->
                     respond("""{"names":[{"name":"Germignon de Hisui","language":{"name":"fr","url":"x"}}]}""", HttpStatusCode.OK, headers)
+                path.startsWith("/api/v2/region/") || path.startsWith("/api/v2/location/") ||
+                    path.startsWith("/api/v2/location-area/") || path.startsWith("/api/v2/version/") ||
+                    path.startsWith("/api/v2/encounter-method/") -> {
+                    val body = fakeGeo[path.removePrefix("/api/v2/")]
+                    if (body != null) respond(body, HttpStatusCode.OK, headers)
+                    else respond("Not Found", HttpStatusCode.NotFound)
+                }
                 path.startsWith("/api/v2/ability/") -> {
                     val body = fakeAbilities[path.removePrefix("/api/v2/ability/")]
                     if (body != null) respond(body, HttpStatusCode.OK, headers)
@@ -383,6 +417,39 @@ class ApplicationTest {
 
         assertEquals(HttpStatusCode.BadRequest, client.post("/pokedex/update?mode=tout").status)
         assertEquals(HttpStatusCode.NotFound, client.delete("/pokedex/update").status) // rien à arrêter
+    }
+
+    @Test
+    fun `lieux d'une region et pokemon rencontres, mis en cache`() = appTest {
+        client.get("/pokemon/bulbasaur") // Bulbizarre en base pour son nom français
+
+        val region = json.decodeFromString<RegionLocations>(client.get("/regions/kanto/locations").bodyAsText())
+        assertEquals("Kanto", region.nameFr)
+        // Villes, puis routes par numéro, puis grottes
+        assertEquals(listOf("Bourg Palette", "Route 1", "Route 2", "Mont Sélénite"), region.locations.map { it.nameFr })
+        assertEquals(listOf(LocationCategory.CITY, LocationCategory.ROUTE, LocationCategory.ROUTE, LocationCategory.NATURE), region.locations.map { it.category })
+        assertEquals(listOf(false, true, false, false), region.locations.map { it.hasEncounters })
+
+        val route1 = json.decodeFromString<LocationDetail>(client.get("/locations/kanto-route-1").bodyAsText())
+        assertEquals("Route 1", route1.nameFr)
+        // Jeux du plus récent au plus ancien
+        assertEquals(listOf("Let's Go, Pikachu", "Rouge"), route1.versions.map { it.label })
+        val area = route1.areas.single()
+        assertEquals(null, area.label) // zone principale
+        val red = area.encounters.single { it.version == "red" }
+        assertEquals("Bulbizarre", red.nameFr)
+        assertEquals(1, red.speciesId)
+        // Deux lignes « walk » regroupées : niveaux 2 à 4, 50 % au total
+        assertEquals(listOf(EncounterMethod("walk", "Herbes hautes", 2, 4, 50)), red.methods)
+
+        // Deuxième consultation : tout vient de la base
+        val callsBefore = remoteCalls.get()
+        client.get("/regions/kanto/locations")
+        assertEquals(route1, json.decodeFromString<LocationDetail>(client.get("/locations/kanto-route-1").bodyAsText()))
+        assertEquals(callsBefore, remoteCalls.get())
+
+        assertEquals(HttpStatusCode.NotFound, client.get("/regions/orre/locations").status)
+        assertEquals(HttpStatusCode.NotFound, client.get("/locations/nowhere").status)
     }
 
     @Test
