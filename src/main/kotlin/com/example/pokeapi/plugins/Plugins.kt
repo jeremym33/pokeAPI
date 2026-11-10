@@ -21,6 +21,8 @@ fun Application.configureSerialization() {
             prettyPrint = true
             ignoreUnknownKeys = true
             explicitNulls = true
+            // Les champs à leur valeur par défaut (0, liste vide, null) restent présents dans les réponses.
+            encodeDefaults = true
         })
     }
 }

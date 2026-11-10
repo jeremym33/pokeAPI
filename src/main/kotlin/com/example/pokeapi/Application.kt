@@ -18,9 +18,11 @@ import com.example.pokeapi.routes.healthRoutes
 import com.example.pokeapi.routes.pokemonRoutes
 import com.example.pokeapi.routes.referenceRoutes
 import com.example.pokeapi.routes.teamRoutes
+import com.example.pokeapi.routes.updateRoutes
 import com.example.pokeapi.service.AbilityService
 import com.example.pokeapi.service.EvolutionService
 import com.example.pokeapi.service.MoveService
+import com.example.pokeapi.service.PokedexUpdateService
 import com.example.pokeapi.service.PokemonService
 import com.example.pokeapi.service.TypeService
 import com.example.pokeapi.service.TeamService
@@ -68,6 +70,8 @@ fun Application.configureApp(
     val pokemonService = PokemonService(pokemonRepository, pokeApiClient, importConcurrency)
     val teamService = TeamService(TeamRepository(database), pokemonService)
     val evolutionService = EvolutionService(pokemonService, pokemonRepository, EvolutionRepository(database), pokeApiClient)
+    // Tourne dans la portée de l'application : arrêtée avec elle.
+    val updateService = PokedexUpdateService(this, pokemonService, pokeApiClient, importConcurrency)
     val abilityRepository = AbilityRepository(database)
     val abilityService = AbilityService(abilityRepository, pokemonRepository, pokeApiClient)
     val typeService = TypeService(database, pokemonService, abilityRepository, pokeApiClient)
@@ -87,6 +91,7 @@ fun Application.configureApp(
         pokemonRoutes(pokemonService, evolutionService, moveService, abilityService, typeService)
         abilityRoutes(abilityService)
         referenceRoutes(pokemonService)
+        updateRoutes(updateService)
         teamRoutes(teamService)
     }
 }

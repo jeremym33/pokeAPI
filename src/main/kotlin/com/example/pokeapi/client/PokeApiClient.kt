@@ -63,6 +63,15 @@ class PokeApiClient(
         }
     }
 
+    /** Nombre d'espèces connues de PokéAPI (taille du Pokédex national). */
+    suspend fun speciesCount(): Int {
+        val response = httpClient.get("$baseUrl/pokemon-species") { parameter("limit", 1) }
+        if (!response.status.isSuccess()) {
+            throw PokeApiException("PokéAPI a répondu ${response.status} pour la liste des espèces")
+        }
+        return response.body<NamedApiResourceList>().count
+    }
+
     /** Liste paginée des Pokémon (noms + URLs). */
     suspend fun listPokemon(limit: Int, offset: Int): NamedApiResourceList {
         val response = httpClient.get("$baseUrl/pokemon") {

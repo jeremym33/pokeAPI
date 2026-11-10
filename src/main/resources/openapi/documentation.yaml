@@ -99,6 +99,50 @@ paths:
               schema: { $ref: "#/components/schemas/AbilityDetail" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /pokedex/update:
+    get:
+      tags: [Pokémon]
+      summary: État de la mise à jour du Pokédex
+      description: À interroger régulièrement pendant la mise à jour pour suivre son avancement.
+      responses:
+        "200":
+          description: État courant
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PokedexUpdateStatus" }
+    post:
+      tags: [Pokémon]
+      summary: Lance la mise à jour du Pokédex complet en arrière-plan
+      description: |
+        Traite toutes les espèces du Pokédex national, avec leurs formes régionales.
+        `missing` ajoute seulement les Pokémon absents ou incomplets ; `all` récupère à nouveau tous les Pokémon depuis PokéAPI.
+      parameters:
+        - name: mode
+          in: query
+          schema: { type: string, enum: [missing, all], default: missing }
+      responses:
+        "202":
+          description: Mise à jour lancée
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PokedexUpdateStatus" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409":
+          description: Une mise à jour est déjà en cours (son état est renvoyé)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PokedexUpdateStatus" }
+    delete:
+      tags: [Pokémon]
+      summary: Arrête la mise à jour en cours
+      responses:
+        "202":
+          description: Arrêt demandé
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PokedexUpdateStatus" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /regions:
     get:
       tags: [Pokémon]
@@ -544,6 +588,24 @@ components:
               ability: { type: string, example: levitate }
               abilityFr: { type: string, nullable: true, example: Lévitation }
               note: { type: string, example: immunisé contre le type Sol }
+    PokedexUpdateStatus:
+      type: object
+      properties:
+        state: { type: string, enum: [idle, running, completed, cancelled, failed], example: running }
+        mode: { type: string, nullable: true, enum: [missing, all], example: missing }
+        total: { type: integer, description: Espèces du Pokédex national à traiter, example: 1025 }
+        processed: { type: integer, description: Espèces traitées, example: 340 }
+        imported: { type: integer, example: 182 }
+        alreadyUpToDate: { type: integer, example: 158 }
+        regionalForms: { type: integer, description: Formes régionales importées en plus, example: 19 }
+        failed:
+          type: array
+          description: Noms en échec (50 au plus)
+          items: { type: string }
+        failedCount: { type: integer, example: 0 }
+        startedAt: { type: string, format: date-time, nullable: true }
+        finishedAt: { type: string, format: date-time, nullable: true }
+        error: { type: string, nullable: true }
     RegionName:
       type: string
       enum: [kanto, johto, hoenn, sinnoh, unova, kalos, alola, galar, hisui, paldea]

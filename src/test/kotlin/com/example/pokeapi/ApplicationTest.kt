@@ -12,6 +12,8 @@ import com.example.pokeapi.model.ImportResult
 import com.example.pokeapi.model.Page
 import com.example.pokeapi.model.Pokemon
 import com.example.pokeapi.model.PokemonMoves
+import com.example.pokeapi.model.PokedexUpdateStatus
+import com.example.pokeapi.model.UpdateState
 import com.example.pokeapi.model.PokemonSummary
 import com.example.pokeapi.model.RegionCount
 import com.example.pokeapi.model.TypeCount
@@ -198,6 +200,8 @@ class ApplicationTest {
                 path == "/api/v2/evolution-chain/2" -> respond(chikoritaChain, HttpStatusCode.OK, headers)
                 path == "/api/v2/item/thunder-stone" ->
                     respond("""{"names":[{"name":"Pierre Foudre","language":{"name":"fr","url":"x"}}]}""", HttpStatusCode.OK, headers)
+                path == "/api/v2/pokemon-species" ->
+                    respond("""{"count":4,"next":null,"previous":null,"results":[]}""", HttpStatusCode.OK, headers)
                 path.startsWith("/api/v2/pokemon-species/") -> {
                     val key = path.removePrefix("/api/v2/pokemon-species/")
                     val body = fakeSpecies[byId[key] ?: key]
@@ -329,6 +333,56 @@ class ApplicationTest {
         assertEquals(null, mega.regionalForm)
         val list = json.decodeFromString<Page<PokemonSummary>>(client.get("/pokemon").bodyAsText())
         assertEquals(listOf(10999), list.items.map { it.id })
+    }
+
+    @Test
+    fun `mise a jour du pokedex en arriere-plan avec avancement`() = appTest {
+        suspend fun status() = json.decodeFromString<PokedexUpdateStatus>(client.get("/pokedex/update").bodyAsText())
+        suspend fun waitForEnd(): PokedexUpdateStatus {
+            repeat(200) {
+                val s = status()
+                if (s.state != UpdateState.RUNNING) return s
+                kotlinx.coroutines.delay(25)
+            }
+            error("La mise à jour ne s'est pas terminée")
+        }
+
+        assertEquals(UpdateState.IDLE, status().state)
+        // Les valeurs par défaut (0, liste vide, null) sont bien présentes dans le JSON
+        val raw = client.get("/pokedex/update").bodyAsText()
+        listOf("\"state\": \"idle\"", "\"processed\": 0", "\"failed\": [", "\"error\": null").forEach {
+            assertContains(raw, it)
+        }
+
+        val start = client.post("/pokedex/update")
+        assertEquals(HttpStatusCode.Accepted, start.status)
+        assertEquals("missing", json.decodeFromString<PokedexUpdateStatus>(start.bodyAsText()).mode)
+        val first = waitForEnd()
+        assertEquals(UpdateState.COMPLETED, first.state)
+        assertEquals(4, first.total)
+        assertEquals(4, first.processed)
+        assertEquals(4, first.imported)
+        assertEquals(1, first.regionalForms)
+        assertEquals(0, first.failedCount)
+        assertTrue(first.finishedAt != null)
+        val list = json.decodeFromString<Page<PokemonSummary>>(client.get("/pokemon").bodyAsText())
+        assertEquals(5, list.total)
+
+        // Rien à faire la deuxième fois
+        client.post("/pokedex/update?mode=missing")
+        val second = waitForEnd()
+        assertEquals(4, second.alreadyUpToDate)
+        assertEquals(0, second.imported)
+
+        // Tout actualiser : tous les Pokémon sont récupérés à nouveau
+        client.post("/pokedex/update?mode=all")
+        val all = waitForEnd()
+        assertEquals("all", all.mode)
+        assertEquals(4, all.imported)
+        assertEquals(0, all.alreadyUpToDate)
+
+        assertEquals(HttpStatusCode.BadRequest, client.post("/pokedex/update?mode=tout").status)
+        assertEquals(HttpStatusCode.NotFound, client.delete("/pokedex/update").status) // rien à arrêter
     }
 
     @Test

@@ -90,6 +90,9 @@ La spécification OpenAPI se trouve dans `src/main/resources/openapi/documentati
 | Méthode | Route | Description |
 |---|---|---|
 | `GET` | `/pokemon?type=fire,flying&region=kanto&name=sala&sort=statTotal&order=desc` | Pokédex : liste paginée des Pokémon **en base** (filtres : 1 ou 2 types, région, génération, nom FR/EN ; tri : `id`, `name`, `nameFr`, `height`, `weight`, `baseExperience`, `statTotal`) |
+| `POST` | `/pokedex/update?mode=missing` | Met à jour tout le Pokédex en arrière-plan (`missing` : ajoute ce qui manque, `all` : récupère tout à nouveau) |
+| `GET` | `/pokedex/update` | Avancement de la mise à jour (traités / total, importés, formes régionales, échecs) |
+| `DELETE` | `/pokedex/update` | Arrête la mise à jour en cours |
 | `GET` | `/regions` | Les 9 régions avec le nombre de Pokémon en base |
 | `GET` | `/types` | Types présents en base avec leur effectif |
 | `GET` | `/pokemon/{idOrName}` | Détail d'un Pokémon (récupéré sur PokéAPI si absent), avec ses talents détaillés en français. `?refresh=true` force la mise à jour |

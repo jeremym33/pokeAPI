@@ -12,6 +12,7 @@ import com.example.pokeapi.model.Region
 import com.example.pokeapi.model.RegionCount
 import com.example.pokeapi.model.TypeCount
 import com.example.pokeapi.repository.PokemonRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -116,23 +117,33 @@ class PokemonService(
         val toFetch = names.filterNot { it in cached }
 
         val outcomes = toFetch.map { name ->
-            async {
-                importSemaphore.withPermit {
-                    runCatching {
-                        val dto = pokeApi.getPokemon(name) ?: error("introuvable")
-                        saveWithForms(dto)
-                    }.onFailure { log.warn("Échec de l'import de {} : {}", name, it.message) }
-                        .let { result -> Triple(result.isSuccess, name, result.getOrDefault(0)) }
-                }
-            }
+            async { importSemaphore.withPermit { name to importOne(name) } }
         }.awaitAll()
 
         ImportResult(
             requested = names.size,
-            imported = outcomes.count { it.first },
+            imported = outcomes.count { it.second != null },
             alreadyCached = cached.size,
-            failed = outcomes.filterNot { it.first }.map { it.second },
-            regionalForms = outcomes.sumOf { it.third },
+            failed = outcomes.filter { it.second == null }.map { it.first },
+            regionalForms = outcomes.sumOf { it.second ?: 0 },
         )
     }
+
+    /** Noms des Pokémon déjà complets en base (inutile de les réimporter). */
+    suspend fun completeNames(names: Collection<String>): Set<String> = repository.completeNames(names)
+
+    /**
+     * Récupère un Pokémon sur PokéAPI et l'enregistre avec ses formes régionales.
+     * Renvoie le nombre de formes régionales enregistrées, ou null en cas d'échec.
+     */
+    suspend fun importOne(name: String): Int? =
+        try {
+            val dto = pokeApi.getPokemon(name) ?: error("introuvable")
+            saveWithForms(dto)
+        } catch (e: CancellationException) {
+            throw e // mise à jour arrêtée : ce n'est pas un échec d'import
+        } catch (e: Exception) {
+            log.warn("Échec de l'import de {} : {}", name, e.message)
+            null
+        }
 }

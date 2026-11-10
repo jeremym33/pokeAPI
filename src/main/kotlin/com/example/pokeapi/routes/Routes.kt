@@ -10,6 +10,7 @@ import com.example.pokeapi.model.RenameTeamRequest
 import com.example.pokeapi.service.AbilityService
 import com.example.pokeapi.service.EvolutionService
 import com.example.pokeapi.service.MoveService
+import com.example.pokeapi.service.PokedexUpdateService
 import com.example.pokeapi.service.PokemonService
 import com.example.pokeapi.service.TeamService
 import com.example.pokeapi.service.TypeService
@@ -108,6 +109,34 @@ fun Route.abilityRoutes(service: AbilityService) {
         val name = call.parameters["name"]!!
         val ability = service.ability(name) ?: throw NotFoundException("Talent '$name' introuvable")
         call.respond(ability)
+    }
+}
+
+fun Route.updateRoutes(service: PokedexUpdateService) {
+    route("/pokedex/update") {
+        // État de la mise à jour (à interroger régulièrement pendant qu'elle tourne)
+        get { call.respond(service.status()) }
+
+        // POST /pokedex/update?mode=missing|all  -> lance la mise à jour en arrière-plan
+        post {
+            val refreshAll = when (call.request.queryParameters["mode"] ?: "missing") {
+                "missing" -> false
+                "all" -> true
+                else -> throw BadRequestException("mode doit valoir 'missing' ou 'all'")
+            }
+            val started = service.start(refreshAll)
+            if (started == null) {
+                call.respond(HttpStatusCode.Conflict, service.status())
+            } else {
+                call.respond(HttpStatusCode.Accepted, started)
+            }
+        }
+
+        // DELETE /pokedex/update  -> arrête la mise à jour en cours
+        delete {
+            if (!service.cancel()) throw NotFoundException("Aucune mise à jour en cours")
+            call.respond(HttpStatusCode.Accepted, service.status())
+        }
     }
 }
 

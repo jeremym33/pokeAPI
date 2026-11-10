@@ -1,5 +1,6 @@
 package com.example.pokeapi.model
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -225,4 +226,34 @@ data class TypeDefenses(
     val immunities: List<String>,
     /** Talents du Pokémon qui modifient ces relations (non pris en compte dans les multiplicateurs). */
     val abilityNotes: List<AbilityTypeNote>,
+)
+
+@Serializable
+enum class UpdateState {
+    @SerialName("idle") IDLE,
+    @SerialName("running") RUNNING,
+    @SerialName("completed") COMPLETED,
+    @SerialName("cancelled") CANCELLED,
+    @SerialName("failed") FAILED,
+}
+
+/** État de la mise à jour du Pokédex lancée en arrière-plan. */
+@Serializable
+data class PokedexUpdateStatus(
+    val state: UpdateState = UpdateState.IDLE,
+    /** missing : ajoute ce qui manque ; all : récupère à nouveau tous les Pokémon. */
+    val mode: String? = null,
+    /** Nombre d'espèces du Pokédex national à traiter. */
+    val total: Int = 0,
+    /** Espèces traitées (importées, déjà à jour ou en échec). */
+    val processed: Int = 0,
+    val imported: Int = 0,
+    val alreadyUpToDate: Int = 0,
+    val regionalForms: Int = 0,
+    /** Noms en échec (50 au plus). */
+    val failed: List<String> = emptyList(),
+    val failedCount: Int = 0,
+    val startedAt: String? = null,
+    val finishedAt: String? = null,
+    val error: String? = null,
 )
