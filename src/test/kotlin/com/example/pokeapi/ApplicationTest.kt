@@ -119,8 +119,10 @@ class ApplicationTest {
         "location-area/kanto-route-1-area" to """{"name": "kanto-route-1-area", "names": [], "pokemon_encounters": [
             {"pokemon": {"name": "bulbasaur", "url": "https://pokeapi.co/api/v2/pokemon/1/"}, "version_details": [
               {"version": ${res("red")}, "max_chance": 50, "encounter_details": [${walk(2, 3, 20)}, ${walk(3, 4, 30)}]},
-              {"version": ${res("lets-go-pikachu")}, "max_chance": 100, "encounter_details": [${walk(3, 5, 100)}]}
+              {"version": ${res("lets-go-pikachu")}, "max_chance": 100, "encounter_details": [${walk(3, 5, 100)}]},
+              {"version": ${res("red-japan")}, "max_chance": 50, "encounter_details": [${walk(2, 3, 20)}]}
             ]}]}""",
+        "version/red-japan" to """{"name": "red-japan", "names": ${fr("Rouge")}, "version_group": ${res("red-green-japan")}}""",
         "version/red" to """{"name": "red", "names": ${fr("Rouge")}, "version_group": ${res("red-blue")}}""",
         "version/lets-go-pikachu" to """{"name": "lets-go-pikachu", "names": ${fr("Let's Go, Pikachu")}, "version_group": ${res("lets-go-pikachu-lets-go-eevee")}}""",
         "encounter-method/walk" to """{"name": "walk", "names": ${fr("Herbes hautes")}}""",
@@ -433,7 +435,8 @@ class ApplicationTest {
         val route1 = json.decodeFromString<LocationDetail>(client.get("/locations/kanto-route-1").bodyAsText())
         assertEquals("Route 1", route1.nameFr)
         // Jeux du plus récent au plus ancien
-        assertEquals(listOf("Let's Go, Pikachu", "Rouge"), route1.versions.map { it.label })
+        // Jeux du plus récent au plus ancien ; la version japonaise d'origine est distinguée
+        assertEquals(listOf("Let's Go, Pikachu", "Rouge", "Rouge (Japon)"), route1.versions.map { it.label })
         val area = route1.areas.single()
         assertEquals(null, area.label) // zone principale
         val red = area.encounters.single { it.version == "red" }

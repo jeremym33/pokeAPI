@@ -203,7 +203,7 @@ class LocationService(
             region = row[LocationTable.region],
             versions = versionNames
                 .sortedWith(compareByDescending<String> { VersionGroupInfo.order(versions[it]?.second ?: "") }.thenBy { it })
-                .map { GameVersion(it, versions[it]?.first ?: prettySlug(it)) },
+                .map { GameVersion(it, versionLabel(it, versions[it]?.first)) },
             areas = areas.map { area ->
                 AreaEncounters(
                     name = area.name,
@@ -226,6 +226,12 @@ class LocationService(
                 )
             },
         )
+    }
+
+    /** Nom français d'un jeu ; les versions japonaises d'origine (« red-japan ») portent le même nom que les autres. */
+    private fun versionLabel(name: String, nameFr: String?): String {
+        val label = nameFr ?: prettySlug(name.removeSuffix("-japan"))
+        return if (name.endsWith("-japan")) "$label (Japon)" else label
     }
 
     /** Récupère les zones d'un lieu et regroupe leurs rencontres par jeu, Pokémon et méthode. */
