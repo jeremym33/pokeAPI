@@ -143,6 +143,11 @@ data class GameSettings(
     val recruitOnlyNew: Boolean = false,
     /** Avec 4 attaques équipées, une nouvelle attaque remplace la plus ancienne ; sinon elle rejoint les attaques connues. */
     val autoReplaceMoves: Boolean = true,
+    /**
+     * Coup de pouce : après [GameRules.ROUTE_WINS] victoires sur une route, une rencontre sur deux est tirée
+     * parmi ses espèces pas encore vues (désactivé par défaut).
+     */
+    val unseenBoost: Boolean = false,
 )
 
 /** Sauvegarde de la partie. */

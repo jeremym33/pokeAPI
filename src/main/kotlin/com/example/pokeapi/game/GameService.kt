@@ -421,7 +421,12 @@ class GameService(
         val active = s.team.firstOrNull { !it.fainted } ?: throw BadRequestException("Votre équipe est K.O. : passez au Centre Pokémon")
         val pool = pool(s.stepIndex, s.badges.size)
         if (pool.isEmpty()) throw BadRequestException("Aucun Pokémon sauvage ici")
-        val entry = weightedPick(pool)
+        // Réglage « coup de pouce » : une fois les victoires faites, une rencontre sur deux parmi les espèces
+        // de la route pas encore vues, pour qu'une espèce rare ne bloque pas la route trop longtemps.
+        val unseen = pool.filter { !s.hasSeen(it.pokemonId) && it.pokemonId in routeSpecies(s.stepIndex) }
+        val boost = s.settings.unseenBoost && (s.wins[s.stepIndex] ?: 0) >= GameRules.ROUTE_WINS &&
+            unseen.isNotEmpty() && random.nextDouble() < GameRules.UNSEEN_BOOST
+        val entry = weightedPick(if (boost) unseen else pool)
         val level = random.nextInt(entry.minLevel, entry.maxLevel + 1)
         val enemy = buildFighter(entry.pokemonId.toString(), level, "wild")
         val battle = Battle(

@@ -83,6 +83,9 @@ object GameRules {
     /** Victoires nécessaires pour franchir une route (en plus d'avoir vu toutes ses espèces). */
     const val ROUTE_WINS = 10
 
+    /** Coup de pouce (réglage) : part des rencontres tirées parmi les espèces pas encore vues de la route. */
+    const val UNSEEN_BOOST = 0.5
+
     /** Nombre d'espèces à capturer (Pokédex de Kanto). */
     const val DEX_SIZE = 151
 

@@ -1076,6 +1076,7 @@ class ApplicationTest {
 
         var v = game(post("/new", """{"starter":"bulbasaur"}"""))
         assertEquals(GameSettings(nextEncounterButton = true, recruitOnlyNew = false), v.settings)
+        assertEquals(false, v.settings.unseenBoost) // coup de pouce désactivé par défaut
         v = settings(next = true, onlyNew = true)
         assertEquals(true, v.settings.recruitOnlyNew)
         v = game(post("/travel", """{"step":1}"""))
