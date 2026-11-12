@@ -312,6 +312,58 @@ paths:
               schema: { $ref: "#/components/schemas/GameView" }
         "400": { $ref: "#/components/responses/BadRequest" }
 
+  /game/daycare/deposit:
+    post:
+      tags: [Aventure]
+      security: [{ bearerAuth: [] }]
+      summary: Déposer un Pokémon à la pension (dans une ville)
+      description: "2 Pokémon au plus. Un couple compatible (groupe d'œufs en commun, ou Métamorph avec un autre ; jamais le groupe no-eggs) produit un œuf toutes les 5 minutes, même partie fermée."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { uid: { type: string, example: p2 } } }
+      responses:
+        "200":
+          description: État de la partie (dayCare, eggs)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /game/daycare/withdraw:
+    post:
+      tags: [Aventure]
+      security: [{ bearerAuth: [] }]
+      summary: Reprendre un Pokémon de la pension (dans une ville)
+      description: Il rejoint l'équipe, ou la boîte si elle est complète.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { uid: { type: string, example: p2 } } }
+      responses:
+        "200":
+          description: État de la partie (dayCare, eggs)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /game/daycare/egg:
+    post:
+      tags: [Aventure]
+      security: [{ bearerAuth: [] }]
+      summary: Prendre l'œuf qui attend à la pension (dans une ville)
+      description: "6 œufs transportés au plus. L'œuf éclot après quelques combats (cycles d'éclosion de l'espèce / 2, entre 5 et 40) : forme de base de Kanto, niveau 1, 1 chance sur 4 096 d'être chromatique."
+      responses:
+        "200":
+          description: État de la partie (dayCare, eggs)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
   /game/training/leave:
     post:
       tags: [Aventure]

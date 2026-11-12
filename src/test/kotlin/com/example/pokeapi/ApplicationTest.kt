@@ -1180,6 +1180,65 @@ class ApplicationTest {
     }
 
     @Test
+    fun `aventure - pension, oeuf et eclosion`() = appTest {
+        suspend fun game(response: HttpResponse): GameView {
+            assertTrue(response.status.isSuccess(), response.bodyAsText())
+            return json.decodeFromString<GameView>(response.bodyAsText())
+        }
+        suspend fun post(path: String, body: String? = null) = client.post("/game$path") {
+            if (body != null) { contentType(ContentType.Application.Json); setBody(body) }
+        }
+        game(post("/new", """{"starter":"bulbasaur"}"""))
+        // Deux autres Bulbizarre : un dans l'équipe, un dans la boîte
+        editSave { save ->
+            val first = save["team"]!!.jsonArray[0].jsonObject
+            fun copy(uid: String) = JsonObject(first + ("uid" to JsonPrimitive(uid)))
+            JsonObject(save + mapOf("team" to JsonArray(listOf(first, copy("p2"))), "box" to JsonArray(listOf(copy("p3"))), "uidCounter" to JsonPrimitive(3)))
+        }
+        // Bourg Palette (ville) : dépôt de p2 et p3
+        var v = game(post("/daycare/deposit", """{"uid":"p2"}"""))
+        assertEquals(1, v.dayCare!!.pokemon.size)
+        assertEquals(HttpStatusCode.BadRequest, post("/daycare/deposit", """{"uid":"p1"}""").status) // dernier de l'équipe
+        v = game(post("/daycare/deposit", """{"uid":"p3"}"""))
+        assertEquals(listOf("p2", "p3"), v.dayCare!!.pokemon.map { it.uid })
+        assertEquals(true, v.dayCare!!.compatible)
+        assertTrue(v.dayCare!!.nextEggInSeconds!! in 290..300)
+        assertEquals(HttpStatusCode.BadRequest, post("/daycare/egg").status) // pas encore d'œuf
+
+        // 5 minutes plus tard : un œuf attend
+        editSave { save ->
+            val d = save["dayCare"]!!.jsonObject
+            JsonObject(save + ("dayCare" to JsonObject(d + ("nextEggAt" to JsonPrimitive(System.currentTimeMillis() - 1000)))))
+        }
+        v = game(client.get("/game"))
+        assertEquals(true, v.dayCare!!.eggWaiting)
+        v = game(post("/daycare/egg"))
+        assertEquals(listOf(10 to 10), v.eggs.map { it.fightsLeft to it.fightsTotal }) // 20 cycles → 10 combats
+        assertEquals(false, v.dayCare!!.eggWaiting)
+
+        // Sur la route, l'œuf éclot à la fin d'un combat
+        editSave { save ->
+            val egg = save["eggs"]!!.jsonArray[0].jsonObject
+            JsonObject(save + ("eggs" to JsonArray(listOf(JsonObject(egg + ("fightsLeft" to JsonPrimitive(1)))))))
+        }
+        v = game(post("/travel", """{"step":1}"""))
+        game(post("/explore"))
+        game(post("/battle/flee"))
+        v = game(post("/battle/close"))
+        assertTrue(v.lastEvent!!.contains("L'œuf éclot ! C'est un Bulbizarre"), v.lastEvent)
+        assertEquals(emptyList(), v.eggs)
+        val baby = v.team.last()
+        assertEquals(1, baby.level)
+        assertEquals("p4", baby.uid)
+        // Reprendre un Pokémon de la pension : seulement en ville
+        assertEquals(HttpStatusCode.BadRequest, post("/daycare/withdraw", """{"uid":"p2"}""").status)
+        game(post("/travel", """{"step":0}"""))
+        v = game(post("/daycare/withdraw", """{"uid":"p2"}"""))
+        assertTrue(v.team.any { it.uid == "p2" })
+        assertEquals(null, v.dayCare!!.nextEggInSeconds) // plus de couple
+    }
+
+    @Test
     fun `aventure - attaques equipees et connues`() = appTest {
         suspend fun game(response: HttpResponse): GameView {
             assertTrue(response.status.isSuccess(), response.bodyAsText())
@@ -1653,6 +1712,7 @@ class ApplicationTest {
             {"name": "$frenchName", "language": {"name": "fr", "url": "x"}}
           ],
           "varieties": [{"is_default": true, "pokemon": {"name": "$name", "url": "x"}}${forms.joinToString("") { ",{\"is_default\": false, \"pokemon\": {\"name\": \"$it\", \"url\": \"x\"}}" }}],
+          "egg_groups": [{"name": "monster", "url": "x"}], "hatch_counter": 20,
           "generation": {"name": "$generation", "url": "x"}${chainId?.let { ",\n          \"evolution_chain\": {\"url\": \"https://pokeapi.co/api/v2/evolution-chain/$it/\"}" } ?: ""}
         }
     """.trimIndent()

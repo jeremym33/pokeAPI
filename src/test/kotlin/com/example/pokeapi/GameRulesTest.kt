@@ -229,4 +229,16 @@ class GameRulesTest {
         assertTrue(!GameRules.inKanto(470)) // Phyllali
         assertTrue(!GameRules.inKanto(0))
     }
+
+    @Test
+    fun `pension - compatibilite et eclosion`() {
+        assertTrue(GameRules.compatible(listOf("monster", "plant"), listOf("plant")))
+        assertTrue(!GameRules.compatible(listOf("monster"), listOf("water1")))
+        assertTrue(GameRules.compatible(listOf("ditto"), listOf("water1"))) // Métamorph avec n'importe qui
+        assertTrue(!GameRules.compatible(listOf("ditto"), listOf("ditto")))
+        assertTrue(!GameRules.compatible(listOf("no-eggs"), listOf("ditto"))) // légendaires, bébés
+        assertEquals(10, GameRules.hatchFights(20))
+        assertEquals(5, GameRules.hatchFights(5))
+        assertEquals(40, GameRules.hatchFights(120))
+    }
 }

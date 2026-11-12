@@ -136,6 +136,25 @@ data class Trainee(
     val log: List<String> = emptyList(),
 )
 
+/** Pension (dans les villes) : jusqu'à 2 Pokémon ; un couple compatible produit des œufs. */
+@Serializable
+data class DayCare(
+    val pokemon: List<Fighter> = emptyList(),
+    /** Instant où le prochain œuf sera prêt (couple compatible), null sinon. */
+    val nextEggAt: Long? = null,
+    /** Un œuf attend d'être pris. */
+    val eggWaiting: Boolean = false,
+)
+
+/** Œuf transporté : il éclot après quelques combats. L'espèce reste cachée jusqu'à l'éclosion. */
+@Serializable
+data class Egg(
+    val uid: String,
+    val speciesId: Int,
+    val fightsLeft: Int,
+    val fightsTotal: Int,
+)
+
 /** Réglages du joueur, sauvegardés avec la partie. */
 @Serializable
 data class GameSettings(
@@ -189,6 +208,8 @@ data class GameState(
     /** Espèces dont la version chromatique a été vue en combat / a rejoint l'équipe (Motisdex). */
     val shinySeen: Set<Int> = emptySet(),
     val shinyCaught: Set<Int> = emptySet(),
+    val dayCare: DayCare = DayCare(),
+    val eggs: List<Egg> = emptyList(),
     /** Version des attaques enregistrées dans la partie (2 : drain, soin, coups multiples ; 3 : statistiques ; 4 : peur). */
     val movesVersion: Int = 0,
 )

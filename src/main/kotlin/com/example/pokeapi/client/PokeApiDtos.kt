@@ -123,6 +123,10 @@ data class PokeApiSpecies(
     val varieties: List<PokeApiVariety> = emptyList(),
     /** Facilité de capture, de 3 (légendaires) à 255 (Chenipan…). */
     @SerialName("capture_rate") val captureRate: Int? = null,
+    /** Groupes d'œufs (monster, plant… ; « ditto » pour Métamorph, « no-eggs » : pas d'œuf). */
+    @SerialName("egg_groups") val eggGroups: List<NamedApiResource> = emptyList(),
+    /** Cycles d'éclosion d'un œuf (5 à 120). */
+    @SerialName("hatch_counter") val hatchCounter: Int? = null,
 )
 
 @Serializable

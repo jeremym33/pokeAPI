@@ -92,6 +92,26 @@ object GameRules {
     /** Chance qu'un Pokémon du coup de pouce soit chromatique (« shiny »). */
     const val BOOST_SHINY_CHANCE = 0.10
 
+    /** Pension : un couple compatible produit un œuf toutes les 5 minutes (un seul attend à la pension). */
+    const val EGG_INTERVAL_MS = 5 * 60_000L
+
+    /** Œufs transportés au plus. */
+    const val MAX_EGGS = 6
+
+    /** Combats avant l'éclosion, d'après les cycles d'éclosion de l'espèce (Bulbizarre : 20 cycles → 10 combats). */
+    fun hatchFights(hatchCounter: Int?): Int = ((hatchCounter ?: 20) / 2).coerceIn(5, 40)
+
+    /**
+     * Deux Pokémon peuvent-ils avoir un œuf ? Un groupe d'œufs en commun, ou un Métamorph avec un autre Pokémon ;
+     * jamais deux Métamorph, ni un Pokémon du groupe « no-eggs » (légendaires, bébés).
+     */
+    fun compatible(a: List<String>, b: List<String>): Boolean = when {
+        "no-eggs" in a || "no-eggs" in b || a.isEmpty() || b.isEmpty() -> false
+        "ditto" in a && "ditto" in b -> false
+        "ditto" in a || "ditto" in b -> true
+        else -> a.any { it in b }
+    }
+
     /** Chance qu'un Pokémon sauvage soit chromatique, comme dans les jeux : 1 sur 4 096. */
     const val SHINY_CHANCE = 1.0 / 4096
 

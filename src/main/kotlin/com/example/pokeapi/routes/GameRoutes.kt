@@ -49,6 +49,12 @@ fun Route.gameRoutes(service: GameService, auth: AuthService) {
             call.respond(HttpStatusCode.NoContent)
         }
 
+        // Pension (villes) : déposer / reprendre un Pokémon, prendre l'œuf
+        route("/daycare") {
+            post("/deposit") { call.respond(service.depositDayCare(call.user(), call.receive<SwitchRequest>().uid)) }
+            post("/withdraw") { call.respond(service.withdrawDayCare(call.user(), call.receive<SwitchRequest>().uid)) }
+            post("/egg") { call.respond(service.takeEgg(call.user())) }
+        }
         // Entraînement : laisser un Pokémon sur le lieu actuel, le reprendre ou l'échanger
         route("/training") {
             post("/leave") { call.respond(service.leaveTrainee(call.user(), call.receive<SwitchRequest>().uid)) }

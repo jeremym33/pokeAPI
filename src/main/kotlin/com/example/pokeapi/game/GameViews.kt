@@ -114,6 +114,21 @@ data class BadgeView(
 @Serializable
 data class BadgesView(val obtained: Int, val total: Int, val levelCap: Int, val badges: List<BadgeView>)
 
+@Serializable
+data class DayCareView(
+    val pokemon: List<FighterView>,
+    /** Les 2 Pokémon peuvent avoir un œuf. */
+    val compatible: Boolean,
+    /** Avis de la pension sur le couple. */
+    val message: String?,
+    val eggWaiting: Boolean,
+    /** Secondes avant le prochain œuf (couple compatible, pas d'œuf en attente). */
+    val nextEggInSeconds: Int?,
+)
+
+@Serializable
+data class EggView(val uid: String, val fightsLeft: Int, val fightsTotal: Int)
+
 /** Pokémon à l'entraînement sur un lieu. */
 @Serializable
 data class TraineeView(
@@ -176,6 +191,8 @@ data class GameView(
     val training: List<TraineeView> = emptyList(),
     /** Secondes entre deux combats d'entraînement. */
     val trainingSeconds: Int = (GameRules.TRAINING_FIGHT_MS / 1000).toInt(),
+    val dayCare: DayCareView? = null,
+    val eggs: List<EggView> = emptyList(),
 )
 
 @Serializable

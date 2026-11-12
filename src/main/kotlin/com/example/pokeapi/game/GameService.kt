@@ -73,7 +73,7 @@ class GameService(
     suspend fun view(userId: Int): GameView = lock.withLock {
         val loaded = loadMigrated(userId) ?: return@withLock GameView(started = false)
         // Combats d'entraînement écoulés depuis la dernière visite
-        val s = syncTraining(loaded)
+        val s = syncDayCare(syncTraining(loaded))
         if (s != loaded) save(userId, s)
         toView(userId, s)
     }
@@ -181,7 +181,7 @@ class GameService(
             .mapNotNull { n -> runCatching { pokemonService.getPokemon(n.toString()) }.getOrNull() }
             .associate { p -> p.speciesId to PokemonSummary(p.id, p.speciesId, null, p.name, p.nameFr, p.generation, p.region, p.types, p.statTotal, p.spriteUrl, p.artworkUrl) }
         val info = known + fetched
-        val owned = (s.team + s.box + s.training.values.map { it.fighter }).groupingBy { it.speciesId }.eachCount()
+        val owned = (s.team + s.box + s.training.values.map { it.fighter } + s.dayCare.pokemon).groupingBy { it.speciesId }.eachCount()
         val entries = numbers.map { n ->
             val status = when (n) {
                 in s.caught -> DexStatus.CAUGHT
@@ -327,6 +327,102 @@ class GameService(
         s.copy(team = uids.map { all.getValue(it) }, box = all.values.filter { it.uid !in uids })
     }
 
+    // ---------- Pension et œufs ----------
+
+    /** Groupes d'œufs et cycles d'éclosion des espèces (données PokéAPI, gardées en mémoire). */
+    private val breeding = mutableMapOf<Int, Pair<List<String>, Int?>>()
+
+    private suspend fun breedingInfo(speciesId: Int): Pair<List<String>, Int?> = breeding[speciesId]
+        ?: (runCatching { pokeApi.getSpecies(speciesId.toString()) }.getOrNull()
+            ?.let { sp -> sp.eggGroups.map { it.name } to sp.hatchCounter } ?: (emptyList<String>() to null))
+            .also { if (it.first.isNotEmpty()) breeding[speciesId] = it }
+
+    private suspend fun compatiblePair(d: DayCare): Boolean =
+        d.pokemon.size == 2 && GameRules.compatible(breedingInfo(d.pokemon[0].speciesId).first, breedingInfo(d.pokemon[1].speciesId).first)
+
+    private fun checkInCity(s: GameState) {
+        if (!GameRules.STEPS[s.stepIndex].city) throw BadRequestException("La pension se trouve dans les villes")
+    }
+
+    /** Dépose un Pokémon (équipe ou boîte) à la pension, 2 au plus. */
+    suspend fun depositDayCare(userId: Int, uid: String): GameView = act(userId) { s ->
+        noBattle(s)
+        checkInCity(s)
+        if (s.dayCare.pokemon.size >= 2) throw BadRequestException("La pension garde déjà 2 Pokémon")
+        val f = (s.team + s.box).firstOrNull { it.uid == uid } ?: throw BadRequestException("Pokémon introuvable")
+        if (s.team.size == 1 && s.team.single().uid == uid) throw BadRequestException("Gardez au moins un Pokémon dans l'équipe")
+        val dayCare = s.dayCare.copy(pokemon = s.dayCare.pokemon + f.healed().leftBattle())
+        val compatible = compatiblePair(dayCare)
+        s.copy(
+            team = s.team.filter { it.uid != uid }, box = s.box.filter { it.uid != uid },
+            dayCare = dayCare.copy(nextEggAt = if (compatible) System.currentTimeMillis() + GameRules.EGG_INTERVAL_MS else null),
+            lastEvent = "${f.displayName} est confié à la pension.",
+        )
+    }
+
+    /** Reprend un Pokémon de la pension : il rejoint l'équipe (ou la boîte si elle est complète). */
+    suspend fun withdrawDayCare(userId: Int, uid: String): GameView = act(userId) { s ->
+        noBattle(s)
+        checkInCity(s)
+        val f = s.dayCare.pokemon.firstOrNull { it.uid == uid } ?: throw BadRequestException("Ce Pokémon n'est pas à la pension")
+        val back = s.copy(dayCare = s.dayCare.copy(pokemon = s.dayCare.pokemon - f, nextEggAt = null), lastEvent = "${f.displayName} revient de la pension.")
+        if (back.team.size < 6) back.copy(team = back.team + f) else back.copy(box = back.box + f)
+    }
+
+    /** Prend l'œuf qui attend à la pension : il éclora après quelques combats. */
+    suspend fun takeEgg(userId: Int): GameView = act(userId) { s ->
+        noBattle(s)
+        checkInCity(s)
+        if (!s.dayCare.eggWaiting) throw BadRequestException("Aucun œuf n'attend à la pension")
+        if (s.eggs.size >= GameRules.MAX_EGGS) throw BadRequestException("Vous portez déjà ${GameRules.MAX_EGGS} œufs")
+        // Espèce : la forme de base de Kanto d'un des parents (pas Métamorph)
+        val parents = s.dayCare.pokemon.filter { "ditto" !in breedingInfo(it.speciesId).first }
+        val parent = parents.random(random)
+        val species = kantoBase(parent.pokemonId) ?: parent.speciesId
+        val fights = GameRules.hatchFights(breedingInfo(species).second)
+        val egg = Egg(uid = "egg${s.uidCounter + 1}", speciesId = species, fightsLeft = fights, fightsTotal = fights)
+        s.copy(
+            eggs = s.eggs + egg, uidCounter = s.uidCounter + 1,
+            dayCare = s.dayCare.copy(eggWaiting = false, nextEggAt = System.currentTimeMillis() + GameRules.EGG_INTERVAL_MS),
+            lastEvent = "Vous prenez l'œuf. Il éclora après environ $fights combats.",
+        )
+    }
+
+    /** Forme de base de Kanto de la lignée d'un Pokémon (Raichu → Pikachu, Pichu étant de Johto). */
+    private suspend fun kantoBase(pokemonId: Int): Int? {
+        val chain = evolutionService.evolutions(pokemonId.toString()) ?: return null
+        fun path(nodes: List<EvolutionNode>, before: List<EvolutionNode>): List<EvolutionNode>? = nodes.firstNotNullOfOrNull { n ->
+            val p = before + n
+            if (n.pokemon?.id == pokemonId) p else path(n.evolvesTo, p)
+        }
+        return path(chain.roots, emptyList())?.map { it.pokemon?.id ?: it.speciesId }?.firstOrNull { GameRules.inKanto(it) }
+    }
+
+    /** Le prochain œuf est prêt ? (temps réel, même partie fermée) */
+    private suspend fun syncDayCare(s: GameState, now: Long = System.currentTimeMillis()): GameState {
+        val d = s.dayCare
+        if (d.eggWaiting || d.nextEggAt == null || now < d.nextEggAt || !compatiblePair(d)) return s
+        return s.copy(dayCare = d.copy(eggWaiting = true, nextEggAt = null))
+    }
+
+    /** Un combat de plus pour les œufs transportés ; ceux qui sont prêts éclosent (1 chance sur 4 096 de chromatique). */
+    private suspend fun advanceEggs(s: GameState, log: MutableList<String>): GameState {
+        if (s.eggs.isEmpty()) return s
+        var state = s.copy(eggs = s.eggs.map { it.copy(fightsLeft = it.fightsLeft - 1) })
+        state.eggs.filter { it.fightsLeft <= 0 }.forEach { egg ->
+            val baby = buildFighter(egg.speciesId.toString(), 1, egg.uid.replace("egg", "p"))
+                .copy(shiny = random.nextDouble() < GameRules.SHINY_CHANCE)
+            log += "Oh ? L'œuf éclot ! C'est un ${baby.displayName}${if (baby.shiny) " chromatique ✨" else ""} !"
+            state = state.copy(
+                eggs = state.eggs.filter { it.uid != egg.uid },
+                team = if (state.team.size < 6) state.team + baby else state.team,
+                box = if (state.team.size < 6) state.box else state.box + baby,
+                caught = state.caught + baby.speciesId, seen = state.seen + baby.speciesId,
+            )
+        }
+        return state
+    }
+
     // ---------- Entraînement sur les lieux ----------
 
     /** Laisse un Pokémon (équipe ou boîte) s'entraîner sur le lieu actuel. */
@@ -437,7 +533,9 @@ class GameService(
         val b = s.battle ?: throw BadRequestException("Aucun combat en cours")
         if (b.outcome == null) throw BadRequestException("Le combat n'est pas terminé")
         if (b.recruit != null) throw BadRequestException("Décidez d'abord si ${b.recruit.displayName} vous rejoint")
-        startWildBattle(s.copy(battle = null))
+        val hatched = mutableListOf<String>()
+        val next = startWildBattle(advanceEggs(s.copy(battle = null), hatched))
+        next.copy(battle = next.battle!!.copy(log = hatched + next.battle.log))
     }
 
     /** Choisit les attaques équipées (1 à 4, dans l'ordre donné) parmi celles que le Pokémon connaît. */
@@ -646,7 +744,8 @@ class GameService(
         if (b.outcome == null) throw BadRequestException("Le combat n'est pas terminé")
         // Fermer sans répondre revient à laisser partir le Pokémon.
         val decided = b.recruit?.let { decideRecruit(s, it, accept = false) } ?: s
-        decided.copy(battle = null)
+        val log = mutableListOf<String>()
+        advanceEggs(decided.copy(battle = null), log).let { if (log.isEmpty()) it else it.copy(lastEvent = log.joinToString(" ")) }
     }
 
     // ---------- Combat ----------
@@ -1231,10 +1330,24 @@ class GameService(
             items = items,
             lastEvent = s.lastEvent,
             settings = s.settings,
+            dayCare = dayCareView(s),
+            eggs = s.eggs.map { EggView(it.uid, it.fightsLeft.coerceAtLeast(0), it.fightsTotal) },
             training = s.training.entries.sortedBy { it.key }.map { (step, t) ->
                 TraineeView(step, names[GameRules.STEPS[step].location], t.fighter.toView(), t.since, t.fights, t.xpGained, t.log)
             },
         )
+    }
+
+    private suspend fun dayCareView(s: GameState): DayCareView {
+        val d = s.dayCare
+        val compatible = compatiblePair(d)
+        val message = when {
+            d.pokemon.size < 2 -> null
+            compatible -> "Ces deux-là s'entendent bien : un œuf devrait arriver."
+            else -> "Ces deux-là ne semblent pas faits pour avoir un œuf."
+        }
+        val wait = d.nextEggAt?.takeIf { compatible && !d.eggWaiting }?.let { ((it - System.currentTimeMillis()) / 1000).coerceAtLeast(0).toInt() }
+        return DayCareView(d.pokemon.map { it.toView() }, compatible, message, d.eggWaiting, wait)
     }
 
     private fun Fighter.toView(): FighterView {
@@ -1253,7 +1366,7 @@ class GameService(
     }
 
     private suspend fun act(userId: Int, change: suspend (GameState) -> GameState): GameView = lock.withLock {
-        val state = syncTraining(loadMigrated(userId) ?: throw NotFoundException("Aucune partie en cours"))
+        val state = syncDayCare(syncTraining(loadMigrated(userId) ?: throw NotFoundException("Aucune partie en cours")))
         // Le message d'évènement ne vaut que pour l'action qui l'a produit.
         val updated = rememberShiny(rememberCleared(unlockAchievements(change(state.copy(lastEvent = null)))))
         save(userId, updated)
