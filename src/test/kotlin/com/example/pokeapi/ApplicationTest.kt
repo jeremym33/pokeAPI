@@ -53,6 +53,7 @@ import io.ktor.server.config.*
 import io.ktor.server.testing.*
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
@@ -172,6 +173,10 @@ class ApplicationTest {
         "bayleef" to pokemonJson(153, "bayleef", listOf("grass"), hp = 60),
         "chikorita-hisui" to pokemonJson(10999, "chikorita-hisui", listOf("water"), hp = 10, species = "chikorita" to 152, isDefault = false),
         "chikorita-mega" to pokemonJson(10998, "chikorita-mega", listOf("grass"), hp = 90, species = "chikorita" to 152, isDefault = false),
+        // Famille d'Évoli : Aquali (Kanto) et Phyllali (Sinnoh)
+        "eevee" to pokemonJson(133, "eevee", listOf("normal"), hp = 55),
+        "vaporeon" to pokemonJson(134, "vaporeon", listOf("water"), hp = 130),
+        "leafeon" to pokemonJson(470, "leafeon", listOf("grass"), hp = 65),
     )
     private val fakeSpecies = mapOf(
         "bulbasaur" to speciesJson(1, "bulbasaur", "Bulbizarre", "generation-i", chainId = 1),
@@ -181,10 +186,14 @@ class ApplicationTest {
         "squirtle" to speciesJson(7, "squirtle", "Carapuce", "generation-i"),
         "chikorita" to speciesJson(152, "chikorita", "Germignon", "generation-ii", chainId = 2, forms = listOf("chikorita-hisui", "chikorita-mega")),
         "bayleef" to speciesJson(153, "bayleef", "Macronium", "generation-ii", chainId = 2),
+        "eevee" to speciesJson(133, "eevee", "Évoli", "generation-i", chainId = 3),
+        "vaporeon" to speciesJson(134, "vaporeon", "Aquali", "generation-i", chainId = 3),
+        "leafeon" to speciesJson(470, "leafeon", "Phyllali", "generation-iv", chainId = 3),
     )
     private val byId = mapOf(
         "1" to "bulbasaur", "2" to "ivysaur", "3" to "venusaur", "4" to "charmander", "7" to "squirtle", "152" to "chikorita",
         "10999" to "chikorita-hisui", "10998" to "chikorita-mega", "153" to "bayleef",
+        "133" to "eevee", "134" to "vaporeon", "470" to "leafeon",
     )
 
     /**
@@ -205,6 +214,20 @@ class ApplicationTest {
             ],
             "evolves_to": []
           }]
+        }}
+    """.trimIndent()
+
+    /** Chaîne d'Évoli : Aquali (Kanto, Pierre Eau) et Phyllali (Sinnoh, Pierre Plante). */
+    private val eeveeChain = """
+        {"id": 3, "chain": {
+          "is_baby": false, "species": {"name": "eevee", "url": "https://pokeapi.co/api/v2/pokemon-species/133/"},
+          "evolution_details": [],
+          "evolves_to": [
+            {"is_baby": false, "species": {"name": "vaporeon", "url": "https://pokeapi.co/api/v2/pokemon-species/134/"},
+             "evolution_details": [{"trigger": {"name": "use-item", "url": "x"}, "item": {"name": "water-stone", "url": "x"}}], "evolves_to": []},
+            {"is_baby": false, "species": {"name": "leafeon", "url": "https://pokeapi.co/api/v2/pokemon-species/470/"},
+             "evolution_details": [{"trigger": {"name": "use-item", "url": "x"}, "item": {"name": "leaf-stone", "url": "x"}}], "evolves_to": []}
+          ]
         }}
     """.trimIndent()
 
@@ -270,6 +293,7 @@ class ApplicationTest {
                 }
                 path == "/api/v2/evolution-chain/1" -> respond(bulbasaurChain, HttpStatusCode.OK, headers)
                 path == "/api/v2/evolution-chain/2" -> respond(chikoritaChain, HttpStatusCode.OK, headers)
+                path == "/api/v2/evolution-chain/3" -> respond(eeveeChain, HttpStatusCode.OK, headers)
                 path == "/api/v2/item/thunder-stone" ->
                     respond("""{"names":[{"name":"Pierre Foudre","language":{"name":"fr","url":"x"}}]}""", HttpStatusCode.OK, headers)
                 path == "/api/v2/pokemon-species" ->
@@ -1118,6 +1142,41 @@ class ApplicationTest {
         assertEquals(152, v.team.single { it.uid == "p2" }.pokemonId)
         // Ni par objet : Macronium (hors Kanto) n'est jamais proposé
         assertTrue(v.items.none { "p2" in it.usableOn })
+    }
+
+    @Test
+    fun `aventure - un pokemon d'une region pas encore debloquee redevient sa pre-evolution de Kanto`() = appTest {
+        suspend fun game(response: HttpResponse): GameView {
+            assertTrue(response.status.isSuccess(), response.bodyAsText())
+            return json.decodeFromString<GameView>(response.bodyAsText())
+        }
+        client.post("/game/new") { contentType(ContentType.Application.Json); setBody("""{"starter":"bulbasaur"}""") }
+        listOf("eevee", "vaporeon", "leafeon", "chikorita", "bayleef").forEach { client.get("/pokemon/$it") }
+        // Phyllali chromatique niveau 30 dans l'équipe, Aquali (Kanto) et Macronium (Johto, sans pré-évolution de Kanto) dans la boîte
+        editSave { save ->
+            val first = save["team"]!!.jsonArray[0].jsonObject
+            fun copy(uid: String, id: Int, extra: Map<String, JsonElement> = emptyMap()) = JsonObject(first + mapOf(
+                "uid" to JsonPrimitive(uid), "pokemonId" to JsonPrimitive(id), "speciesId" to JsonPrimitive(id),
+            ) + extra)
+            JsonObject(save + mapOf(
+                "team" to JsonArray(listOf(first, copy("p2", 470, mapOf("level" to JsonPrimitive(30), "xp" to JsonPrimitive(27000), "shiny" to JsonPrimitive(true))))),
+                "box" to JsonArray(listOf(copy("p3", 134), copy("p4", 153))),
+            ))
+        }
+        val v = game(client.post("/game/verify"))
+        val p2 = v.team.single { it.uid == "p2" }
+        assertEquals(133, p2.pokemonId) // Évoli
+        assertEquals("Évoli", p2.name)
+        assertEquals(listOf("normal"), p2.types)
+        assertEquals(30, p2.level)
+        assertEquals(true, p2.shiny)
+        assertEquals(134, v.box.single { it.uid == "p3" }.pokemonId) // Aquali reste Aquali
+        assertEquals(153, v.box.single { it.uid == "p4" }.pokemonId) // conservé
+        assertTrue(v.corrections.contains("Phyllali vient d'une région pas encore débloquée : il redevient Évoli."), v.corrections.toString())
+        assertTrue(v.corrections.any { it.contains("pas de pré-évolution de Kanto") }, v.corrections.toString())
+        // Corrigé une fois pour toutes : seul Macronium est encore signalé
+        val again = game(client.post("/game/verify"))
+        assertTrue(again.corrections.none { "redevient" in it }, again.corrections.toString())
     }
 
     @Test

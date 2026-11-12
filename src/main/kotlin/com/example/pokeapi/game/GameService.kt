@@ -90,7 +90,19 @@ class GameService(
         suspend fun check(f: Fighter): Fighter {
             val fixes = mutableListOf<String>()
             var fixed = f
-            pokemonService.getPokemon(f.pokemonId.toString())?.let { p ->
+            // Pokémon d'une région pas encore débloquée (seul Kanto l'est) : il redevient sa pré-évolution de Kanto.
+            if (!GameRules.inKanto(fixed.pokemonId)) {
+                val ancestor = kantoAncestor(fixed.pokemonId)
+                if (ancestor != null) {
+                    val devolved = evolve(fixed, ancestor)
+                    corrections += "${speciesName(fixed)} vient d'une région pas encore débloquée : il redevient ${devolved.displayName}."
+                    fixed = devolved
+                } else {
+                    corrections += "${speciesName(fixed)} vient d'une région pas encore débloquée et n'a pas de pré-évolution de Kanto : il est conservé tel quel."
+                }
+            }
+            // Espèce actuelle (après un éventuel retour à la pré-évolution)
+            pokemonService.getPokemon(fixed.pokemonId.toString())?.let { p ->
                 val info = fixed.copy(
                     speciesId = p.speciesId, name = p.name, nameFr = p.nameFr, spriteUrl = p.spriteUrl, artworkUrl = p.artworkUrl,
                     types = p.types, base = p.stats.ifEmpty { fixed.base }, baseExperience = p.baseExperience ?: fixed.baseExperience,
@@ -98,7 +110,7 @@ class GameService(
                 if (info != fixed) fixes += "informations"
                 fixed = info
             }
-            typeService.defenses(f.pokemonId.toString())?.multipliers?.associate { it.type to it.multiplier }
+            typeService.defenses(fixed.pokemonId.toString())?.multipliers?.associate { it.type to it.multiplier }
                 ?.takeIf { it.isNotEmpty() && it != fixed.defenses }
                 ?.let { fixed = fixed.copy(defenses = it); fixes += "faiblesses" }
 
@@ -148,7 +160,10 @@ class GameService(
             if (fixes.isNotEmpty()) corrections += "${fixed.displayName} : ${fixes.joinToString(", ")} corrigé${if (fixes.size > 1) "s" else ""}."
             return fixed
         }
-        val checked = s.copy(team = s.team.map { check(it) }, box = s.box.map { check(it) })
+        val checked = s.copy(
+            team = s.team.map { check(it) }, box = s.box.map { check(it) },
+            training = s.training.mapValues { (_, t) -> t.copy(fighter = check(t.fighter)) },
+        )
         if (checked != s) save(userId, checked)
         toView(userId, checked).copy(corrections = corrections)
     }
@@ -943,6 +958,21 @@ class GameService(
     }
 
     // Les évolutions hors de Kanto (espèces d'autres régions, formes régionales) sont ignorées : voir GameRules.inKanto.
+
+    /** Nom français de l'espèce d'après les données (le nom enregistré dans la partie peut être ancien). */
+    private suspend fun speciesName(f: Fighter): String =
+        pokemonService.getPokemon(f.pokemonId.toString())?.let { it.nameFr ?: it.name.replaceFirstChar(Char::uppercase) } ?: f.displayName
+
+    /** Pré-évolution de Kanto la plus proche (Phyllali → Évoli, Raichu d'Alola → Pikachu), null s'il n'y en a pas. */
+    private suspend fun kantoAncestor(pokemonId: Int): Int? {
+        val chain = evolutionService.evolutions(pokemonId.toString()) ?: return null
+        fun path(nodes: List<EvolutionNode>, before: List<EvolutionNode>): List<EvolutionNode>? = nodes.firstNotNullOfOrNull { n ->
+            val p = before + n
+            if (n.pokemon?.id == pokemonId) p else path(n.evolvesTo, p)
+        }
+        val ancestors = path(chain.roots, emptyList())?.dropLast(1) ?: return null
+        return ancestors.reversed().map { it.pokemon?.id ?: it.speciesId }.firstOrNull { GameRules.inKanto(it) }
+    }
 
     /** Évolution par niveau atteinte (« Niveau 16 » sans autre condition), id du Pokémon obtenu. */
     private suspend fun levelEvolution(f: Fighter): Int? {
