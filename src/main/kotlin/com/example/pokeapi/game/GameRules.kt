@@ -13,8 +13,15 @@ data class Stats(val hp: Int, val attack: Int, val defense: Int, val spAttack: I
 
 data class AttackResult(val damage: Int, val hit: Boolean, val critical: Boolean, val effectiveness: Double)
 
-/** Pierre d'évolution vendue dans les villes ; nameFr est aussi le nom utilisé par les conditions d'évolution. */
-data class Stone(val item: String, val nameFr: String, val price: Int)
+/**
+ * Objet d'évolution trouvé sur les Pokémon vaincus. Pour une pierre, nameFr est aussi le nom utilisé
+ * par les conditions d'évolution (« Utiliser Pierre Feu »).
+ */
+data class EvolutionItem(val item: String, val nameFr: String, val trade: Boolean = false) {
+    /** La condition d'évolution est-elle remplie par cet objet ? */
+    fun matches(condition: String): Boolean =
+        if (trade) condition == "Échange" || condition.startsWith("Échange, en tenant") else condition == "Utiliser $nameFr"
+}
 
 /** Règles du jeu, sans accès réseau ni base : testables directement. */
 object GameRules {
@@ -97,14 +104,32 @@ object GameRules {
         if (badges >= 5) { add("surf"); add("super-rod") }
     }
 
-    /** Pierres d'évolution de Kanto. */
-    val STONES = listOf(
-        Stone("fire-stone", "Pierre Feu", 1000),
-        Stone("water-stone", "Pierre Eau", 1000),
-        Stone("thunder-stone", "Pierre Foudre", 1000),
-        Stone("leaf-stone", "Pierre Plante", 1000),
-        Stone("moon-stone", "Pierre Lune", 1000),
+    /** Objets d'évolution : les 5 pierres de Kanto et le Câble Link (évolutions par échange). */
+    val ITEMS = listOf(
+        EvolutionItem("fire-stone", "Pierre Feu"),
+        EvolutionItem("water-stone", "Pierre Eau"),
+        EvolutionItem("thunder-stone", "Pierre Foudre"),
+        EvolutionItem("leaf-stone", "Pierre Plante"),
+        EvolutionItem("moon-stone", "Pierre Lune"),
+        EvolutionItem("link-cable", "Câble Link", trade = true),
     )
+
+    /** Chance qu'un Pokémon sauvage vaincu laisse tomber un objet d'évolution. */
+    const val DROP_CHANCE = 0.10
+
+    /** Objet lâché selon le type du Pokémon (Pierre Feu pour un Pokémon Feu…). */
+    private val DROP_BY_TYPE = mapOf(
+        "fire" to "fire-stone", "water" to "water-stone", "ice" to "water-stone", "electric" to "thunder-stone",
+        "grass" to "leaf-stone", "bug" to "leaf-stone", "fairy" to "moon-stone", "normal" to "moon-stone",
+        "psychic" to "link-cable", "fighting" to "link-cable", "rock" to "link-cable", "ghost" to "link-cable",
+    )
+
+    /** Objet lâché par un Pokémon vaincu (null s'il n'en lâche pas) ; une arène en donne toujours un. */
+    fun drop(types: List<String>, gym: Boolean, random: Random): EvolutionItem? {
+        if (!gym && random.nextDouble() >= DROP_CHANCE) return null
+        val item = types.firstNotNullOfOrNull { DROP_BY_TYPE[it] }?.takeIf { !gym } ?: ITEMS.random(random).item
+        return ITEMS.single { it.item == item }
+    }
 
     /** Statuts gérés. */
     val STATUSES = setOf("burn", "poison", "paralysis", "sleep", "freeze")
@@ -129,15 +154,9 @@ object GameRules {
         else -> 0
     }
 
-    /** Argent gagné : 20 ₽ par niveau d'un Pokémon sauvage, 100 ₽ par niveau du meilleur Pokémon d'une arène. */
-    fun moneyReward(enemyLevel: Int, gym: Boolean): Int = enemyLevel * if (gym) 100 else 20
-
-    /**
-     * Évolution par pierre : parmi les évolutions possibles (conditions décrites en français),
-     * celle dont la condition est exactement « Utiliser Pierre … ».
-     */
-    fun <T> stoneEvolution(children: List<Pair<T, List<String>>>, stone: Stone): T? =
-        children.firstOrNull { (_, conditions) -> "Utiliser ${stone.nameFr}" in conditions }?.first
+    /** Évolution déclenchée par un objet, parmi les évolutions possibles (conditions décrites en français). */
+    fun <T> itemEvolution(children: List<Pair<T, List<String>>>, item: EvolutionItem): T? =
+        children.firstOrNull { (_, conditions) -> conditions.any(item::matches) }?.first
 
     fun stats(f: Fighter): Stats = stats(f.base, f.level)
 

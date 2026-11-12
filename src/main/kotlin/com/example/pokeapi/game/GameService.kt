@@ -90,22 +90,13 @@ class GameService(
         s.copy(team = s.team.map { it.healed() }, box = s.box.map { it.healed() })
     }
 
-    /** Achète une pierre d'évolution (dans une ville). */
-    suspend fun buy(item: String): GameView = act { s ->
-        noBattle(s)
-        if (!GameRules.STEPS[s.stepIndex].city) throw BadRequestException("La boutique se trouve dans les villes")
-        val stone = GameRules.STONES.firstOrNull { it.item == item } ?: throw BadRequestException("Objet inconnu : '$item'")
-        if (s.money < stone.price) throw BadRequestException("Il vous manque ${stone.price - s.money} ₽ pour acheter ${stone.nameFr}")
-        s.copy(money = s.money - stone.price, items = s.items + (item to (s.items[item] ?: 0) + 1))
-    }
-
-    /** Utilise une pierre d'évolution sur un Pokémon de l'équipe ou de la boîte. */
+    /** Utilise un objet d'évolution (pierre, Câble Link) sur un Pokémon de l'équipe ou de la boîte. */
     suspend fun useItem(item: String, uid: String): GameView = act { s ->
         noBattle(s)
-        val stone = GameRules.STONES.firstOrNull { it.item == item } ?: throw BadRequestException("Objet inconnu : '$item'")
-        if ((s.items[item] ?: 0) <= 0) throw BadRequestException("Vous n'avez pas de ${stone.nameFr}")
+        val evolutionItem = GameRules.ITEMS.firstOrNull { it.item == item } ?: throw BadRequestException("Objet inconnu : '$item'")
+        if ((s.items[item] ?: 0) <= 0) throw BadRequestException("Vous n'avez pas de ${evolutionItem.nameFr}")
         val f = (s.team + s.box).firstOrNull { it.uid == uid } ?: throw BadRequestException("Pokémon introuvable")
-        val target = stoneEvolutions(f)[item] ?: throw BadRequestException("${stone.nameFr} n'a aucun effet sur ${f.displayName}")
+        val target = itemEvolutions(f)[item] ?: throw BadRequestException("${evolutionItem.nameFr} n'a aucun effet sur ${f.displayName}")
         val evolved = evolve(f, target)
         val count = (s.items[item] ?: 0) - 1
         s.copy(
@@ -365,9 +356,11 @@ class GameService(
         var state = s
         if (b.kind == BattleKind.WILD) {
             val enemy = b.enemy
-            val money = GameRules.moneyReward(enemy.level, gym = false)
-            log += "Vous gagnez $money ₽."
-            state = state.copy(wins = state.wins + (b.step to (state.wins[b.step] ?: 0) + 1), money = state.money + money)
+            state = state.copy(wins = state.wins + (b.step to (state.wins[b.step] ?: 0) + 1))
+            GameRules.drop(enemy.types, gym = false, random)?.let { item ->
+                log += "${enemy.displayName} laisse tomber : ${item.nameFr} ! Vous la ramassez."
+                state = state.withItem(item)
+            }
             if (random.nextDouble() < GameRules.joinChance(enemy.captureRate)) {
                 val recruit = enemy.copy(uid = "p${state.uidCounter + 1}", xp = GameRules.xpForLevel(enemy.level)).healed()
                 log += "${enemy.displayName} veut vous rejoindre !" + if (enemy.speciesId in state.caught) " (vous en avez déjà un)" else " (nouveau !)"
@@ -378,10 +371,10 @@ class GameService(
         } else {
             val type = state.gymTypes[b.step]
             val newCap = GameRules.levelCap(state.badges.size + 1)
-            val money = GameRules.moneyReward(b.enemies.maxOf { it.level }, gym = true)
+            val reward = GameRules.drop(emptyList(), gym = true, random)!!
             log += "Vous avez gagné ! Vous obtenez le Badge ${TYPES_FR[type] ?: "d'arène"}. Niveau maximum : $newCap."
-            log += "Le champion vous remet $money ₽."
-            state = state.copy(badges = state.badges + b.step, money = state.money + money)
+            log += "Le champion vous remet : ${reward.nameFr} !"
+            state = state.copy(badges = state.badges + b.step).withItem(reward)
         }
         state = evolveAndLearn(state, log)
         return state.copy(battle = state.battle!!.copy(outcome = BattleOutcome.WON))
@@ -428,13 +421,13 @@ class GameService(
         )
     }
 
-    /** Pierres qui font évoluer ce Pokémon : objet -> id du Pokémon obtenu. */
-    private suspend fun stoneEvolutions(f: Fighter): Map<String, Int> {
+    /** Objets qui font évoluer ce Pokémon : objet -> id du Pokémon obtenu. */
+    private suspend fun itemEvolutions(f: Fighter): Map<String, Int> {
         val chain = evolutionService.evolutions(f.pokemonId.toString()) ?: return emptyMap()
         fun find(nodes: List<EvolutionNode>): EvolutionNode? =
             nodes.firstNotNullOfOrNull { n -> if (n.pokemon?.id == f.pokemonId) n else find(n.evolvesTo) }
         val children = find(chain.roots)?.evolvesTo.orEmpty().map { (it.pokemon?.id ?: it.speciesId) to it.conditions }
-        return GameRules.STONES.mapNotNull { stone -> GameRules.stoneEvolution(children, stone)?.let { stone.item to it } }.toMap()
+        return GameRules.ITEMS.mapNotNull { item -> GameRules.itemEvolution(children, item)?.let { item.item to it } }.toMap()
     }
 
     private fun decideRecruit(s: GameState, recruit: Fighter, accept: Boolean): GameState {
@@ -618,14 +611,14 @@ class GameService(
                 recruitIsNew = b.recruit?.let { it.speciesId !in s.caught } ?: false,
             )
         }
-        // Pierres : effet calculé seulement pour celles qu'on possède (évite des recherches inutiles).
-        val owned = GameRules.STONES.filter { (s.items[it.item] ?: 0) > 0 }
+        // Objets possédés, avec les Pokémon sur lesquels ils ont un effet.
+        val owned = GameRules.ITEMS.filter { (s.items[it.item] ?: 0) > 0 }
         val usable = if (owned.isEmpty() || s.battle != null) emptyMap()
-        else (s.team + s.box).associate { f -> f.uid to stoneEvolutions(f).keys }
-        val items = GameRules.STONES.map { stone ->
+        else (s.team + s.box).associate { f -> f.uid to itemEvolutions(f).keys }
+        val items = owned.map { item ->
             ItemView(
-                item = stone.item, name = stone.nameFr, price = stone.price, count = s.items[stone.item] ?: 0,
-                usableOn = if (stone in owned) usable.filterValues { stone.item in it }.keys.toList() else emptyList(),
+                item = item.item, name = item.nameFr, count = s.items[item.item] ?: 0,
+                usableOn = usable.filterValues { item.item in it }.keys.toList(),
             )
         }
         return GameView(
@@ -640,9 +633,7 @@ class GameService(
             team = s.team.map { it.toView() },
             box = s.box.map { it.toView() },
             battle = battle,
-            money = s.money,
             items = items,
-            shopOpen = GameRules.STEPS[s.stepIndex].city && s.battle == null,
             lastEvent = s.lastEvent,
         )
     }
@@ -678,6 +669,8 @@ class GameService(
 
     private fun GameState.withEnemy(f: Fighter): GameState =
         copy(battle = battle!!.copy(enemies = battle.enemies.replaceAt(battle.enemyIndex, f)))
+
+    private fun GameState.withItem(item: EvolutionItem): GameState = copy(items = items + (item.item to (items[item.item] ?: 0) + 1))
 
     private fun Fighter.healed(): Fighter = copy(hp = maxHp, status = null, sleepTurns = 0)
 

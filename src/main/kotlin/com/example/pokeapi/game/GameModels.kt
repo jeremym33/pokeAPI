@@ -98,9 +98,7 @@ data class GameState(
     val lastCenter: Int = 0,
     val battle: Battle? = null,
     val uidCounter: Int = 0,
-    /** Argent gagné en combat (₽), pour acheter des pierres d'évolution. */
-    val money: Int = 0,
-    /** Sac : objet -> quantité (pierres d'évolution). */
+    /** Sac : objet -> quantité (pierres d'évolution, Câble Link), trouvés sur les Pokémon vaincus. */
     val items: Map<String, Int> = emptyMap(),
     /** Message de la dernière action hors combat (évolution par pierre…). */
     val lastEvent: String? = null,

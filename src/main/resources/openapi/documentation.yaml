@@ -317,32 +317,18 @@ paths:
               schema: { $ref: "#/components/schemas/GameView" }
         "400": { $ref: "#/components/responses/BadRequest" }
 
-  /game/shop/buy:
-    post:
-      tags: [Aventure]
-      summary: Acheter une pierre d'évolution (dans une ville)
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { type: object, properties: { item: { type: string, enum: [fire-stone, water-stone, thunder-stone, leaf-stone, moon-stone] } } }
-      responses:
-        "200":
-          description: État de la partie
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/GameView" }
-        "400": { $ref: "#/components/responses/BadRequest" }
-
   /game/items/use:
     post:
       tags: [Aventure]
-      summary: Utiliser une pierre d'évolution sur un Pokémon (équipe ou boîte)
+      summary: Utiliser un objet d'évolution (pierre ou Câble Link) sur un Pokémon de l'équipe ou de la boîte
+      description: |
+        Les objets se trouvent sur les Pokémon sauvages vaincus (10 % de chance, objet lié à leur type) et sont remis par les arènes.
+        Le Câble Link fait évoluer les Pokémon qui évoluent par échange (Kadabra, Machopeur, Gravalanch, Spectrum…).
       requestBody:
         required: true
         content:
           application/json:
-            schema: { type: object, properties: { item: { type: string, example: thunder-stone }, uid: { type: string, example: p2 } } }
+            schema: { type: object, properties: { item: { type: string, enum: [fire-stone, water-stone, thunder-stone, leaf-stone, moon-stone, link-cable] }, uid: { type: string, example: p2 } } }
       responses:
         "200":
           description: État de la partie

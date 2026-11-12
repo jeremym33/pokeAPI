@@ -102,15 +102,36 @@ class GameRulesTest {
         }
     }
 
+    private fun item(name: String) = GameRules.ITEMS.single { it.item == name }
+
     @Test
     fun `evolution par pierre d'apres les conditions`() {
-        val moon = GameRules.STONES.single { it.item == "moon-stone" }
-        val fire = GameRules.STONES.single { it.item == "fire-stone" }
         val eeveeLike = listOf(134 to listOf("Utiliser Pierre Eau"), 136 to listOf("Utiliser Pierre Feu"), 196 to listOf("Gagner un niveau, avec un bonheur élevé, de jour"))
-        assertEquals(136, GameRules.stoneEvolution(eeveeLike, fire))
-        assertEquals(null, GameRules.stoneEvolution(eeveeLike, moon))
+        assertEquals(136, GameRules.itemEvolution(eeveeLike, item("fire-stone")))
+        assertEquals(null, GameRules.itemEvolution(eeveeLike, item("moon-stone")))
+        assertEquals(null, GameRules.itemEvolution(eeveeLike, item("link-cable")))
         // Variante régionale (« dans la région Alola ») : pas une évolution par pierre simple
-        assertEquals(null, GameRules.stoneEvolution(listOf(10100 to listOf("Utiliser Pierre Foudre, dans la région Alola")), GameRules.STONES.single { it.item == "thunder-stone" }))
+        assertEquals(null, GameRules.itemEvolution(listOf(10100 to listOf("Utiliser Pierre Foudre, dans la région Alola")), item("thunder-stone")))
+    }
+
+    @Test
+    fun `cable link pour les evolutions par echange`() {
+        val cable = item("link-cable")
+        assertEquals(65, GameRules.itemEvolution(listOf(65 to listOf("Échange")), cable)) // Kadabra → Alakazam
+        assertEquals(199, GameRules.itemEvolution(listOf(80 to listOf("Niveau 37"), 199 to listOf("Échange, en tenant Roche Royale")), cable)) // Ramoloss → Roigada
+        assertEquals(null, GameRules.itemEvolution(listOf(589 to listOf("Échange, contre Escargaume")), cable))
+        assertEquals(null, GameRules.itemEvolution(listOf(65 to listOf("Échange")), item("thunder-stone")))
+    }
+
+    @Test
+    fun `butin - objet selon le type, toujours un objet en arene`() {
+        // Sur de nombreux tirages : environ 10 % de butin, objet lié au type
+        val drops = (0 until 2000).mapNotNull { GameRules.drop(listOf("fire"), gym = false, Random(it)) }
+        assertTrue(drops.size in 120..280, "butin : ${drops.size} sur 2000")
+        assertTrue(drops.all { it.item == "fire-stone" })
+        assertTrue((0 until 200).mapNotNull { GameRules.drop(listOf("psychic"), gym = false, Random(it)) }.all { it.item == "link-cable" })
+        // Arène : un objet à chaque fois
+        assertTrue((0 until 50).all { GameRules.drop(emptyList(), gym = true, Random(it)) != null })
     }
 
     @Test

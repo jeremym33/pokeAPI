@@ -23,9 +23,9 @@ data class FighterView(
     val status: String?,
 )
 
-/** Pierre d'évolution : prix en boutique, quantité dans le sac et Pokémon sur lesquels elle a un effet. */
+/** Objet d'évolution du sac : quantité et Pokémon sur lesquels il a un effet. */
 @Serializable
-data class ItemView(val item: String, val name: String, val price: Int, val count: Int, val usableOn: List<String>)
+data class ItemView(val item: String, val name: String, val count: Int, val usableOn: List<String>)
 
 @Serializable
 data class GymView(val number: Int, val type: String?, val badge: Boolean)
@@ -79,10 +79,7 @@ data class GameView(
     val team: List<FighterView> = emptyList(),
     val box: List<FighterView> = emptyList(),
     val battle: BattleView? = null,
-    val money: Int = 0,
-    /** Pierres d'évolution (prix, quantité dans le sac, Pokémon concernés). */
+    /** Objets d'évolution possédés, avec les Pokémon concernés. */
     val items: List<ItemView> = emptyList(),
-    /** Boutique disponible (dans les villes). */
-    val shopOpen: Boolean = false,
     val lastEvent: String? = null,
 )

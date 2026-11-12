@@ -27,9 +27,6 @@ data class TeamRequest(val uids: List<String>)
 data class RecruitRequest(val accept: Boolean)
 
 @Serializable
-data class BuyRequest(val item: String)
-
-@Serializable
 data class UseItemRequest(val item: String, val uid: String)
 
 /** Jeu d'aventure : chaque action renvoie l'état complet de la partie. */
@@ -50,7 +47,6 @@ fun Route.gameRoutes(service: GameService) {
         post("/explore") { call.respond(service.explore()) }
         post("/gym") { call.respond(service.challengeGym()) }
         put("/team") { call.respond(service.setTeam(call.receive<TeamRequest>().uids)) }
-        post("/shop/buy") { call.respond(service.buy(call.receive<BuyRequest>().item)) }
         post("/items/use") {
             val request = call.receive<UseItemRequest>()
             call.respond(service.useItem(request.item, request.uid))

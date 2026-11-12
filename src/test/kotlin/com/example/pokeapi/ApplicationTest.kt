@@ -554,7 +554,7 @@ class ApplicationTest {
     }
 
     @Test
-    fun `aventure - recrue au choix, boutique et evolution par pierre`() = appTest {
+    fun `aventure - recrue au choix et evolution par objet`() = appTest {
         suspend fun game(response: HttpResponse): GameView {
             assertTrue(response.status.isSuccess(), response.bodyAsText())
             return json.decodeFromString<GameView>(response.bodyAsText())
@@ -591,7 +591,6 @@ class ApplicationTest {
             battles++
         }
         assertTrue(accepted, "Aucun Pokémon n'a voulu nous rejoindre en $battles combats")
-        assertTrue(v.money > 0) // argent gagné en combat
 
         // Sortir un Pokémon de l'équipe vers la boîte
         val second = v.team[1].uid
@@ -599,28 +598,28 @@ class ApplicationTest {
         assertEquals(1, v.team.size)
         assertTrue(v.box.any { it.uid == second })
 
-        // Herbizarre en tête d'équipe et 2000 ₽ (préparés dans la sauvegarde)
+        assertEquals(HttpStatusCode.BadRequest, post("/items/use", """{"item":"thunder-stone","uid":"p1"}""").status) // pas de pierre
+
+        // Herbizarre en tête d'équipe, une Pierre Foudre et une Pierre Lune dans le sac (préparés dans la sauvegarde)
         editSave { save ->
             val team = save["team"]!!.jsonArray
             val first = JsonObject(team[0].jsonObject + ("pokemonId" to JsonPrimitive(2)))
-            JsonObject(save + ("team" to JsonArray(listOf(first) + team.drop(1))) + ("money" to JsonPrimitive(2000)))
+            val items = JsonObject(mapOf("thunder-stone" to JsonPrimitive(1), "moon-stone" to JsonPrimitive(1)))
+            JsonObject(save + ("team" to JsonArray(listOf(first) + team.drop(1))) + ("items" to items))
         }
-        v = game(post("/travel", """{"step":0}""")) // boutique : dans une ville
-        assertTrue(v.shopOpen)
-        assertEquals(HttpStatusCode.BadRequest, post("/items/use", """{"item":"thunder-stone","uid":"p1"}""").status) // pas de pierre
-        v = game(post("/shop/buy", """{"item":"thunder-stone"}"""))
-        assertEquals(1000, v.money)
+        v = game(client.get("/game"))
         val stone = v.items.single { it.item == "thunder-stone" }
         assertEquals(1, stone.count)
         assertEquals(listOf("p1"), stone.usableOn) // Herbizarre évolue avec une Pierre Foudre (données simulées)
+        assertTrue(v.items.single { it.item == "moon-stone" }.usableOn.isEmpty())
 
         v = game(post("/items/use", """{"item":"thunder-stone","uid":"p1"}"""))
         assertEquals(3, v.team[0].pokemonId) // Florizarre
-        assertEquals(0, v.items.single { it.item == "thunder-stone" }.count)
+        assertTrue(v.items.none { it.item == "thunder-stone" }) // pierre consommée
         assertTrue(v.lastEvent!!.contains("évolue"))
-        // Une pierre sans effet est refusée
-        v = game(post("/shop/buy", """{"item":"moon-stone"}"""))
+        // Un objet sans effet est refusé
         assertEquals(HttpStatusCode.BadRequest, post("/items/use", """{"item":"moon-stone","uid":"p1"}""").status)
+        assertEquals(HttpStatusCode.NotFound, post("/shop/buy", """{"item":"moon-stone"}""").status) // plus de boutique
     }
 
     @Test
