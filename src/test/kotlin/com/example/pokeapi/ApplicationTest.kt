@@ -1043,9 +1043,13 @@ class ApplicationTest {
 
         // Sur de nombreux coups de pouce, environ 1 sur 10 est chromatique, avec ses images chromatiques
         var shiny = 0
+        var boosts = 0
         repeat(80) {
             editSave { save -> JsonObject(save + ("boostCounters" to json.parseToJsonElement("""{"1": 9}"""))) }
             v = game(post("/explore"))
+            val counters = transaction(database) { GameSaveTable.selectAll().where { GameSaveTable.id eq 1 }.single()[GameSaveTable.data] }
+                .let { Json.parseToJsonElement(it).jsonObject["boostCounters"].toString() }
+            if (counters == """{"1":0}""") boosts++
             val enemy = v.battle!!.enemy
             if (enemy.shiny) {
                 shiny++
@@ -1054,6 +1058,7 @@ class ApplicationTest {
             }
             game(post("/battle/flee")); game(post("/battle/close"))
         }
+        assertEquals(80, boosts, "coups de pouce")
         assertTrue(shiny in 1..25, "$shiny chromatiques sur 80")
         // Motisdex : Bulbizarre chromatique vu, avec son image chromatique
         var dex = json.decodeFromString<DexView>(client.get("/game/dex").bodyAsText())
@@ -1077,7 +1082,8 @@ class ApplicationTest {
         repeat(5) {
             editSave { save -> JsonObject(save + ("boostCounters" to json.parseToJsonElement("""{"1": 0}"""))) }
             v = game(post("/explore"))
-            assertEquals(false, v.battle!!.enemy.shiny)
+            val saved = transaction(database) { GameSaveTable.selectAll().where { GameSaveTable.id eq 1 }.single()[GameSaveTable.data] }
+            assertEquals(false, v.battle!!.enemy.shiny, "${v.battle!!.log} ${Json.parseToJsonElement(saved).jsonObject["boostCounters"]}")
             game(post("/battle/flee")); game(post("/battle/close"))
         }
     }
