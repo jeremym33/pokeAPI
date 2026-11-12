@@ -2,18 +2,23 @@ package com.example.pokeapi.game
 
 import kotlinx.serialization.Serializable
 
-/** Attaque utilisable en combat (attaques offensives apprises par niveau). */
+/** Attaque utilisable en combat (offensive, ou de statut comme Cage Éclair). */
 @Serializable
 data class FighterMove(
     val name: String,
     val nameFr: String?,
     val type: String,
-    /** physical ou special */
+    /** physical, special ou status */
     val damageClass: String,
+    /** 0 pour une attaque de statut */
     val power: Int,
     /** null = ne rate jamais */
     val accuracy: Int?,
     val priority: Int = 0,
+    /** Statut infligé (burn, poison, paralysis, sleep, freeze), null si aucun. */
+    val ailment: String? = null,
+    /** Chance d'infliger le statut (%) ; une attaque de statut l'inflige toujours si elle touche. */
+    val ailmentChance: Int = 0,
 )
 
 /** Pokémon de l'équipe, de la boîte ou adversaire. */
@@ -38,6 +43,10 @@ data class Fighter(
     val moves: List<FighterMove>,
     /** Multiplicateur de dégâts reçus par type attaquant. */
     val defenses: Map<String, Double>,
+    /** Statut (burn, poison, paralysis, sleep, freeze), conservé jusqu'au Centre Pokémon. */
+    val status: String? = null,
+    /** Tours de sommeil restants. */
+    val sleepTurns: Int = 0,
 ) {
     val displayName: String get() = nameFr ?: name.replaceFirstChar(Char::uppercase)
     val maxHp: Int get() = GameRules.stats(this).hp
@@ -63,6 +72,8 @@ data class Battle(
     /** Le Pokémon actif est K.O. : le joueur doit en envoyer un autre. */
     val mustSwitch: Boolean = false,
     val outcome: BattleOutcome? = null,
+    /** Pokémon sauvage vaincu qui veut rejoindre l'équipe : le joueur accepte ou non. */
+    val recruit: Fighter? = null,
 ) {
     val enemy: Fighter get() = enemies[enemyIndex]
 }
@@ -87,4 +98,10 @@ data class GameState(
     val lastCenter: Int = 0,
     val battle: Battle? = null,
     val uidCounter: Int = 0,
+    /** Argent gagné en combat (₽), pour acheter des pierres d'évolution. */
+    val money: Int = 0,
+    /** Sac : objet -> quantité (pierres d'évolution). */
+    val items: Map<String, Int> = emptyMap(),
+    /** Message de la dernière action hors combat (évolution par pierre…). */
+    val lastEvent: String? = null,
 )

@@ -87,7 +87,41 @@ class GameService(
     suspend fun heal(): GameView = act { s ->
         noBattle(s)
         if (!GameRules.STEPS[s.stepIndex].city) throw BadRequestException("Le Centre Pokémon se trouve dans les villes")
-        s.copy(team = s.team.map { it.copy(hp = it.maxHp) }, box = s.box.map { it.copy(hp = it.maxHp) })
+        s.copy(team = s.team.map { it.healed() }, box = s.box.map { it.healed() })
+    }
+
+    /** Achète une pierre d'évolution (dans une ville). */
+    suspend fun buy(item: String): GameView = act { s ->
+        noBattle(s)
+        if (!GameRules.STEPS[s.stepIndex].city) throw BadRequestException("La boutique se trouve dans les villes")
+        val stone = GameRules.STONES.firstOrNull { it.item == item } ?: throw BadRequestException("Objet inconnu : '$item'")
+        if (s.money < stone.price) throw BadRequestException("Il vous manque ${stone.price - s.money} ₽ pour acheter ${stone.nameFr}")
+        s.copy(money = s.money - stone.price, items = s.items + (item to (s.items[item] ?: 0) + 1))
+    }
+
+    /** Utilise une pierre d'évolution sur un Pokémon de l'équipe ou de la boîte. */
+    suspend fun useItem(item: String, uid: String): GameView = act { s ->
+        noBattle(s)
+        val stone = GameRules.STONES.firstOrNull { it.item == item } ?: throw BadRequestException("Objet inconnu : '$item'")
+        if ((s.items[item] ?: 0) <= 0) throw BadRequestException("Vous n'avez pas de ${stone.nameFr}")
+        val f = (s.team + s.box).firstOrNull { it.uid == uid } ?: throw BadRequestException("Pokémon introuvable")
+        val target = stoneEvolutions(f)[item] ?: throw BadRequestException("${stone.nameFr} n'a aucun effet sur ${f.displayName}")
+        val evolved = evolve(f, target)
+        val count = (s.items[item] ?: 0) - 1
+        s.copy(
+            team = s.team.replaceUid(evolved),
+            box = s.box.replaceUid(evolved),
+            caught = s.caught + evolved.speciesId,
+            items = if (count > 0) s.items + (item to count) else s.items - item,
+            lastEvent = "Quoi ? ${f.displayName} évolue en ${evolved.displayName} !",
+        )
+    }
+
+    /** Accueille (ou non) le Pokémon sauvage qui veut rejoindre l'équipe après la victoire. */
+    suspend fun recruit(accept: Boolean): GameView = act { s ->
+        val b = s.battle ?: throw BadRequestException("Aucun combat en cours")
+        val recruit = b.recruit ?: throw BadRequestException("Aucun Pokémon ne veut vous rejoindre")
+        decideRecruit(s, recruit, accept)
     }
 
     suspend fun setTeam(uids: List<String>): GameView = act { s ->
@@ -148,23 +182,73 @@ class GameService(
         val log = mutableListOf<String>()
         val order = if (playerFirst) listOf(true, false) else listOf(false, true)
         for (playerTurn in order) {
-            val battle = state.battle!!
-            if (battle.outcome != null || battle.mustSwitch) break
-            val p = state.team.first { it.uid == battle.activeUid }
-            val e = battle.enemy
-            if (p.fainted || e.fainted) break
-            state = if (playerTurn) {
-                val (hitEnemy, lines) = hit(p, e, move, enemy = false)
-                log += lines
-                state.copy(battle = battle.copy(enemies = battle.enemies.replaceAt(battle.enemyIndex, hitEnemy)))
+            state = takeTurn(state, playerTurn, if (playerTurn) move else enemyMove, log)
+        }
+        state = endOfTurn(state, log)
+        state.withLog(log)
+    }
+
+    /** Un Pokémon agit : statut qui l'en empêche (sommeil, gel, paralysie), puis attaque. */
+    private suspend fun takeTurn(s: GameState, playerTurn: Boolean, move: FighterMove, log: MutableList<String>): GameState {
+        val battle = s.battle!!
+        if (battle.outcome != null || battle.mustSwitch) return s
+        val p = s.team.first { it.uid == battle.activeUid }
+        val e = battle.enemy
+        if (p.fainted || e.fainted) return s
+        val attacker = if (playerTurn) p else e
+        val (ready, acts) = statusBeforeMove(attacker, enemy = !playerTurn, log)
+        var state = if (playerTurn) s.copy(team = s.team.replaceUid(ready)) else s.withEnemy(ready)
+        if (!acts) return state
+        val defender = if (playerTurn) e else state.team.first { it.uid == battle.activeUid }
+        val (hitDefender, lines) = hit(ready, defender, move, enemy = !playerTurn)
+        log += lines
+        state = if (playerTurn) state.withEnemy(hitDefender) else state.copy(team = state.team.replaceUid(hitDefender))
+        return afterHit(state, log)
+    }
+
+    /** Sommeil, gel et paralysie peuvent empêcher d'attaquer. */
+    private fun statusBeforeMove(f: Fighter, enemy: Boolean, log: MutableList<String>): Pair<Fighter, Boolean> {
+        val who = if (enemy) "${f.displayName} adverse" else f.displayName
+        return when (f.status) {
+            "sleep" -> if (f.sleepTurns > 1) {
+                log += "$who dort profondément."
+                f.copy(sleepTurns = f.sleepTurns - 1) to false
             } else {
-                val (hitPlayer, lines) = hit(e, p, enemyMove, enemy = true)
-                log += lines
-                state.copy(team = state.team.replaceUid(hitPlayer))
+                log += "$who se réveille !"
+                f.copy(status = null, sleepTurns = 0) to true
             }
+            "freeze" -> if (random.nextInt(5) == 0) {
+                log += "$who n'est plus gelé !"
+                f.copy(status = null) to true
+            } else {
+                log += "$who est gelé et ne peut pas attaquer."
+                f to false
+            }
+            "paralysis" -> if (random.nextInt(4) == 0) {
+                log += "$who est paralysé ! Il ne peut pas attaquer."
+                f to false
+            } else f to true
+            else -> f to true
+        }
+    }
+
+    /** Fin du tour : dégâts du poison et de la brûlure. */
+    private suspend fun endOfTurn(s: GameState, log: MutableList<String>): GameState {
+        var state = s
+        for (playerSide in listOf(true, false)) {
+            val b = state.battle ?: return state
+            if (b.outcome != null || b.mustSwitch) return state
+            val f = if (playerSide) state.team.first { it.uid == b.activeUid } else b.enemy
+            val damage = GameRules.residualDamage(f)
+            if (damage == 0 || f.fainted) continue
+            val who = if (playerSide) f.displayName else "${f.displayName} adverse"
+            log += if (f.status == "poison") "$who souffre du poison." else "$who souffre de sa brûlure."
+            val hurt = f.copy(hp = (f.hp - damage).coerceAtLeast(0))
+            log += "${f.displayName} perd ${f.hp - hurt.hp} PV."
+            state = if (playerSide) state.copy(team = state.team.replaceUid(hurt)) else state.withEnemy(hurt)
             state = afterHit(state, log)
         }
-        state.withLog(log)
+        return state
     }
 
     suspend fun switchTo(uid: String): GameView = act { s ->
@@ -177,9 +261,8 @@ class GameService(
         if (!b.mustSwitch) {
             // Changement volontaire : l'adversaire attaque le Pokémon qui entre.
             val enemyMove = GameRules.chooseMove(b.enemy, target, random)
-            val (hitPlayer, lines) = hit(b.enemy, target, enemyMove, enemy = true)
-            log += lines
-            state = afterHit(state.copy(team = state.team.replaceUid(hitPlayer)), log)
+            state = takeTurn(state, playerTurn = false, enemyMove, log)
+            state = endOfTurn(state, log)
         }
         state.withLog(log)
     }
@@ -194,21 +277,43 @@ class GameService(
     suspend fun closeBattle(): GameView = act { s ->
         val b = s.battle ?: throw BadRequestException("Aucun combat en cours")
         if (b.outcome == null) throw BadRequestException("Le combat n'est pas terminé")
-        s.copy(battle = null)
+        // Fermer sans répondre revient à laisser partir le Pokémon.
+        val decided = b.recruit?.let { decideRecruit(s, it, accept = false) } ?: s
+        decided.copy(battle = null)
     }
 
     // ---------- Combat ----------
 
     private fun hit(attacker: Fighter, defender: Fighter, move: FighterMove, enemy: Boolean): Pair<Fighter, List<String>> {
         val who = if (enemy) "${attacker.displayName} adverse" else attacker.displayName
+        val target = if (enemy) defender.displayName else "${defender.displayName} adverse"
         val lines = mutableListOf("$who utilise ${move.nameFr ?: move.name} !")
+
+        if (move.damageClass == "status") {
+            val ailment = move.ailment
+            if (move.accuracy != null && random.nextInt(100) >= move.accuracy) return defender to (lines + "Mais l'attaque échoue.")
+            if (ailment == null || !GameRules.canReceive(defender, ailment)) return defender to (lines + "Mais cela n'a aucun effet.")
+            return inflict(defender, ailment, target, lines)
+        }
+
         val result = GameRules.attack(attacker, defender, move, random)
         if (!result.hit) return defender to (lines + "Mais l'attaque échoue.")
         if (result.critical) lines += "Coup critique !"
         GameRules.effectivenessText(result.effectiveness)?.let { lines += it }
         val hp = (defender.hp - result.damage).coerceAtLeast(0)
         if (result.damage > 0) lines += "${defender.displayName} perd ${defender.hp - hp} PV."
-        return defender.copy(hp = hp) to lines
+        val damaged = defender.copy(hp = hp)
+        // Effet secondaire (Flammèche brûle 1 fois sur 10…)
+        val ailment = move.ailment
+        if (hp > 0 && result.damage > 0 && ailment != null && move.ailmentChance > 0 &&
+            GameRules.canReceive(damaged, ailment) && random.nextInt(100) < move.ailmentChance
+        ) return inflict(damaged, ailment, target, lines)
+        return damaged to lines
+    }
+
+    private fun inflict(f: Fighter, status: String, who: String, lines: MutableList<String>): Pair<Fighter, List<String>> {
+        lines += "$who est ${GameRules.STATUS_FR[status]} !"
+        return f.copy(status = status, sleepTurns = if (status == "sleep") random.nextInt(1, 4) else 0) to lines
     }
 
     /** Après une attaque : K.O. éventuels, expérience, fin du combat. */
@@ -260,26 +365,23 @@ class GameService(
         var state = s
         if (b.kind == BattleKind.WILD) {
             val enemy = b.enemy
-            state = state.copy(wins = state.wins + (b.step to (state.wins[b.step] ?: 0) + 1))
+            val money = GameRules.moneyReward(enemy.level, gym = false)
+            log += "Vous gagnez $money ₽."
+            state = state.copy(wins = state.wins + (b.step to (state.wins[b.step] ?: 0) + 1), money = state.money + money)
             if (random.nextDouble() < GameRules.joinChance(enemy.captureRate)) {
-                val uid = "p${state.uidCounter + 1}"
-                val recruit = enemy.copy(uid = uid, hp = enemy.maxHp, xp = GameRules.xpForLevel(enemy.level))
-                val inTeam = state.team.size < 6
-                log += "${enemy.displayName} veut vous rejoindre ! " + if (inTeam) "Il rejoint votre équipe." else "Il est envoyé dans votre boîte."
-                state = state.copy(
-                    team = if (inTeam) state.team + recruit else state.team,
-                    box = if (inTeam) state.box else state.box + recruit,
-                    caught = state.caught + recruit.speciesId,
-                    uidCounter = state.uidCounter + 1,
-                )
+                val recruit = enemy.copy(uid = "p${state.uidCounter + 1}", xp = GameRules.xpForLevel(enemy.level)).healed()
+                log += "${enemy.displayName} veut vous rejoindre !" + if (enemy.speciesId in state.caught) " (vous en avez déjà un)" else " (nouveau !)"
+                state = state.copy(battle = state.battle!!.copy(recruit = recruit))
             } else {
                 log += "${enemy.displayName} s'éloigne."
             }
         } else {
             val type = state.gymTypes[b.step]
             val newCap = GameRules.levelCap(state.badges.size + 1)
+            val money = GameRules.moneyReward(b.enemies.maxOf { it.level }, gym = true)
             log += "Vous avez gagné ! Vous obtenez le Badge ${TYPES_FR[type] ?: "d'arène"}. Niveau maximum : $newCap."
-            state = state.copy(badges = state.badges + b.step)
+            log += "Le champion vous remet $money ₽."
+            state = state.copy(badges = state.badges + b.step, money = state.money + money)
         }
         state = evolveAndLearn(state, log)
         return state.copy(battle = state.battle!!.copy(outcome = BattleOutcome.WON))
@@ -288,7 +390,7 @@ class GameService(
     private fun defeat(s: GameState, log: MutableList<String>): GameState {
         log += "Votre équipe est K.O. ! Vous retournez au dernier Centre Pokémon visité et vos Pokémon sont soignés."
         return s.copy(
-            team = s.team.map { it.copy(hp = it.maxHp) },
+            team = s.team.map { it.healed() },
             stepIndex = s.lastCenter,
             battle = s.battle!!.copy(outcome = BattleOutcome.LOST),
         )
@@ -300,10 +402,10 @@ class GameService(
         val team = s.team.map { f ->
             val target = levelEvolution(f)
             val updated = if (target != null) {
-                val evolved = buildFighter(target.toString(), f.level, f.uid)
+                val evolved = evolve(f, target)
                 log += "Quoi ? ${f.displayName} évolue en ${evolved.displayName} !"
                 caught = caught + evolved.speciesId
-                evolved.copy(xp = f.xp, hp = (evolved.maxHp * f.hp.toDouble() / f.maxHp).roundToInt().coerceIn(0, evolved.maxHp))
+                evolved
             } else {
                 f.copy(moves = battleMoves(f.pokemonId, f.level))
             }
@@ -313,6 +415,42 @@ class GameService(
             updated
         }
         return s.copy(team = team, caught = caught)
+    }
+
+    /** Le Pokémon évolue : même niveau, expérience, statut et proportion de PV. */
+    private suspend fun evolve(f: Fighter, targetId: Int): Fighter {
+        val evolved = buildFighter(targetId.toString(), f.level, f.uid)
+        return evolved.copy(
+            xp = f.xp,
+            hp = (evolved.maxHp * f.hp.toDouble() / f.maxHp).roundToInt().coerceIn(if (f.fainted) 0 else 1, evolved.maxHp),
+            status = f.status,
+            sleepTurns = f.sleepTurns,
+        )
+    }
+
+    /** Pierres qui font évoluer ce Pokémon : objet -> id du Pokémon obtenu. */
+    private suspend fun stoneEvolutions(f: Fighter): Map<String, Int> {
+        val chain = evolutionService.evolutions(f.pokemonId.toString()) ?: return emptyMap()
+        fun find(nodes: List<EvolutionNode>): EvolutionNode? =
+            nodes.firstNotNullOfOrNull { n -> if (n.pokemon?.id == f.pokemonId) n else find(n.evolvesTo) }
+        val children = find(chain.roots)?.evolvesTo.orEmpty().map { (it.pokemon?.id ?: it.speciesId) to it.conditions }
+        return GameRules.STONES.mapNotNull { stone -> GameRules.stoneEvolution(children, stone)?.let { stone.item to it } }.toMap()
+    }
+
+    private fun decideRecruit(s: GameState, recruit: Fighter, accept: Boolean): GameState {
+        val b = s.battle!!
+        if (!accept) {
+            return s.copy(battle = b.copy(recruit = null, log = b.log + "Vous laissez partir ${recruit.displayName}."))
+        }
+        val inTeam = s.team.size < 6
+        val line = "${recruit.displayName} rejoint " + if (inTeam) "votre équipe !" else "votre boîte (équipe complète)."
+        return s.copy(
+            team = if (inTeam) s.team + recruit else s.team,
+            box = if (inTeam) s.box else s.box + recruit,
+            caught = s.caught + recruit.speciesId,
+            uidCounter = s.uidCounter + 1,
+            battle = b.copy(recruit = null, log = b.log + line),
+        )
     }
 
     /** Évolution par niveau atteinte (« Niveau 16 » sans autre condition), id du Pokémon obtenu. */
@@ -342,15 +480,25 @@ class GameService(
         return fighter.copy(hp = fighter.maxHp)
     }
 
-    /** Les 4 attaques offensives apprises par niveau les plus récentes (Charge à défaut). */
+    /**
+     * Les 4 attaques apprises par niveau les plus récentes : offensives, ou de statut infligeant un statut géré
+     * (Cage Éclair, Poudre Dodo…). Au moins une attaque offensive (Charge à défaut).
+     */
     private suspend fun battleMoves(pokemonId: Int, level: Int): List<FighterMove> {
-        val moves = moveService.moves(pokemonId.toString())?.moves.orEmpty()
-            .filter { it.method == "level-up" && (it.level ?: 0) <= level && (it.power ?: 0) > 0 && it.damageClass in setOf("physical", "special") }
+        val learned = moveService.moves(pokemonId.toString())?.moves.orEmpty()
+            .filter { it.method == "level-up" && (it.level ?: 0) <= level }
             .sortedByDescending { it.level ?: 0 }
             .distinctBy { it.name }
-            .take(4)
-            .map { FighterMove(it.name, it.nameFr, it.type ?: "normal", it.damageClass!!, it.power!!, it.accuracy, it.priority) }
-        return moves.ifEmpty { listOf(TACKLE) }
+        fun toMove(m: com.example.pokeapi.model.LearnedMove) =
+            FighterMove(m.name, m.nameFr, m.type ?: "normal", m.damageClass!!, m.power ?: 0, m.accuracy, m.priority, m.ailment, m.ailmentChance)
+        val damaging = learned.filter { (it.power ?: 0) > 0 && it.damageClass in setOf("physical", "special") }
+        val status = learned.filter { it.damageClass == "status" && it.ailment in GameRules.STATUSES }
+        val chosen = learned.filter { it in damaging || it in status }.take(4)
+        val moves = if (chosen.none { it in damaging }) {
+            chosen.take(3) + (damaging.firstOrNull()?.let { listOf(it) } ?: emptyList())
+        } else chosen
+        val result = moves.map(::toMove)
+        return if (result.none { it.damageClass != "status" }) result.take(3) + TACKLE else result
     }
 
     /**
@@ -466,6 +614,18 @@ class GameService(
                 mustSwitch = b.mustSwitch,
                 outcome = b.outcome,
                 canFlee = b.kind == BattleKind.WILD && b.outcome == null,
+                recruit = b.recruit?.toView(),
+                recruitIsNew = b.recruit?.let { it.speciesId !in s.caught } ?: false,
+            )
+        }
+        // Pierres : effet calculé seulement pour celles qu'on possède (évite des recherches inutiles).
+        val owned = GameRules.STONES.filter { (s.items[it.item] ?: 0) > 0 }
+        val usable = if (owned.isEmpty() || s.battle != null) emptyMap()
+        else (s.team + s.box).associate { f -> f.uid to stoneEvolutions(f).keys }
+        val items = GameRules.STONES.map { stone ->
+            ItemView(
+                item = stone.item, name = stone.nameFr, price = stone.price, count = s.items[stone.item] ?: 0,
+                usableOn = if (stone in owned) usable.filterValues { stone.item in it }.keys.toList() else emptyList(),
             )
         }
         return GameView(
@@ -480,6 +640,10 @@ class GameService(
             team = s.team.map { it.toView() },
             box = s.box.map { it.toView() },
             battle = battle,
+            money = s.money,
+            items = items,
+            shopOpen = GameRules.STEPS[s.stepIndex].city && s.battle == null,
+            lastEvent = s.lastEvent,
         )
     }
 
@@ -488,12 +652,14 @@ class GameService(
         return FighterView(
             uid, pokemonId, speciesId, displayName, spriteUrl, artworkUrl, types, level, hp, maxHp,
             xpInLevel = xp - start, xpToNext = GameRules.xpForLevel(level + 1) - start, moves = moves, fainted = fainted,
+            status = status,
         )
     }
 
     private suspend fun act(change: suspend (GameState) -> GameState): GameView = lock.withLock {
         val state = load() ?: throw NotFoundException("Aucune partie en cours")
-        val updated = change(state)
+        // Le message d'évènement ne vaut que pour l'action qui l'a produit.
+        val updated = change(state.copy(lastEvent = null))
         save(updated)
         toView(updated)
     }
@@ -509,6 +675,11 @@ class GameService(
     }
 
     private fun GameState.withLog(lines: List<String>): GameState = copy(battle = battle?.let { it.copy(log = it.log + lines) })
+
+    private fun GameState.withEnemy(f: Fighter): GameState =
+        copy(battle = battle!!.copy(enemies = battle.enemies.replaceAt(battle.enemyIndex, f)))
+
+    private fun Fighter.healed(): Fighter = copy(hp = maxHp, status = null, sleepTurns = 0)
 
     private fun List<Fighter>.replaceAt(index: Int, f: Fighter) = mapIndexed { i, x -> if (i == index) f else x }
     private fun List<Fighter>.replaceUid(f: Fighter) = map { if (it.uid == f.uid) f else it }

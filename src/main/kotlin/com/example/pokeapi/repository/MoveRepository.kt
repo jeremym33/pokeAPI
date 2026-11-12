@@ -19,6 +19,9 @@ data class MoveInfo(
     val pp: Int?,
     val priority: Int,
     val descriptionFr: String?,
+    val ailment: String? = null,
+    val ailmentChance: Int = 0,
+    val metaLoaded: Boolean = true,
 )
 
 class MoveRepository(private val database: Database) {
@@ -39,6 +42,9 @@ class MoveRepository(private val database: Database) {
                 pp = it[MoveTable.pp],
                 priority = it[MoveTable.priority],
                 descriptionFr = it[MoveTable.descriptionFr]?.let(::cleanGameText),
+                ailment = it[MoveTable.ailment],
+                ailmentChance = it[MoveTable.ailmentChance],
+                metaLoaded = it[MoveTable.metaLoaded],
             )
         }
     }
@@ -56,6 +62,8 @@ class MoveRepository(private val database: Database) {
             // Dernière description française ; les retours à la ligne viennent des écrans des jeux.
             descriptionFr = move.flavorTextEntries.lastOrNull { it.language.name == "fr" }
                 ?.flavorText?.let(::cleanGameText),
+            ailment = move.meta?.ailment?.name?.takeIf { it != "none" },
+            ailmentChance = move.meta?.ailmentChance ?: 0,
         )
         dbQuery {
             MoveTable.upsert {
@@ -68,6 +76,9 @@ class MoveRepository(private val database: Database) {
                 it[pp] = info.pp
                 it[priority] = info.priority
                 it[descriptionFr] = info.descriptionFr
+                it[ailment] = info.ailment
+                it[ailmentChance] = info.ailmentChance
+                it[metaLoaded] = true
                 it[fetchedAt] = Instant.now()
             }
         }

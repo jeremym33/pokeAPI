@@ -109,6 +109,11 @@ object MoveTable : Table("move") {
     val pp = integer("pp").nullable()
     val priority = integer("priority").default(0)
     val descriptionFr = text("description_fr").nullable()
+    /** Statut infligé (paralysis, burn, poison, sleep, freeze…), null si aucun. */
+    val ailment = varchar("ailment", 30).nullable()
+    val ailmentChance = integer("ailment_chance").default(0)
+    /** false pour les attaques en cache d'avant la gestion des statuts : elles sont récupérées à nouveau. */
+    val metaLoaded = bool("meta_loaded").default(false)
     val fetchedAt = timestamp("fetched_at")
 
     override val primaryKey = PrimaryKey(name)

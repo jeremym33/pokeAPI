@@ -62,6 +62,8 @@ class MoveService(
                 pp = info?.pp,
                 priority = info?.priority ?: 0,
                 description = info?.descriptionFr,
+                ailment = info?.ailment,
+                ailmentChance = info?.ailmentChance ?: 0,
                 method = e.k,
                 methodLabel = learnMethodLabel(e.k),
                 level = e.l.takeIf { e.k == "level-up" },
@@ -79,7 +81,8 @@ class MoveService(
 
     /** Détails des attaques : depuis la base, sinon PokéAPI (puis mise en cache). */
     private suspend fun loadMoves(names: List<String>): Map<String, MoveInfo> = coroutineScope {
-        val cached = moveRepository.find(names)
+        // Les attaques mises en cache avant la gestion des statuts sont récupérées à nouveau.
+        val cached = moveRepository.find(names).filterValues { it.metaLoaded }
         val fetched = names.filterNot { it in cached }.map { name ->
             async {
                 semaphore.withPermit {

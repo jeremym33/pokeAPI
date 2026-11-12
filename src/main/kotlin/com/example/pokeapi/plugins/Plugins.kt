@@ -42,6 +42,7 @@ fun Application.configureCors(hosts: List<String>) {
     install(CORS) {
         allowMethod(HttpMethod.Get)
         allowMethod(HttpMethod.Post)
+        allowMethod(HttpMethod.Put)
         allowMethod(HttpMethod.Patch)
         allowMethod(HttpMethod.Delete)
         allowHeader(HttpHeaders.ContentType)
@@ -59,8 +60,12 @@ fun Application.configureStatusPages() {
             call.respond(HttpStatusCode.NotFound, ErrorResponse(cause.message ?: "Ressource introuvable"))
         }
         exception<BadRequestException> { call, cause ->
-            // Les erreurs de désérialisation JSON sont encapsulées dans une BadRequestException.
-            val message = if (cause.cause != null) "Corps de requête invalide" else cause.message
+            // Corps JSON illisible : erreur de désérialisation encapsulée. Sinon, le message de l'exception
+            // (éventuellement recopiée par les coroutines, l'original étant alors dans cause).
+            val chain = generateSequence<Throwable>(cause) { it.cause }.toList()
+            val invalidBody = chain.any { it is kotlinx.serialization.SerializationException || it is io.ktor.server.plugins.CannotTransformContentToTypeException }
+            val message = if (invalidBody) "Corps de requête invalide" else chain.firstNotNullOfOrNull { it.message }
+            if (invalidBody) call.application.log.warn("Requête invalide sur ${call.request.path()} : ${cause.cause}")
             call.respond(HttpStatusCode.BadRequest, ErrorResponse(message ?: "Requête invalide"))
         }
         exception<PokeApiException> { call, cause ->

@@ -194,6 +194,10 @@ data class LearnedMove(
     val methodLabel: String,
     /** Niveau d'apprentissage (méthode level-up). 0 = à l'évolution. */
     val level: Int?,
+    /** Statut infligé (paralysis, burn, poison, sleep, freeze…), null si aucun. */
+    val ailment: String? = null,
+    /** Chance d'infliger le statut (%) ; 0 pour une attaque de statut = toujours (si elle touche). */
+    val ailmentChance: Int = 0,
 )
 
 @Serializable

@@ -13,6 +13,9 @@ data class Stats(val hp: Int, val attack: Int, val defense: Int, val spAttack: I
 
 data class AttackResult(val damage: Int, val hit: Boolean, val critical: Boolean, val effectiveness: Double)
 
+/** Pierre d'évolution vendue dans les villes ; nameFr est aussi le nom utilisé par les conditions d'évolution. */
+data class Stone(val item: String, val nameFr: String, val price: Int)
+
 /** Règles du jeu, sans accès réseau ni base : testables directement. */
 object GameRules {
     /** Progression de Kanto (ordre de Vert Feuille). Jadielle revient à la fin pour sa propre arène. */
@@ -94,6 +97,48 @@ object GameRules {
         if (badges >= 5) { add("surf"); add("super-rod") }
     }
 
+    /** Pierres d'évolution de Kanto. */
+    val STONES = listOf(
+        Stone("fire-stone", "Pierre Feu", 1000),
+        Stone("water-stone", "Pierre Eau", 1000),
+        Stone("thunder-stone", "Pierre Foudre", 1000),
+        Stone("leaf-stone", "Pierre Plante", 1000),
+        Stone("moon-stone", "Pierre Lune", 1000),
+    )
+
+    /** Statuts gérés. */
+    val STATUSES = setOf("burn", "poison", "paralysis", "sleep", "freeze")
+
+    val STATUS_FR = mapOf(
+        "burn" to "brûlé", "poison" to "empoisonné", "paralysis" to "paralysé", "sleep" to "endormi", "freeze" to "gelé",
+    )
+
+    /** Types insensibles à un statut (un Pokémon Feu ne peut pas être brûlé…). */
+    private val STATUS_IMMUNE_TYPES = mapOf(
+        "burn" to setOf("fire"), "poison" to setOf("poison", "steel"), "paralysis" to setOf("electric"), "freeze" to setOf("ice"),
+    )
+
+    /** Le statut peut-il être infligé ? (pas de deuxième statut, immunités de type) */
+    fun canReceive(f: Fighter, status: String): Boolean =
+        status in STATUSES && f.status == null && f.types.none { it in STATUS_IMMUNE_TYPES[status].orEmpty() }
+
+    /** Dégâts de fin de tour : 1/8 des PV pour le poison, 1/16 pour la brûlure. */
+    fun residualDamage(f: Fighter): Int = when (f.status) {
+        "poison" -> maxOf(1, f.maxHp / 8)
+        "burn" -> maxOf(1, f.maxHp / 16)
+        else -> 0
+    }
+
+    /** Argent gagné : 20 ₽ par niveau d'un Pokémon sauvage, 100 ₽ par niveau du meilleur Pokémon d'une arène. */
+    fun moneyReward(enemyLevel: Int, gym: Boolean): Int = enemyLevel * if (gym) 100 else 20
+
+    /**
+     * Évolution par pierre : parmi les évolutions possibles (conditions décrites en français),
+     * celle dont la condition est exactement « Utiliser Pierre … ».
+     */
+    fun <T> stoneEvolution(children: List<Pair<T, List<String>>>, stone: Stone): T? =
+        children.firstOrNull { (_, conditions) -> "Utiliser ${stone.nameFr}" in conditions }?.first
+
     fun stats(f: Fighter): Stats = stats(f.base, f.level)
 
     fun stats(base: Map<String, Int>, level: Int): Stats {
@@ -136,7 +181,9 @@ object GameRules {
 
         val a = stats(attacker)
         val d = stats(defender)
-        val (atk, def) = if (move.damageClass == "special") a.spAttack to d.spDefense else a.attack to d.defense
+        val (atk0, def) = if (move.damageClass == "special") a.spAttack to d.spDefense else a.attack to d.defense
+        // La brûlure divise par deux l'Attaque physique.
+        val atk = if (attacker.status == "burn" && move.damageClass == "physical") atk0 / 2 else atk0
         val critical = random.nextInt(24) == 0
         var damage = floor(floor(2.0 * attacker.level / 5 + 2) * move.power * atk / def / 50) + 2
         if (move.type in attacker.types) damage *= 1.5
@@ -146,18 +193,29 @@ object GameRules {
         return AttackResult(max(1, damage.toInt()), true, critical, effectiveness)
     }
 
-    /** Attaque choisie par l'adversaire : la plus efficace en moyenne, avec un peu de hasard. */
-    fun chooseMove(attacker: Fighter, defender: Fighter, random: Random): FighterMove {
-        if (random.nextInt(5) == 0) return attacker.moves.random(random)
-        return attacker.moves.maxBy { m ->
-            m.power * (if (m.type in attacker.types) 1.5 else 1.0) * (defender.defenses[m.type] ?: 1.0) * ((m.accuracy ?: 100) / 100.0)
+    /** Intérêt d'une attaque pour l'adversaire : dégâts attendus, ou statut à infliger. */
+    private fun moveScore(attacker: Fighter, defender: Fighter, m: FighterMove): Double {
+        val accuracy = (m.accuracy ?: 100) / 100.0
+        if (m.damageClass == "status") {
+            return if (m.ailment != null && canReceive(defender, m.ailment)) 45.0 * accuracy else 0.0
         }
+        return m.power * (if (m.type in attacker.types) 1.5 else 1.0) * (defender.defenses[m.type] ?: 1.0) * accuracy
     }
+
+    /** Attaque choisie par l'adversaire : la plus intéressante, avec un peu de hasard. */
+    fun chooseMove(attacker: Fighter, defender: Fighter, random: Random): FighterMove {
+        val useful = attacker.moves.filter { moveScore(attacker, defender, it) > 0 }.ifEmpty { attacker.moves }
+        if (random.nextInt(5) == 0) return useful.random(random)
+        return useful.maxBy { moveScore(attacker, defender, it) }
+    }
+
+    /** Vitesse effective (divisée par deux par la paralysie). */
+    fun speed(f: Fighter): Int = stats(f).speed / if (f.status == "paralysis") 2 else 1
 
     /** Le premier à attaquer : priorité, puis vitesse (égalité tirée au sort). */
     fun firstToAct(a: Fighter, aMove: FighterMove, b: Fighter, bMove: FighterMove, random: Random): Boolean = when {
         aMove.priority != bMove.priority -> aMove.priority > bMove.priority
-        stats(a).speed != stats(b).speed -> stats(a).speed > stats(b).speed
+        speed(a) != speed(b) -> speed(a) > speed(b)
         else -> random.nextBoolean()
     }
 

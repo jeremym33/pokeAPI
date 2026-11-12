@@ -76,6 +76,14 @@ data class PokeApiMove(
     val pp: Int? = null,
     val priority: Int = 0,
     @SerialName("flavor_text_entries") val flavorTextEntries: List<PokeApiFlavorText> = emptyList(),
+    val meta: PokeApiMoveMeta? = null,
+)
+
+/** Effets secondaires d'une attaque : statut infligé (paralysis, burn…) et sa chance (0 = toujours pour une attaque de statut). */
+@Serializable
+data class PokeApiMoveMeta(
+    val ailment: NamedApiResource? = null,
+    @SerialName("ailment_chance") val ailmentChance: Int = 0,
 )
 
 @Serializable

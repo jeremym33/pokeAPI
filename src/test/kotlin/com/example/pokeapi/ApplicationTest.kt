@@ -7,6 +7,7 @@ import com.example.pokeapi.client.PokeApiMoveSlot
 import com.example.pokeapi.client.PokeApiMoveVersionDetail
 import com.example.pokeapi.model.AbilityDetail
 import com.example.pokeapi.model.learnsetOf
+import com.example.pokeapi.db.GameSaveTable
 import com.example.pokeapi.game.BattleKind
 import com.example.pokeapi.game.GameView
 import com.example.pokeapi.model.EncounterMethod
@@ -34,6 +35,15 @@ import io.ktor.http.*
 import io.ktor.server.config.*
 import io.ktor.server.testing.*
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.selectAll
+import org.jetbrains.exposed.sql.transactions.transaction
+import org.jetbrains.exposed.sql.update
 import org.jetbrains.exposed.sql.Database
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
@@ -268,7 +278,18 @@ class ApplicationTest {
             driver = "org.h2.Driver",
         )
         application { configureApp(db, mockPokeApi()) }
+        database = db
         block()
+    }
+
+    /** Base du test en cours (pour préparer une situation de jeu directement dans la sauvegarde). */
+    private lateinit var database: Database
+
+    /** Modifie la sauvegarde du jeu d'aventure. */
+    private fun editSave(change: (JsonObject) -> JsonObject) = transaction(database) {
+        val row = GameSaveTable.selectAll().single()
+        val edited = change(Json.parseToJsonElement(row[GameSaveTable.data]).jsonObject)
+        GameSaveTable.update({ GameSaveTable.id eq 1 }) { it[data] = edited.toString() }
     }
 
     @Test
@@ -480,7 +501,9 @@ class ApplicationTest {
         assertEquals("Bourg Palette", v.steps[0].nameFr)
         assertEquals(1, v.unlockedStep) // la Route 1 est la prochaine étape
         assertEquals(HttpStatusCode.BadRequest, post("/travel", """{"step":3}""").status)
-        assertEquals(HttpStatusCode.BadRequest, post("/explore").status) // pas de Pokémon sauvage à Bourg Palette
+        val noWild = post("/explore") // pas de Pokémon sauvage à Bourg Palette (données simulées)
+        assertEquals(HttpStatusCode.BadRequest, noWild.status)
+        assertContains(noWild.bodyAsText(), "Aucun Pokémon sauvage ici")
 
         v = game(post("/travel", """{"step":1}"""))
         assertEquals(1, v.currentStep)
@@ -500,6 +523,7 @@ class ApplicationTest {
                 else game(post("/battle/attack", """{"move":0}"""))
             }
             assertTrue(v.battle!!.log.isNotEmpty())
+            if (v.battle!!.recruit != null) v = game(post("/battle/recruit", """{"accept":true}"""))
             v = game(post("/battle/close"))
             battles++
         }
@@ -518,6 +542,85 @@ class ApplicationTest {
 
         assertEquals(HttpStatusCode.NoContent, client.delete("/game").status)
         assertEquals(false, game(client.get("/game")).started)
+    }
+
+    @Test
+    fun `aventure - equipe modifiable depuis le navigateur (CORS PUT)`() = appTest {
+        val preflight = client.options("/game/team") {
+            header(HttpHeaders.Origin, "http://localhost:8081")
+            header(HttpHeaders.AccessControlRequestMethod, "PUT")
+        }
+        assertEquals(HttpStatusCode.OK, preflight.status)
+    }
+
+    @Test
+    fun `aventure - recrue au choix, boutique et evolution par pierre`() = appTest {
+        suspend fun game(response: HttpResponse): GameView {
+            assertTrue(response.status.isSuccess(), response.bodyAsText())
+            return json.decodeFromString<GameView>(response.bodyAsText())
+        }
+        suspend fun post(path: String, body: String? = null) = client.post("/game$path") {
+            if (body != null) { contentType(ContentType.Application.Json); setBody(body) }
+        }
+
+        var v = game(post("/new", """{"starter":"bulbasaur"}"""))
+        v = game(post("/travel", """{"step":1}"""))
+
+        // Combats jusqu'à ce qu'un Pokémon veuille nous rejoindre : on le refuse, puis on accepte le suivant
+        var refused = false
+        var accepted = false
+        var battles = 0
+        while (!accepted && battles < 60) {
+            // Après une défaite, on est ramené au Centre Pokémon de Bourg Palette
+            if (v.team.all { it.fainted }) { v = game(post("/travel", """{"step":0}""")); v = game(post("/heal")) }
+            if (v.currentStep != 1) v = game(post("/travel", """{"step":1}"""))
+            v = game(post("/explore"))
+            while (v.battle!!.outcome == null) {
+                v = if (v.battle!!.mustSwitch) game(post("/battle/switch", """{"uid":"${v.team.first { !it.fainted }.uid}"}"""))
+                else game(post("/battle/attack", """{"move":0}"""))
+            }
+            val recruit = v.battle!!.recruit
+            if (recruit != null) {
+                val teamSize = v.team.size
+                assertEquals(HttpStatusCode.BadRequest, post("/battle/attack", """{"move":0}""").status) // combat terminé
+                v = game(post("/battle/recruit", """{"accept":${refused}}"""))
+                assertEquals(null, v.battle!!.recruit)
+                if (!refused) { assertEquals(teamSize, v.team.size); refused = true } else { assertEquals(teamSize + 1, v.team.size); accepted = true }
+            }
+            v = game(post("/battle/close"))
+            battles++
+        }
+        assertTrue(accepted, "Aucun Pokémon n'a voulu nous rejoindre en $battles combats")
+        assertTrue(v.money > 0) // argent gagné en combat
+
+        // Sortir un Pokémon de l'équipe vers la boîte
+        val second = v.team[1].uid
+        v = game(client.put("/game/team") { contentType(ContentType.Application.Json); setBody("""{"uids":["${v.team[0].uid}"]}""") })
+        assertEquals(1, v.team.size)
+        assertTrue(v.box.any { it.uid == second })
+
+        // Herbizarre en tête d'équipe et 2000 ₽ (préparés dans la sauvegarde)
+        editSave { save ->
+            val team = save["team"]!!.jsonArray
+            val first = JsonObject(team[0].jsonObject + ("pokemonId" to JsonPrimitive(2)))
+            JsonObject(save + ("team" to JsonArray(listOf(first) + team.drop(1))) + ("money" to JsonPrimitive(2000)))
+        }
+        v = game(post("/travel", """{"step":0}""")) // boutique : dans une ville
+        assertTrue(v.shopOpen)
+        assertEquals(HttpStatusCode.BadRequest, post("/items/use", """{"item":"thunder-stone","uid":"p1"}""").status) // pas de pierre
+        v = game(post("/shop/buy", """{"item":"thunder-stone"}"""))
+        assertEquals(1000, v.money)
+        val stone = v.items.single { it.item == "thunder-stone" }
+        assertEquals(1, stone.count)
+        assertEquals(listOf("p1"), stone.usableOn) // Herbizarre évolue avec une Pierre Foudre (données simulées)
+
+        v = game(post("/items/use", """{"item":"thunder-stone","uid":"p1"}"""))
+        assertEquals(3, v.team[0].pokemonId) // Florizarre
+        assertEquals(0, v.items.single { it.item == "thunder-stone" }.count)
+        assertTrue(v.lastEvent!!.contains("évolue"))
+        // Une pierre sans effet est refusée
+        v = game(post("/shop/buy", """{"item":"moon-stone"}"""))
+        assertEquals(HttpStatusCode.BadRequest, post("/items/use", """{"item":"moon-stone","uid":"p1"}""").status)
     }
 
     @Test
@@ -785,6 +888,7 @@ class ApplicationTest {
             setBody("""{"nom":"oops"}""")
         }
         assertEquals(HttpStatusCode.BadRequest, response.status)
+        assertContains(response.bodyAsText(), "Corps de requête invalide")
     }
 
     private fun typeJson(name: String, double: String, half: String, none: String = ""): String {

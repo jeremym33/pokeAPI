@@ -300,6 +300,57 @@ paths:
               schema: { $ref: "#/components/schemas/GameView" }
         "400": { $ref: "#/components/responses/BadRequest" }
 
+  /game/battle/recruit:
+    post:
+      tags: [Aventure]
+      summary: Accueillir (accept = true) ou laisser partir le Pokémon vaincu qui veut rejoindre l'équipe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { accept: { type: boolean } } }
+      responses:
+        "200":
+          description: État de la partie
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /game/shop/buy:
+    post:
+      tags: [Aventure]
+      summary: Acheter une pierre d'évolution (dans une ville)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { item: { type: string, enum: [fire-stone, water-stone, thunder-stone, leaf-stone, moon-stone] } } }
+      responses:
+        "200":
+          description: État de la partie
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /game/items/use:
+    post:
+      tags: [Aventure]
+      summary: Utiliser une pierre d'évolution sur un Pokémon (équipe ou boîte)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { item: { type: string, example: thunder-stone }, uid: { type: string, example: p2 } } }
+      responses:
+        "200":
+          description: État de la partie
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
   /game/battle/close:
     post:
       tags: [Aventure]
@@ -750,6 +801,8 @@ components:
         method: { type: string, example: machine, description: "level-up, machine, egg, tutor…" }
         methodLabel: { type: string, example: CT / CS }
         level: { type: integer, nullable: true, description: "Niveau (méthode level-up) ; 0 = à l'évolution", example: 26 }
+        ailment: { type: string, nullable: true, description: "Statut infligé (paralysis, burn, poison, sleep, freeze…)", example: paralysis }
+        ailmentChance: { type: integer, description: "Chance d'infliger le statut (%), 0 = toujours pour une attaque de statut", example: 10 }
     PokemonMoves:
       type: object
       properties:

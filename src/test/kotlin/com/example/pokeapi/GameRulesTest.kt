@@ -70,6 +70,50 @@ class GameRulesTest {
     }
 
     @Test
+    fun `statuts - immunites, fin de tour, brulure et paralysie`() {
+        val grass = fighter(20)
+        assertTrue(GameRules.canReceive(grass, "burn"))
+        assertTrue(!GameRules.canReceive(fighter(20, types = listOf("fire")), "burn"))
+        assertTrue(!GameRules.canReceive(fighter(20, types = listOf("poison")), "poison"))
+        assertTrue(!GameRules.canReceive(fighter(20, types = listOf("electric")), "paralysis"))
+        assertTrue(!GameRules.canReceive(grass.copy(status = "sleep"), "burn")) // un seul statut à la fois
+        assertTrue(!GameRules.canReceive(grass, "confusion")) // statut non géré
+
+        val full = grass.copy(hp = grass.maxHp)
+        assertEquals(full.maxHp / 8, GameRules.residualDamage(full.copy(status = "poison")))
+        assertEquals(full.maxHp / 16, GameRules.residualDamage(full.copy(status = "burn")))
+        assertEquals(0, GameRules.residualDamage(full.copy(status = "paralysis")))
+
+        assertEquals(GameRules.stats(grass).speed / 2, GameRules.speed(grass.copy(status = "paralysis")))
+
+        val tackle = FighterMove("tackle", "Charge", "normal", "physical", 40, null)
+        val normal = GameRules.attack(fighter(30), fighter(30), tackle, Random(3)).damage
+        val burned = GameRules.attack(fighter(30).copy(status = "burn"), fighter(30), tackle, Random(3)).damage
+        assertTrue(burned < normal, "brûlure : $burned >= $normal")
+    }
+
+    @Test
+    fun `l'adversaire n'inflige pas un statut deja present`() {
+        val sleepPowder = FighterMove("sleep-powder", "Poudre Dodo", "grass", "status", 0, 75, ailment = "sleep")
+        val tackle = FighterMove("tackle", "Charge", "normal", "physical", 40, 100)
+        val attacker = fighter(20).copy(moves = listOf(sleepPowder, tackle))
+        repeat(20) { seed ->
+            assertEquals("tackle", GameRules.chooseMove(attacker, fighter(20).copy(status = "sleep"), Random(seed)).name)
+        }
+    }
+
+    @Test
+    fun `evolution par pierre d'apres les conditions`() {
+        val moon = GameRules.STONES.single { it.item == "moon-stone" }
+        val fire = GameRules.STONES.single { it.item == "fire-stone" }
+        val eeveeLike = listOf(134 to listOf("Utiliser Pierre Eau"), 136 to listOf("Utiliser Pierre Feu"), 196 to listOf("Gagner un niveau, avec un bonheur élevé, de jour"))
+        assertEquals(136, GameRules.stoneEvolution(eeveeLike, fire))
+        assertEquals(null, GameRules.stoneEvolution(eeveeLike, moon))
+        // Variante régionale (« dans la région Alola ») : pas une évolution par pierre simple
+        assertEquals(null, GameRules.stoneEvolution(listOf(10100 to listOf("Utiliser Pierre Foudre, dans la région Alola")), GameRules.STONES.single { it.item == "thunder-stone" }))
+    }
+
+    @Test
     fun `progression de Kanto`() {
         assertEquals("pallet-town", GameRules.STEPS.first().location)
         assertEquals(8, GameRules.STEPS.count { it.gym })
