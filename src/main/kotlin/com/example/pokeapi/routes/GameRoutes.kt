@@ -49,6 +49,12 @@ fun Route.gameRoutes(service: GameService, auth: AuthService) {
             call.respond(HttpStatusCode.NoContent)
         }
 
+        // Entraînement : laisser un Pokémon sur le lieu actuel, le reprendre ou l'échanger
+        route("/training") {
+            post("/leave") { call.respond(service.leaveTrainee(call.user(), call.receive<SwitchRequest>().uid)) }
+            post("/retrieve") { call.respond(service.retrieveTrainee(call.user())) }
+            post("/swap") { call.respond(service.swapTrainee(call.user(), call.receive<SwitchRequest>().uid)) }
+        }
         // Succès : objectifs qui donnent les objets d'évolution
         get("/achievements") { call.respond(service.achievements(call.user())) }
         // Motisdex : espèces de Kanto vues et rejointes

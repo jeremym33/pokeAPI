@@ -312,6 +312,58 @@ paths:
               schema: { $ref: "#/components/schemas/GameView" }
         "400": { $ref: "#/components/responses/BadRequest" }
 
+  /game/training/leave:
+    post:
+      tags: [Aventure]
+      security: [{ bearerAuth: [] }]
+      summary: Laisser un Pokémon s'entraîner sur le lieu actuel
+      description: "Un Pokémon au plus par lieu (avec des Pokémon sauvages). Toutes les 10 secondes, même partie fermée, il affronte un Pokémon tiré parmi ceux du lieu et gagne l'expérience d'une victoire (dans la limite de niveau) ; il apprend ses attaques et évolue par niveau."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { uid: { type: string, example: p2 } } }
+      responses:
+        "200":
+          description: État de la partie (liste training)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /game/training/retrieve:
+    post:
+      tags: [Aventure]
+      security: [{ bearerAuth: [] }]
+      summary: Reprendre le Pokémon qui s'entraîne sur le lieu actuel
+      description: Il rejoint l'équipe, ou la boîte si elle est complète.
+      responses:
+        "200":
+          description: État de la partie (liste training)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /game/training/swap:
+    post:
+      tags: [Aventure]
+      security: [{ bearerAuth: [] }]
+      summary: Échanger le Pokémon qui s'entraîne ici contre un autre
+      description: Le Pokémon repris prend la place exacte de celui qui part s'entraîner (position dans l'équipe, ou boîte).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { uid: { type: string, example: p2 } } }
+      responses:
+        "200":
+          description: État de la partie (liste training)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
   /game/achievements:
     get:
       tags: [Aventure]

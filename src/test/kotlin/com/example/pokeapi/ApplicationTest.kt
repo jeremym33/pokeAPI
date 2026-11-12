@@ -958,6 +958,63 @@ class ApplicationTest {
     }
 
     @Test
+    fun `aventure - entrainement d'un pokemon laisse sur un lieu`() = appTest {
+        suspend fun game(response: HttpResponse): GameView {
+            assertTrue(response.status.isSuccess(), response.bodyAsText())
+            return json.decodeFromString<GameView>(response.bodyAsText())
+        }
+        suspend fun post(path: String, body: String? = null) = client.post("/game$path") {
+            if (body != null) { contentType(ContentType.Application.Json); setBody(body) }
+        }
+        game(post("/new", """{"starter":"bulbasaur"}"""))
+        // Deuxième Pokémon dans l'équipe (copie du starter)
+        editSave { save ->
+            val first = save["team"]!!.jsonArray[0].jsonObject
+            JsonObject(save + ("team" to JsonArray(listOf(first, JsonObject(first + ("uid" to JsonPrimitive("p2")))))))
+        }
+        // Pas d'entraînement en ville
+        assertEquals(HttpStatusCode.BadRequest, post("/training/leave", """{"uid":"p2"}""").status)
+        game(post("/travel", """{"step":1}"""))
+        var v = game(post("/training/leave", """{"uid":"p2"}"""))
+        assertEquals(listOf("p1"), v.team.map { it.uid })
+        assertEquals(listOf(1 to "p2"), v.training.map { it.step to it.fighter.uid })
+        assertEquals(10, v.trainingSeconds)
+        assertEquals(HttpStatusCode.BadRequest, post("/training/leave", """{"uid":"p1"}""").status) // déjà un Pokémon ici
+        assertEquals(HttpStatusCode.BadRequest, post("/training/swap", """{"uid":"inconnu"}""").status)
+
+        // 100 secondes plus tard : 10 combats simulés contre les Pokémon de la Route 1
+        editSave { save ->
+            val training = save["training"]!!.jsonObject
+            val t = training["1"]!!.jsonObject
+            val past = System.currentTimeMillis() - 100_000
+            JsonObject(save + ("training" to JsonObject(mapOf("1" to JsonObject(t + ("lastSync" to JsonPrimitive(past)))))))
+        }
+        v = game(client.get("/game"))
+        val trainee = v.training.single()
+        assertEquals(10, trainee.fights)
+        assertTrue(trainee.xpGained > 0)
+        assertTrue(trainee.fighter.level > 5, "niveau ${trainee.fighter.level}")
+        assertEquals(trainee.fighter.maxHp, trainee.fighter.hp)
+        assertTrue(trainee.log.any { it.contains("monte au niveau") }, trainee.log.toString())
+
+        // Ailleurs, on ne peut pas le reprendre
+        game(post("/travel", """{"step":0}"""))
+        assertEquals(HttpStatusCode.BadRequest, post("/training/retrieve").status)
+        // De retour : échange avec p1, qui prend sa place à l'entraînement
+        game(post("/travel", """{"step":1}"""))
+        v = game(post("/training/swap", """{"uid":"p1"}"""))
+        assertEquals(listOf("p2"), v.team.map { it.uid })
+        assertEquals(trainee.fighter.level, v.team.single().level)
+        assertEquals("p1", v.training.single().fighter.uid)
+        assertEquals(0, v.training.single().fights)
+        assertTrue(v.lastEvent!!.startsWith("Bulbizarre revient de l'entraînement (10 combats"), v.lastEvent)
+        // Reprise : retour dans l'équipe
+        v = game(post("/training/retrieve"))
+        assertEquals(listOf("p2", "p1"), v.team.map { it.uid })
+        assertEquals(emptyList(), v.training)
+    }
+
+    @Test
     fun `aventure - attaques equipees et connues`() = appTest {
         suspend fun game(response: HttpResponse): GameView {
             assertTrue(response.status.isSuccess(), response.bodyAsText())

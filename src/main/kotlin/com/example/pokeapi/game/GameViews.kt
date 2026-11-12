@@ -81,6 +81,18 @@ data class StepView(
     val unlocked: Boolean,
 )
 
+/** Pokémon à l'entraînement sur un lieu. */
+@Serializable
+data class TraineeView(
+    val step: Int,
+    val location: String?,
+    val fighter: FighterView,
+    val since: Long,
+    val fights: Int,
+    val xpGained: Int,
+    val log: List<String>,
+)
+
 @Serializable
 data class RouteSpecies(val number: Int, val seen: Boolean, val name: String? = null, val spriteUrl: String? = null)
 
@@ -127,6 +139,10 @@ data class GameView(
     val corrections: List<String> = emptyList(),
     /** Succès débloqués par l'action qui renvoie cette vue (pour la notification), vide sinon. */
     val unlocked: List<UnlockedAchievement> = emptyList(),
+    /** Pokémon à l'entraînement sur les lieux. */
+    val training: List<TraineeView> = emptyList(),
+    /** Secondes entre deux combats d'entraînement. */
+    val trainingSeconds: Int = (GameRules.TRAINING_FIGHT_MS / 1000).toInt(),
 )
 
 @Serializable

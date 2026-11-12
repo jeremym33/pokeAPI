@@ -117,6 +117,23 @@ data class Battle(
     val enemy: Fighter get() = enemies[enemyIndex]
 }
 
+/**
+ * Pokémon laissé à l'entraînement sur un lieu : il y combat les Pokémon sauvages (un combat simulé toutes les
+ * 10 secondes) et gagne leur expérience.
+ */
+@Serializable
+data class Trainee(
+    val fighter: Fighter,
+    /** Début de l'entraînement (ms depuis l'epoch). */
+    val since: Long,
+    /** Instant jusqu'où les combats ont été comptés. */
+    val lastSync: Long,
+    val fights: Int = 0,
+    val xpGained: Int = 0,
+    /** Derniers évènements (montées de niveau, attaques, évolutions). */
+    val log: List<String> = emptyList(),
+)
+
 /** Réglages du joueur, sauvegardés avec la partie. */
 @Serializable
 data class GameSettings(
@@ -161,6 +178,8 @@ data class GameState(
     val clearedSteps: Set<Int> = emptySet(),
     /** Version de la règle de passage des routes (1 : 10 victoires et toutes les espèces vues). */
     val routeRules: Int = 0,
+    /** Pokémon à l'entraînement, par étape (un au plus par lieu). */
+    val training: Map<Int, Trainee> = emptyMap(),
     /** Version des attaques enregistrées dans la partie (2 : drain, soin, coups multiples ; 3 : statistiques ; 4 : peur). */
     val movesVersion: Int = 0,
 )

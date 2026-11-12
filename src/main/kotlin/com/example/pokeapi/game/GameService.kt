@@ -70,7 +70,13 @@ class GameService(
 
     // ---------- Actions ----------
 
-    suspend fun view(userId: Int): GameView = lock.withLock { loadMigrated(userId)?.let { toView(userId, it) } ?: GameView(started = false) }
+    suspend fun view(userId: Int): GameView = lock.withLock {
+        val loaded = loadMigrated(userId) ?: return@withLock GameView(started = false)
+        // Combats d'entraînement écoulés depuis la dernière visite
+        val s = syncTraining(loaded)
+        if (s != loaded) save(userId, s)
+        toView(userId, s)
+    }
 
     /**
      * Vérifie chaque Pokémon de l'équipe et de la boîte d'après les données à jour (Pokédex, attaques, types) :
@@ -160,7 +166,7 @@ class GameService(
             .mapNotNull { n -> runCatching { pokemonService.getPokemon(n.toString()) }.getOrNull() }
             .associate { p -> p.speciesId to PokemonSummary(p.id, p.speciesId, null, p.name, p.nameFr, p.generation, p.region, p.types, p.statTotal, p.spriteUrl, p.artworkUrl) }
         val info = known + fetched
-        val owned = (s.team + s.box).groupingBy { it.speciesId }.eachCount()
+        val owned = (s.team + s.box + s.training.values.map { it.fighter }).groupingBy { it.speciesId }.eachCount()
         val entries = numbers.map { n ->
             val status = when (n) {
                 in s.caught -> DexStatus.CAUGHT
@@ -279,6 +285,105 @@ class GameService(
             throw BadRequestException("L'équipe doit contenir de 1 à 6 Pokémon que vous possédez")
         }
         s.copy(team = uids.map { all.getValue(it) }, box = all.values.filter { it.uid !in uids })
+    }
+
+    // ---------- Entraînement sur les lieux ----------
+
+    /** Laisse un Pokémon (équipe ou boîte) s'entraîner sur le lieu actuel. */
+    suspend fun leaveTrainee(userId: Int, uid: String): GameView = act(userId) { s ->
+        noBattle(s)
+        checkTrainingPlace(s)
+        if (s.stepIndex in s.training) throw BadRequestException("Un Pokémon s'entraîne déjà ici : échangez-le ou reprenez-le")
+        val f = (s.team + s.box).firstOrNull { it.uid == uid } ?: throw BadRequestException("Pokémon introuvable")
+        if (s.team.size == 1 && s.team.single().uid == uid) throw BadRequestException("Gardez au moins un Pokémon dans l'équipe")
+        s.copy(team = s.team.filter { it.uid != uid }, box = s.box.filter { it.uid != uid }).startTraining(s.stepIndex, f)
+    }
+
+    /** Reprend le Pokémon qui s'entraîne sur le lieu actuel : il rejoint l'équipe (ou la boîte si elle est complète). */
+    suspend fun retrieveTrainee(userId: Int): GameView = act(userId) { s ->
+        noBattle(s)
+        val t = s.training[s.stepIndex] ?: throw BadRequestException("Aucun Pokémon ne s'entraîne ici")
+        val back = s.copy(training = s.training - s.stepIndex)
+        (if (back.team.size < 6) back.copy(team = back.team + t.fighter) else back.copy(box = back.box + t.fighter))
+            .copy(lastEvent = returnMessage(t))
+    }
+
+    /** Échange le Pokémon qui s'entraîne ici contre un autre : chacun prend la place de l'autre. */
+    suspend fun swapTrainee(userId: Int, uid: String): GameView = act(userId) { s ->
+        noBattle(s)
+        val t = s.training[s.stepIndex] ?: throw BadRequestException("Aucun Pokémon ne s'entraîne ici")
+        val f = (s.team + s.box).firstOrNull { it.uid == uid } ?: throw BadRequestException("Pokémon introuvable")
+        // Le Pokémon repris prend la place exacte de celui qui part (position dans l'équipe, ou boîte)
+        s.copy(team = s.team.map { if (it.uid == uid) t.fighter else it }, box = s.box.map { if (it.uid == uid) t.fighter else it })
+            .startTraining(s.stepIndex, f)
+            .let { it.copy(lastEvent = "${returnMessage(t)} ${it.lastEvent}") }
+    }
+
+    private suspend fun checkTrainingPlace(s: GameState) {
+        if (GameRules.STEPS[s.stepIndex].city || pool(s.stepIndex, s.badges.size).isEmpty()) {
+            throw BadRequestException("Aucun Pokémon sauvage ici pour s'entraîner")
+        }
+    }
+
+    private fun GameState.startTraining(step: Int, f: Fighter): GameState {
+        val now = System.currentTimeMillis()
+        return copy(
+            training = training + (step to Trainee(f.healed().leftBattle(), since = now, lastSync = now)),
+            lastEvent = "${f.displayName} s'entraîne ici : un combat contre les Pokémon du lieu toutes les ${GameRules.TRAINING_FIGHT_MS / 1000} secondes.",
+        )
+    }
+
+    private fun returnMessage(t: Trainee) =
+        "${t.fighter.displayName} revient de l'entraînement (${t.fights} combat${if (t.fights > 1) "s" else ""}, +${t.xpGained} points d'expérience)."
+
+    /**
+     * Combats d'entraînement écoulés depuis la dernière mise à jour (un toutes les 10 secondes, même partie
+     * fermée) : adversaire tiré parmi les Pokémon du lieu, expérience d'une victoire, dans la limite de niveau.
+     * Les montées de niveau font apprendre les attaques et évoluer, comme en combat ; le Pokémon reste en forme.
+     */
+    private suspend fun syncTraining(s: GameState, now: Long = System.currentTimeMillis()): GameState {
+        var state = s
+        for ((step, t) in s.training) {
+            val elapsed = ((now - t.lastSync) / GameRules.TRAINING_FIGHT_MS).coerceAtLeast(0)
+            if (elapsed == 0L) continue
+            val synced = t.lastSync + elapsed * GameRules.TRAINING_FIGHT_MS
+            val pool = pool(step, state.badges.size)
+            if (pool.isEmpty()) {
+                state = state.copy(training = state.training + (step to t.copy(lastSync = synced)))
+                continue
+            }
+            val baseExperience = pool.map { it.pokemonId }.distinct()
+                .associateWith { id -> pokemonService.getPokemon(id.toString())?.baseExperience ?: 60 }
+            val cap = GameRules.levelCap(state.badges.size)
+            val before = t.fighter
+            var f = before
+            repeat(elapsed.coerceAtMost(GameRules.TRAINING_MAX_FIGHTS.toLong()).toInt()) {
+                if (f.level >= cap) return@repeat
+                val enemy = weightedPick(pool)
+                val level = random.nextInt(enemy.minLevel, enemy.maxLevel + 1)
+                f = GameRules.gainXp(f, GameRules.xpReward(baseExperience.getValue(enemy.pokemonId), level, gym = false), cap)
+            }
+            val gained = f.xp - before.xp
+            val log = mutableListOf<String>()
+            if (f.level > before.level) {
+                log += "${f.displayName} monte au niveau ${f.level} !"
+                f = learnNewMoves(f, sinceLevel = before.level, state.settings, log)
+            }
+            levelEvolution(f)?.let { target ->
+                val evolved = evolve(f, target)
+                log += "Quoi ? ${f.displayName} évolue en ${evolved.displayName} !"
+                state = state.copy(caught = state.caught + evolved.speciesId)
+                f = learnNewMoves(evolved, sinceLevel = f.level - 1, state.settings, log, evolved = true)
+            }
+            state = state.copy(
+                training = state.training + (step to t.copy(
+                    fighter = f.copy(hp = f.maxHp), lastSync = synced,
+                    fights = (t.fights + elapsed).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+                    xpGained = t.xpGained + gained, log = (t.log + log).takeLast(10),
+                )),
+            )
+        }
+        return state
     }
 
     /** Cherche un Pokémon sauvage à l'étape actuelle. */
@@ -1045,6 +1150,9 @@ class GameService(
             items = items,
             lastEvent = s.lastEvent,
             settings = s.settings,
+            training = s.training.entries.sortedBy { it.key }.map { (step, t) ->
+                TraineeView(step, names[GameRules.STEPS[step].location], t.fighter.toView(), t.since, t.fights, t.xpGained, t.log)
+            },
         )
     }
 
@@ -1061,7 +1169,7 @@ class GameService(
     }
 
     private suspend fun act(userId: Int, change: suspend (GameState) -> GameState): GameView = lock.withLock {
-        val state = loadMigrated(userId) ?: throw NotFoundException("Aucune partie en cours")
+        val state = syncTraining(loadMigrated(userId) ?: throw NotFoundException("Aucune partie en cours"))
         // Le message d'évènement ne vaut que pour l'action qui l'a produit.
         val updated = rememberCleared(unlockAchievements(change(state.copy(lastEvent = null))))
         save(userId, updated)

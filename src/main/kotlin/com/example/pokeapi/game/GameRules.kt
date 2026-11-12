@@ -217,10 +217,18 @@ object GameRules {
     }
 
     /** Expérience gagnée en battant un Pokémon. */
-    fun xpReward(enemy: Fighter, gym: Boolean): Int {
-        val base = enemy.baseExperience * enemy.level / 7.0
+    fun xpReward(enemy: Fighter, gym: Boolean): Int = xpReward(enemy.baseExperience, enemy.level, gym)
+
+    fun xpReward(baseExperience: Int, level: Int, gym: Boolean): Int {
+        val base = baseExperience * level / 7.0
         return max(1, (if (gym) base * 1.5 else base).roundToInt())
     }
+
+    /** Entraînement sur un lieu : un combat simulé toutes les 10 secondes. */
+    const val TRAINING_FIGHT_MS = 10_000L
+
+    /** Combats simulés au plus par mise à jour (environ 11 jours d'absence). */
+    const val TRAINING_MAX_FIGHTS = 100_000
 
     /**
      * Chance qu'un Pokémon sauvage vaincu rejoigne l'équipe : de 15 % (légendaires) à 70 % (Chenipan…),
