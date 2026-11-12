@@ -1,5 +1,8 @@
 package com.example.pokeapi
 
+import com.example.pokeapi.game.DexEntry
+import com.example.pokeapi.game.DexStatus
+import com.example.pokeapi.game.DexView
 import com.example.pokeapi.auth.AuthResponse
 import com.example.pokeapi.auth.UserView
 import com.example.pokeapi.db.UserTable
@@ -800,7 +803,9 @@ class ApplicationTest {
         assertTrue(v.battle!!.log.any { it.endsWith("adverse devient confus !") }, v.battle!!.log.toString())
         assertTrue(v.battle!!.enemy.confused)
         v = game(post("/battle/attack", """{"move":1}"""))
-        assertTrue(v.battle!!.log.takeLast(4).any { it.contains("est déjà confus") || it.contains("n'est plus confus") }, v.battle!!.log.toString())
+        // Lignes depuis la deuxième Onde Folie
+        val afterSecond = v.battle!!.log.drop(v.battle!!.log.indexOfLast { it.endsWith("utilise Onde Folie !") })
+        assertTrue(afterSecond.any { it.contains("est déjà confus") || it.contains("n'est plus confus") }, v.battle!!.log.toString())
         repeat(6) { if (v.battle!!.outcome == null) v = game(post("/battle/attack", """{"move":2}""")) }
         assertTrue(v.battle!!.log.any { it.endsWith("est confus…") }, v.battle!!.log.toString())
         if (v.battle!!.outcome == null) v = game(post("/battle/flee"))
@@ -843,6 +848,35 @@ class ApplicationTest {
         assertTrue(line.startsWith("Bulbizarre : informations") && "détail des attaques" in line && "attaques équipées" in line && "PV" in line, line)
         // Corrigé et enregistré : plus rien à corriger
         assertEquals(emptyList(), game(client.post("/game/verify")).corrections)
+    }
+
+    @Test
+    fun `aventure - motisdex des pokemon vus et rejoints`() = appTest {
+        assertEquals(HttpStatusCode.Unauthorized, anonymous.get("/game/dex").status)
+        assertEquals(HttpStatusCode.NotFound, client.get("/game/dex").status) // pas encore de partie
+        client.post("/game/new") { contentType(ContentType.Application.Json); setBody("""{"starter":"bulbasaur"}""") }
+        var dex = json.decodeFromString<DexView>(client.get("/game/dex").bodyAsText())
+        assertEquals(151, dex.entries.size)
+        assertEquals(1, dex.caught)
+        assertEquals(1, dex.seen)
+        val bulbasaur = dex.entries.first()
+        assertEquals(DexStatus.CAUGHT, bulbasaur.status)
+        assertEquals("Bulbizarre", bulbasaur.name)
+        assertEquals(1, bulbasaur.owned)
+        // Espèce jamais rencontrée : rien n'est révélé
+        val ivysaur = dex.entries[1]
+        assertEquals(DexEntry(2, DexStatus.UNKNOWN), ivysaur)
+
+        // Rencontre sur la Route 1 (Bulbizarre dans les données simulées), puis Herbizarre « vu » dans la sauvegarde
+        client.post("/game/travel") { contentType(ContentType.Application.Json); setBody("""{"step":1}""") }
+        client.post("/game/explore")
+        editSave { save -> JsonObject(save + ("seen" to json.parseToJsonElement("[1, 2]"))) }
+        dex = json.decodeFromString<DexView>(client.get("/game/dex").bodyAsText())
+        assertEquals(DexStatus.SEEN, dex.entries[1].status)
+        assertEquals("Herbizarre", dex.entries[1].name)
+        assertEquals(0, dex.entries[1].owned)
+        assertEquals(2, dex.seen)
+        assertEquals(1, dex.caught)
     }
 
     @Test

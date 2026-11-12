@@ -49,6 +49,8 @@ fun Route.gameRoutes(service: GameService, auth: AuthService) {
             call.respond(HttpStatusCode.NoContent)
         }
 
+        // Motisdex : espèces de Kanto vues et rejointes
+        get("/dex") { call.respond(service.dex(call.user())) }
         // Vérifie (et corrige) les Pokémon de la partie d'après les données en base : à l'ouverture de la page
         post("/verify") { call.respond(service.verify(call.user())) }
         post("/travel") { call.respond(service.travel(call.user(), call.receive<TravelRequest>().step)) }

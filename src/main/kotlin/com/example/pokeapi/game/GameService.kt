@@ -6,6 +6,7 @@ import com.example.pokeapi.db.GameSaveTable
 import com.example.pokeapi.model.EvolutionNode
 import com.example.pokeapi.model.LearnedMove
 import com.example.pokeapi.model.PokemonQuery
+import com.example.pokeapi.model.PokemonSummary
 import com.example.pokeapi.repository.PokemonRepository
 import com.example.pokeapi.service.EvolutionService
 import com.example.pokeapi.service.LocationService
@@ -141,6 +142,41 @@ class GameService(
         val checked = s.copy(team = s.team.map { check(it) }, box = s.box.map { check(it) })
         if (checked != s) save(userId, checked)
         toView(userId, checked).copy(corrections = corrections)
+    }
+
+    /**
+     * Motisdex de la partie : les espèces de Kanto vues en combat et celles qui ont rejoint l'équipe
+     * (recrues, starter, évolutions).
+     */
+    suspend fun dex(userId: Int): DexView = lock.withLock {
+        val s = loadMigrated(userId) ?: throw NotFoundException("Aucune partie en cours")
+        val numbers = 1..GameRules.DEX_SIZE
+        val known = pokemonRepository.summaries(numbers.toList()).filter { it.regionalForm == null }.associateBy { it.speciesId }
+        // Espèce vue ou obtenue mais absente de la base : récupérée (PokéAPI) pour afficher son nom et son image.
+        val fetched = (s.seen + s.caught).filter { it in numbers && it !in known }
+            .mapNotNull { n -> runCatching { pokemonService.getPokemon(n.toString()) }.getOrNull() }
+            .associate { p -> p.speciesId to PokemonSummary(p.id, p.speciesId, null, p.name, p.nameFr, p.generation, p.region, p.types, p.statTotal, p.spriteUrl, p.artworkUrl) }
+        val info = known + fetched
+        val owned = (s.team + s.box).groupingBy { it.speciesId }.eachCount()
+        val entries = numbers.map { n ->
+            val status = when (n) {
+                in s.caught -> DexStatus.CAUGHT
+                in s.seen -> DexStatus.SEEN
+                else -> DexStatus.UNKNOWN
+            }
+            val p = info[n]
+            if (status == DexStatus.UNKNOWN || p == null) DexEntry(n, status)
+            else DexEntry(
+                number = n, status = status, name = p.nameFr ?: p.name.replaceFirstChar(Char::uppercase), types = p.types,
+                spriteUrl = p.spriteUrl, artworkUrl = p.artworkUrl, owned = owned[n] ?: 0,
+            )
+        }
+        DexView(
+            total = GameRules.DEX_SIZE,
+            seen = entries.count { it.status != DexStatus.UNKNOWN },
+            caught = entries.count { it.status == DexStatus.CAUGHT },
+            entries = entries,
+        )
     }
 
     suspend fun newGame(userId: Int, starter: String): GameView = lock.withLock {
@@ -922,7 +958,8 @@ class GameService(
             badges = s.badges.size,
             levelCap = GameRules.levelCap(s.badges.size),
             caught = s.caught.count { it <= GameRules.DEX_SIZE },
-            seen = s.seen.count { it <= GameRules.DEX_SIZE },
+            // Une espèce obtenue (évolution…) compte aussi comme vue
+            seen = (s.seen + s.caught).count { it <= GameRules.DEX_SIZE },
             steps = steps,
             team = s.team.map { it.toView() },
             box = s.box.map { it.toView() },

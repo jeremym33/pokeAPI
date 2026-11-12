@@ -33,6 +33,30 @@ data class FighterView(
 @Serializable
 data class ItemView(val item: String, val name: String, val count: Int, val usableOn: List<String>)
 
+/** État d'une espèce dans le Motisdex de la partie. */
+@Serializable
+enum class DexStatus { UNKNOWN, SEEN, CAUGHT }
+
+/**
+ * Entrée du Motisdex : une espèce de Kanto. Une espèce jamais rencontrée ne révèle rien (ni nom, ni image),
+ * comme dans les jeux.
+ */
+@Serializable
+data class DexEntry(
+    /** Numéro du Pokédex national. */
+    val number: Int,
+    val status: DexStatus,
+    val name: String? = null,
+    val types: List<String> = emptyList(),
+    val spriteUrl: String? = null,
+    val artworkUrl: String? = null,
+    /** Nombre de Pokémon de cette espèce dans l'équipe et la boîte. */
+    val owned: Int = 0,
+)
+
+@Serializable
+data class DexView(val total: Int, val seen: Int, val caught: Int, val entries: List<DexEntry>)
+
 @Serializable
 data class GymView(val number: Int, val type: String?, val badge: Boolean)
 

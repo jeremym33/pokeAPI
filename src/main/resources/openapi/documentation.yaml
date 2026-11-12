@@ -310,6 +310,38 @@ paths:
               schema: { $ref: "#/components/schemas/GameView" }
         "400": { $ref: "#/components/responses/BadRequest" }
 
+  /game/dex:
+    get:
+      tags: [Aventure]
+      security: [{ bearerAuth: [] }]
+      summary: Motisdex de la partie (Pokémon de Kanto vus et rejoints)
+      description: Les 151 espèces de Kanto ; une espèce jamais rencontrée ne révèle ni nom ni image.
+      responses:
+        "200":
+          description: Motisdex
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total: { type: integer, example: 151 }
+                  seen: { type: integer, description: Espèces vues (rejointes comprises) }
+                  caught: { type: integer, description: Espèces qui ont rejoint l'équipe }
+                  entries:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        number: { type: integer, example: 25 }
+                        status: { type: string, enum: [UNKNOWN, SEEN, CAUGHT] }
+                        name: { type: string, nullable: true, example: Pikachu }
+                        types: { type: array, items: { type: string } }
+                        spriteUrl: { type: string, nullable: true }
+                        artworkUrl: { type: string, nullable: true }
+                        owned: { type: integer, description: Nombre dans l'équipe et la boîte }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Aucune partie en cours }
+
   /game/verify:
     post:
       tags: [Aventure]
