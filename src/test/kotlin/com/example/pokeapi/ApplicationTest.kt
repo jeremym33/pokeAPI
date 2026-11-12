@@ -40,6 +40,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
@@ -542,6 +543,50 @@ class ApplicationTest {
 
         assertEquals(HttpStatusCode.NoContent, client.delete("/game").status)
         assertEquals(false, game(client.get("/game")).started)
+    }
+
+    @Test
+    fun `aventure - nouvelle attaque apprise des la montee de niveau, en plein combat`() = appTest {
+        suspend fun game(response: HttpResponse): GameView {
+            assertTrue(response.status.isSuccess(), response.bodyAsText())
+            return json.decodeFromString<GameView>(response.bodyAsText())
+        }
+        suspend fun post(path: String, body: String? = null) = client.post("/game$path") {
+            if (body != null) { contentType(ContentType.Application.Json); setBody(body) }
+        }
+        game(post("/new", """{"starter":"bulbasaur"}"""))
+        // Bulbizarre niveau 2, juste avant le niveau 3 où il apprend Fouet Lianes (données simulées), et ne connaissant que Charge
+        editSave { save ->
+            val team = save["team"]!!.jsonArray
+            val moves = team[0].jsonObject["moves"]!!.jsonArray.filter { it.jsonObject["name"]!!.jsonPrimitive.content == "tackle" }
+            val first = JsonObject(team[0].jsonObject + mapOf("level" to JsonPrimitive(2), "xp" to JsonPrimitive(26), "moves" to JsonArray(moves)))
+            JsonObject(save + ("team" to JsonArray(listOf(first))))
+        }
+        var v = game(post("/travel", """{"step":1}"""))
+        assertEquals(listOf("Charge"), v.team[0].moves.map { it.nameFr })
+
+        var learned = false
+        repeat(20) {
+            if (learned) return@repeat
+            // Après une défaite, on est ramené (soigné) au Centre Pokémon de Bourg Palette
+            if (v.currentStep != 1) v = game(post("/travel", """{"step":1}"""))
+            v = game(post("/explore"))
+            while (v.battle!!.outcome == null && !learned) {
+                v = game(post("/battle/attack", """{"move":0}"""))
+                if (v.battle!!.log.any { it == "Bulbizarre apprend Fouet Lianes !" }) {
+                    learned = true
+                    // Attaque disponible tout de suite, avant la fin du combat
+                    assertTrue(v.battle!!.active.moves.any { it.name == "vine-whip" })
+                }
+            }
+            if (v.battle != null) {
+                while (v.battle!!.outcome == null) v = game(post("/battle/attack", """{"move":0}"""))
+                if (v.battle!!.recruit != null) v = game(post("/battle/recruit", """{"accept":false}"""))
+                v = game(post("/battle/close"))
+            }
+        }
+        assertTrue(learned, "Fouet Lianes jamais appris")
+        assertTrue(v.team[0].moves.any { it.name == "vine-whip" })
     }
 
     @Test

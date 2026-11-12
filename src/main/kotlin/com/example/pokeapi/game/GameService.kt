@@ -328,12 +328,13 @@ class GameService(
         if (player.fainted) {
             log += "${player.displayName} est K.O. !"
             if (state.team.any { !it.fainted }) return state.copy(battle = b.copy(mustSwitch = true))
-            return defeat(state, log)
+            return defeat(evolveTeam(state, log), log)
         }
         return state
     }
 
-    private fun shareXp(s: GameState, enemy: Fighter, log: MutableList<String>): GameState {
+    /** Expérience pour les Pokémon qui ont combattu ; une montée de niveau fait apprendre aussitôt les nouvelles attaques. */
+    private suspend fun shareXp(s: GameState, enemy: Fighter, log: MutableList<String>): GameState {
         val b = s.battle!!
         val cap = GameRules.levelCap(s.badges.size)
         val gain = GameRules.xpReward(enemy, b.kind == BattleKind.GYM)
@@ -345,8 +346,9 @@ class GameService(
             }
             val after = GameRules.gainXp(f, gain, cap)
             log += "${f.displayName} gagne $gain points d'expérience."
-            if (after.level > f.level) log += "${f.displayName} monte au niveau ${after.level} !"
-            after
+            if (after.level == f.level) return@map after
+            log += "${f.displayName} monte au niveau ${after.level} !"
+            learnMoves(f, after.copy(moves = battleMoves(after.pokemonId, after.level)), log)
         }
         return s.copy(team = team)
     }
@@ -376,7 +378,7 @@ class GameService(
             log += "Le champion vous remet : ${reward.nameFr} !"
             state = state.copy(badges = state.badges + b.step).withItem(reward)
         }
-        state = evolveAndLearn(state, log)
+        state = evolveTeam(state, log)
         return state.copy(battle = state.battle!!.copy(outcome = BattleOutcome.WON))
     }
 
@@ -389,25 +391,30 @@ class GameService(
         )
     }
 
-    /** Après une victoire : évolutions par niveau et nouvelles attaques. */
-    private suspend fun evolveAndLearn(s: GameState, log: MutableList<String>): GameState {
+    /**
+     * À la fin d'un combat (gagné ou perdu) : évolutions par niveau, comme dans les jeux, et rattrapage des
+     * attaques d'un Pokémon qui ne correspondraient plus à son niveau (parties sauvegardées avant ce correctif).
+     */
+    private suspend fun evolveTeam(s: GameState, log: MutableList<String>): GameState {
         var caught = s.caught
         val team = s.team.map { f ->
-            val target = levelEvolution(f)
-            val updated = if (target != null) {
-                val evolved = evolve(f, target)
-                log += "Quoi ? ${f.displayName} évolue en ${evolved.displayName} !"
-                caught = caught + evolved.speciesId
-                evolved
-            } else {
-                f.copy(moves = battleMoves(f.pokemonId, f.level))
-            }
-            updated.moves.filter { m -> m.name !in f.moves.map { it.name } }.forEach { m ->
-                log += "${updated.displayName} apprend ${m.nameFr ?: m.name} !"
-            }
-            updated
+            val target = levelEvolution(f) ?: return@map learnMoves(f, f.copy(moves = battleMoves(f.pokemonId, f.level)), log)
+            val evolved = evolve(f, target)
+            log += "Quoi ? ${f.displayName} évolue en ${evolved.displayName} !"
+            caught = caught + evolved.speciesId
+            learnMoves(f, evolved, log)
         }
         return s.copy(team = team, caught = caught)
+    }
+
+    /** Annonce les attaques que le Pokémon vient d'apprendre (les 4 plus récentes sont gardées). */
+    private fun learnMoves(before: Fighter, after: Fighter, log: MutableList<String>): Fighter {
+        val known = before.moves.map { it.name }.toSet()
+        after.moves.filter { it.name !in known }.forEach { m -> log += "${after.displayName} apprend ${m.nameFr ?: m.name} !" }
+        before.moves.filter { m -> after.moves.none { it.name == m.name } }.forEach { m ->
+            log += "${after.displayName} oublie ${m.nameFr ?: m.name}."
+        }
+        return after
     }
 
     /** Le Pokémon évolue : même niveau, expérience, statut et proportion de PV. */
