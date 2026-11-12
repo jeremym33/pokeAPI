@@ -117,4 +117,9 @@ data class GameView(
     val settings: GameSettings = GameSettings(),
     /** Corrections faites par la vérification (POST /game/verify), vide sinon. */
     val corrections: List<String> = emptyList(),
+    /** Succès débloqués par l'action qui renvoie cette vue (pour la notification), vide sinon. */
+    val unlocked: List<UnlockedAchievement> = emptyList(),
 )
+
+@Serializable
+data class UnlockedAchievement(val id: String, val name: String, val rewards: List<String>)

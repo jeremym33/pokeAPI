@@ -1,5 +1,6 @@
 package com.example.pokeapi
 
+import com.example.pokeapi.game.UnlockedAchievement
 import com.example.pokeapi.game.Achievements
 import com.example.pokeapi.game.AchievementsView
 import com.example.pokeapi.game.DexEntry
@@ -909,6 +910,9 @@ class ApplicationTest {
         assertTrue(v.battle!!.log.contains("Succès débloqué : Premier combat ! Vous recevez : Pierre Plante."), v.battle!!.log.toString())
         assertTrue(v.battle!!.log.none { "laisse tomber" in it })
         assertEquals(listOf("leaf-stone" to 1), v.items.map { it.item to it.count })
+        // Notification : signalée par la réponse de l'action, pas par les lectures suivantes
+        assertEquals(listOf(UnlockedAchievement("wins-1", "Premier combat", listOf("Pierre Plante"))), v.unlocked)
+        assertEquals(emptyList(), json.decodeFromString<GameView>(client.get("/game").bodyAsText()).unlocked)
         list = json.decodeFromString<AchievementsView>(client.get("/game/achievements").bodyAsText())
         assertEquals(listOf("wins-1"), list.achievements.filter { it.done }.map { it.id })
         assertEquals(1, list.achievements.single { it.id == "wins-10" }.progress)

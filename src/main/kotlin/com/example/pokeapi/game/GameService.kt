@@ -1017,7 +1017,10 @@ class GameService(
         // Le message d'évènement ne vaut que pour l'action qui l'a produit.
         val updated = unlockAchievements(change(state.copy(lastEvent = null)))
         save(userId, updated)
-        toView(userId, updated)
+        // Succès débloqués par cette action : seule sa réponse les signale (notification affichée une fois).
+        val unlocked = Achievements.ALL.filter { it.id in updated.achievements && it.id !in state.achievements }
+            .map { UnlockedAchievement(it.id, it.name, Achievements.rewardNames(it)) }
+        toView(userId, updated).copy(unlocked = unlocked)
     }
 
     private fun noBattle(s: GameState) {
