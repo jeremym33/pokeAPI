@@ -18,6 +18,8 @@ data class FighterView(
     val xpInLevel: Int,
     val xpToNext: Int,
     val moves: List<FighterMove>,
+    /** Attaques apprises non équipées. */
+    val knownMoves: List<FighterMove>,
     val fainted: Boolean,
     /** burn, poison, paralysis, sleep, freeze */
     val status: String?,

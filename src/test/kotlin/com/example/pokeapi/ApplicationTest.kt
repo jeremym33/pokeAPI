@@ -561,7 +561,7 @@ class ApplicationTest {
         editSave { save ->
             val team = save["team"]!!.jsonArray
             val moves = team[0].jsonObject["moves"]!!.jsonArray.filter { it.jsonObject["name"]!!.jsonPrimitive.content == "tackle" }
-            val first = JsonObject(team[0].jsonObject + mapOf("level" to JsonPrimitive(2), "xp" to JsonPrimitive(26), "moves" to JsonArray(moves)))
+            val first = JsonObject(team[0].jsonObject + mapOf("level" to JsonPrimitive(2), "xp" to JsonPrimitive(26), "moves" to JsonArray(moves), "knownMoves" to JsonArray(moves)))
             JsonObject(save + ("team" to JsonArray(listOf(first))))
         }
         var v = game(post("/travel", """{"step":1}"""))
@@ -589,6 +589,52 @@ class ApplicationTest {
         }
         assertTrue(learned, "Fouet Lianes jamais appris")
         assertTrue(v.team[0].moves.any { it.name == "vine-whip" })
+    }
+
+    @Test
+    fun `aventure - attaques equipees et connues`() = appTest {
+        suspend fun game(response: HttpResponse): GameView {
+            assertTrue(response.status.isSuccess(), response.bodyAsText())
+            return json.decodeFromString<GameView>(response.bodyAsText())
+        }
+        suspend fun setMoves(vararg names: String) = client.put("/game/pokemon/p1/moves") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"moves":[${names.joinToString { "\"$it\"" }}]}""")
+        }
+        client.post("/game/new") { contentType(ContentType.Application.Json); setBody("""{"starter":"bulbasaur"}""") }
+        // Partie d'une version précédente : pas de liste d'attaques connues, elle est reconstituée
+        editSave { save ->
+            val team = save["team"]!!.jsonArray
+            JsonObject(save + ("team" to JsonArray(listOf(JsonObject(team[0].jsonObject - "knownMoves")))))
+        }
+        var v = game(client.get("/game"))
+        assertEquals(listOf("vine-whip", "tackle"), v.team[0].moves.map { it.name })
+        assertEquals(emptyList(), v.team[0].knownMoves)
+
+        // Une seule attaque équipée : l'autre reste connue
+        v = game(setMoves("vine-whip"))
+        assertEquals(listOf("vine-whip"), v.team[0].moves.map { it.name })
+        assertEquals(listOf("tackle"), v.team[0].knownMoves.map { it.name })
+        assertEquals(3, v.team[0].moves[0].level)
+
+        // On la rééquipe, dans l'ordre choisi
+        v = game(setMoves("tackle", "vine-whip"))
+        assertEquals(listOf("tackle", "vine-whip"), v.team[0].moves.map { it.name })
+        assertEquals(emptyList(), v.team[0].knownMoves)
+
+        assertEquals(HttpStatusCode.BadRequest, setMoves().status)
+        assertEquals(HttpStatusCode.BadRequest, setMoves("tackle", "tackle").status)
+        val unknown = setMoves("razor-leaf")
+        assertEquals(HttpStatusCode.BadRequest, unknown.status)
+        assertTrue(unknown.bodyAsText().contains("ne connaît pas"), unknown.bodyAsText())
+        assertEquals(HttpStatusCode.BadRequest, client.put("/game/pokemon/p99/moves") {
+            contentType(ContentType.Application.Json); setBody("""{"moves":["tackle"]}""")
+        }.status)
+
+        // Pas pendant un combat
+        client.post("/game/travel") { contentType(ContentType.Application.Json); setBody("""{"step":1}""") }
+        client.post("/game/explore")
+        assertEquals(HttpStatusCode.BadRequest, setMoves("tackle").status)
     }
 
     @Test

@@ -25,6 +25,9 @@ data class SwitchRequest(val uid: String)
 data class TeamRequest(val uids: List<String>)
 
 @Serializable
+data class MovesRequest(val moves: List<String>)
+
+@Serializable
 data class RecruitRequest(val accept: Boolean)
 
 @Serializable
@@ -48,6 +51,9 @@ fun Route.gameRoutes(service: GameService) {
         post("/explore") { call.respond(service.explore()) }
         post("/gym") { call.respond(service.challengeGym()) }
         put("/settings") { call.respond(service.updateSettings(call.receive<GameSettings>())) }
+        put("/pokemon/{uid}/moves") {
+            call.respond(service.setMoves(call.parameters["uid"]!!, call.receive<MovesRequest>().moves))
+        }
         put("/team") { call.respond(service.setTeam(call.receive<TeamRequest>().uids)) }
         post("/items/use") {
             val request = call.receive<UseItemRequest>()

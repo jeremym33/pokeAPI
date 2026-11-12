@@ -62,7 +62,7 @@ class GameService(
 
     // ---------- Actions ----------
 
-    suspend fun view(): GameView = lock.withLock { load()?.let { toView(it) } ?: GameView(started = false) }
+    suspend fun view(): GameView = lock.withLock { loadMigrated()?.let { toView(it) } ?: GameView(started = false) }
 
     suspend fun newGame(starter: String): GameView = lock.withLock {
         if (starter !in GameRules.STARTERS) throw BadRequestException("Starter inconnu : '$starter' (${GameRules.STARTERS.joinToString()})")
@@ -136,6 +136,21 @@ class GameService(
         if (b.outcome == null) throw BadRequestException("Le combat n'est pas terminé")
         if (b.recruit != null) throw BadRequestException("Décidez d'abord si ${b.recruit.displayName} vous rejoint")
         startWildBattle(s.copy(battle = null))
+    }
+
+    /** Choisit les attaques équipées (1 à 4, dans l'ordre donné) parmi celles que le Pokémon connaît. */
+    suspend fun setMoves(uid: String, names: List<String>): GameView = act { s ->
+        noBattle(s)
+        val f = (s.team + s.box).firstOrNull { it.uid == uid } ?: throw BadRequestException("Pokémon introuvable")
+        val known = f.allMoves.associateBy { it.name }
+        if (names.isEmpty() || names.size > 4 || names.distinct().size != names.size) {
+            throw BadRequestException("Choisissez de 1 à 4 attaques différentes")
+        }
+        names.firstOrNull { it !in known }?.let { throw BadRequestException("${f.displayName} ne connaît pas l'attaque '$it'") }
+        val moves = names.map { known.getValue(it) }
+        if (moves.all { it.damageClass == "status" }) throw BadRequestException("Gardez au moins une attaque offensive")
+        val updated = f.copy(moves = moves, knownMoves = f.allMoves)
+        s.copy(team = s.team.replaceUid(updated), box = s.box.replaceUid(updated))
     }
 
     suspend fun updateSettings(settings: GameSettings): GameView = act { s -> s.copy(settings = settings) }
@@ -362,7 +377,7 @@ class GameService(
             log += "${f.displayName} gagne $gain points d'expérience."
             if (after.level == f.level) return@map after
             log += "${f.displayName} monte au niveau ${after.level} !"
-            learnMoves(f, after.copy(moves = battleMoves(after.pokemonId, after.level)), log)
+            learnNewMoves(after, sinceLevel = f.level, s.settings, log)
         }
         return s.copy(team = team)
     }
@@ -410,29 +425,50 @@ class GameService(
     }
 
     /**
-     * À la fin d'un combat (gagné ou perdu) : évolutions par niveau, comme dans les jeux, et rattrapage des
-     * attaques d'un Pokémon qui ne correspondraient plus à son niveau (parties sauvegardées avant ce correctif).
+     * À la fin d'un combat (gagné ou perdu) : évolutions par niveau, comme dans les jeux.
      */
     private suspend fun evolveTeam(s: GameState, log: MutableList<String>): GameState {
         var caught = s.caught
         val team = s.team.map { f ->
-            val target = levelEvolution(f) ?: return@map learnMoves(f, f.copy(moves = battleMoves(f.pokemonId, f.level)), log)
+            val target = levelEvolution(f) ?: return@map f
             val evolved = evolve(f, target)
             log += "Quoi ? ${f.displayName} évolue en ${evolved.displayName} !"
             caught = caught + evolved.speciesId
-            learnMoves(f, evolved, log)
+            learnNewMoves(evolved, sinceLevel = f.level - 1, s.settings, log)
         }
         return s.copy(team = team, caught = caught)
     }
 
-    /** Annonce les attaques que le Pokémon vient d'apprendre (les 4 plus récentes sont gardées). */
-    private fun learnMoves(before: Fighter, after: Fighter, log: MutableList<String>): Fighter {
-        val known = before.moves.map { it.name }.toSet()
-        after.moves.filter { it.name !in known }.forEach { m -> log += "${after.displayName} apprend ${m.nameFr ?: m.name} !" }
-        before.moves.filter { m -> after.moves.none { it.name == m.name } }.forEach { m ->
-            log += "${after.displayName} oublie ${m.nameFr ?: m.name}."
+    /**
+     * Ajoute aux attaques connues celles que le Pokémon peut maintenant utiliser. Les attaques des niveaux
+     * au-delà de [sinceLevel] sont annoncées : équipées s'il reste une place, sinon elles remplacent la plus
+     * ancienne (réglage [GameSettings.autoReplaceMoves]) ou attendent que le joueur les équipe. Les autres
+     * (attaques d'une nouvelle forme après évolution) rejoignent les attaques connues sans être équipées.
+     */
+    private suspend fun learnNewMoves(f: Fighter, sinceLevel: Int, settings: GameSettings, log: MutableList<String>): Fighter {
+        val known = f.allMoves
+        val fresh = learnableMoves(f.pokemonId, f.level).filter { m -> known.none { it.name == m.name } }
+        if (fresh.isEmpty()) return f
+        var moves = f.moves
+        fresh.filter { (it.level ?: 0) > sinceLevel }.sortedBy { it.level ?: 0 }.forEach { m ->
+            val name = m.nameFr ?: m.name
+            if (moves.size < 4) {
+                moves = moves + m
+                log += "${f.displayName} apprend $name !"
+                return@forEach
+            }
+            // La plus ancienne attaque dont le remplacement laisse au moins une attaque offensive.
+            val replaced = if (!settings.autoReplaceMoves) null else moves.indices.sortedBy { moves[it].level ?: 0 }.firstOrNull { i ->
+                moves.filterIndexed { j, _ -> j != i }.plus(m).any { it.damageClass != "status" }
+            }
+            if (replaced == null) {
+                log += "${f.displayName} peut apprendre $name : équipez-la depuis « Gérer l'équipe »."
+            } else {
+                log += "${f.displayName} oublie ${moves[replaced].nameFr ?: moves[replaced].name} et apprend $name !"
+                moves = moves.mapIndexed { i, x -> if (i == replaced) m else x }
+            }
         }
-        return after
+        return f.copy(moves = moves, knownMoves = known + fresh)
     }
 
     /** Le Pokémon évolue : même niveau, expérience, statut et proportion de PV. */
@@ -443,6 +479,9 @@ class GameService(
             hp = (evolved.maxHp * f.hp.toDouble() / f.maxHp).roundToInt().coerceIn(if (f.fainted) 0 else 1, evolved.maxHp),
             status = f.status,
             sleepTurns = f.sleepTurns,
+            // Les attaques choisies sont conservées ; celles de la nouvelle forme s'y ajoutent (learnNewMoves).
+            moves = f.moves,
+            knownMoves = f.allMoves,
         )
     }
 
@@ -493,30 +532,33 @@ class GameService(
             uid = uid, pokemonId = p.id, speciesId = p.speciesId, name = p.name, nameFr = p.nameFr,
             spriteUrl = p.spriteUrl, artworkUrl = p.artworkUrl, types = p.types, level = level,
             xp = GameRules.xpForLevel(level), hp = 1, base = p.stats, baseExperience = p.baseExperience ?: 60,
-            captureRate = captureRate, moves = battleMoves(p.id, level), defenses = defenses,
+            captureRate = captureRate, moves = emptyList(), defenses = defenses,
         )
-        return fighter.copy(hp = fighter.maxHp)
+        val learnable = learnableMoves(p.id, level)
+        return fighter.copy(hp = fighter.maxHp, moves = defaultMoves(learnable), knownMoves = learnable)
     }
 
     /**
-     * Les 4 attaques apprises par niveau les plus récentes : offensives, ou de statut infligeant un statut géré
-     * (Cage Éclair, Poudre Dodo…). Au moins une attaque offensive (Charge à défaut).
+     * Attaques apprises par niveau jusqu'à [level] et utilisables en combat, de la plus récente à la plus
+     * ancienne : offensives, ou de statut infligeant un statut géré (Cage Éclair, Poudre Dodo…).
      */
-    private suspend fun battleMoves(pokemonId: Int, level: Int): List<FighterMove> {
-        val learned = moveService.moves(pokemonId.toString())?.moves.orEmpty()
+    private suspend fun learnableMoves(pokemonId: Int, level: Int): List<FighterMove> =
+        moveService.moves(pokemonId.toString())?.moves.orEmpty()
             .filter { it.method == "level-up" && (it.level ?: 0) <= level }
             .sortedByDescending { it.level ?: 0 }
             .distinctBy { it.name }
-        fun toMove(m: com.example.pokeapi.model.LearnedMove) =
-            FighterMove(m.name, m.nameFr, m.type ?: "normal", m.damageClass!!, m.power ?: 0, m.accuracy, m.priority, m.ailment, m.ailmentChance)
-        val damaging = learned.filter { (it.power ?: 0) > 0 && it.damageClass in setOf("physical", "special") }
-        val status = learned.filter { it.damageClass == "status" && it.ailment in GameRules.STATUSES }
-        val chosen = learned.filter { it in damaging || it in status }.take(4)
-        val moves = if (chosen.none { it in damaging }) {
-            chosen.take(3) + (damaging.firstOrNull()?.let { listOf(it) } ?: emptyList())
-        } else chosen
-        val result = moves.map(::toMove)
-        return if (result.none { it.damageClass != "status" }) result.take(3) + TACKLE else result
+            .filter {
+                ((it.power ?: 0) > 0 && it.damageClass in setOf("physical", "special")) ||
+                    (it.damageClass == "status" && it.ailment in GameRules.STATUSES)
+            }
+            .map { FighterMove(it.name, it.nameFr, it.type ?: "normal", it.damageClass!!, it.power ?: 0, it.accuracy, it.priority, it.ailment, it.ailmentChance, it.level) }
+
+    /** Attaques équipées par défaut : les 4 plus récentes, dont au moins une offensive (Charge à défaut). */
+    private fun defaultMoves(learnable: List<FighterMove>): List<FighterMove> {
+        val damaging = learnable.filter { it.damageClass != "status" }
+        val chosen = learnable.take(4)
+        val moves = if (chosen.none { it in damaging }) chosen.take(3) + listOfNotNull(damaging.firstOrNull()) else chosen
+        return if (moves.none { it.damageClass != "status" }) moves.take(3) + TACKLE else moves
     }
 
     /**
@@ -670,13 +712,14 @@ class GameService(
         val start = GameRules.xpForLevel(level)
         return FighterView(
             uid, pokemonId, speciesId, displayName, spriteUrl, artworkUrl, types, level, hp, maxHp,
-            xpInLevel = xp - start, xpToNext = GameRules.xpForLevel(level + 1) - start, moves = moves, fainted = fainted,
+            xpInLevel = xp - start, xpToNext = GameRules.xpForLevel(level + 1) - start, moves = moves,
+            knownMoves = allMoves.filter { m -> moves.none { it.name == m.name } }, fainted = fainted,
             status = status,
         )
     }
 
     private suspend fun act(change: suspend (GameState) -> GameState): GameView = lock.withLock {
-        val state = load() ?: throw NotFoundException("Aucune partie en cours")
+        val state = loadMigrated() ?: throw NotFoundException("Aucune partie en cours")
         // Le message d'évènement ne vaut que pour l'action qui l'a produit.
         val updated = change(state.copy(lastEvent = null))
         save(updated)
@@ -704,6 +747,18 @@ class GameService(
 
     private fun List<Fighter>.replaceAt(index: Int, f: Fighter) = mapIndexed { i, x -> if (i == index) f else x }
     private fun List<Fighter>.replaceUid(f: Fighter) = map { if (it.uid == f.uid) f else it }
+
+    /**
+     * Partie sauvegardée, complétée pour les versions précédentes : les Pokémon sans liste d'attaques connues
+     * reçoivent celles de leur niveau (les attaques équipées ne changent pas).
+     */
+    private suspend fun loadMigrated(): GameState? {
+        val s = load() ?: return null
+        if ((s.team + s.box).all { it.knownMoves.isNotEmpty() }) return s
+        suspend fun migrate(f: Fighter) =
+            if (f.knownMoves.isNotEmpty()) f else f.copy(knownMoves = (f.moves + learnableMoves(f.pokemonId, f.level)).distinctBy { it.name })
+        return s.copy(team = s.team.map { migrate(it) }, box = s.box.map { migrate(it) }).also { save(it) }
+    }
 
     private suspend fun load(): GameState? = newSuspendedTransaction(Dispatchers.IO, database) {
         GameSaveTable.selectAll().where { GameSaveTable.id eq 1 }.singleOrNull()

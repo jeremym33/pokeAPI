@@ -19,6 +19,8 @@ data class FighterMove(
     val ailment: String? = null,
     /** Chance d'infliger le statut (%) ; une attaque de statut l'inflige toujours si elle touche. */
     val ailmentChance: Int = 0,
+    /** Niveau auquel l'attaque est apprise (null : attaque de secours). */
+    val level: Int? = null,
 )
 
 /** Pokémon de l'équipe, de la boîte ou adversaire. */
@@ -40,7 +42,10 @@ data class Fighter(
     val base: Map<String, Int>,
     val baseExperience: Int,
     val captureRate: Int,
+    /** Attaques équipées (4 au plus), utilisées en combat. */
     val moves: List<FighterMove>,
+    /** Toutes les attaques apprises, équipées ou non (le joueur choisit lesquelles équiper). */
+    val knownMoves: List<FighterMove> = emptyList(),
     /** Multiplicateur de dégâts reçus par type attaquant. */
     val defenses: Map<String, Double>,
     /** Statut (burn, poison, paralysis, sleep, freeze), conservé jusqu'au Centre Pokémon. */
@@ -51,6 +56,8 @@ data class Fighter(
     val displayName: String get() = nameFr ?: name.replaceFirstChar(Char::uppercase)
     val maxHp: Int get() = GameRules.stats(this).hp
     val fainted: Boolean get() = hp <= 0
+    /** Attaques équipées et connues, sans doublon. */
+    val allMoves: List<FighterMove> get() = (moves + knownMoves).distinctBy { it.name }
 }
 
 @Serializable
@@ -85,6 +92,8 @@ data class GameSettings(
     val nextEncounterButton: Boolean = true,
     /** Ne proposer de rejoindre l'équipe qu'aux espèces pas encore obtenues. */
     val recruitOnlyNew: Boolean = false,
+    /** Avec 4 attaques équipées, une nouvelle attaque remplace la plus ancienne ; sinon elle rejoint les attaques connues. */
+    val autoReplaceMoves: Boolean = true,
 )
 
 /** Sauvegarde de la partie. */
