@@ -671,6 +671,87 @@ class ApplicationTest {
     }
 
     @Test
+    fun `aventure - confusion et peur`() = appTest {
+        suspend fun game(response: HttpResponse): GameView {
+            assertTrue(response.status.isSuccess(), response.bodyAsText())
+            return json.decodeFromString<GameView>(response.bodyAsText())
+        }
+        suspend fun post(path: String, body: String? = null) = client.post("/game$path") {
+            if (body != null) { contentType(ContentType.Application.Json); setBody(body) }
+        }
+        game(post("/new", """{"starter":"bulbasaur"}"""))
+        val confuseRay = """{"name":"confuse-ray","nameFr":"Onde Folie","type":"ghost","damageClass":"status","power":0,"accuracy":null,"ailment":"confusion"}"""
+        // Morsure qui apeure presque toujours, et Bluff (100 % : premier tour seulement) ; dégâts minimes pour durer
+        val bite = """{"name":"bite","nameFr":"Morsure","type":"dark","damageClass":"physical","power":1,"accuracy":null,"flinchChance":99}"""
+        val fakeOut = """{"name":"fake-out","nameFr":"Bluff","type":"normal","damageClass":"physical","power":1,"accuracy":null,"flinchChance":100}"""
+        editSave { save ->
+            val team = save["team"]!!.jsonArray
+            val first = JsonObject(team[0].jsonObject + mapOf(
+                "level" to JsonPrimitive(40), "xp" to JsonPrimitive(64000), "hp" to JsonPrimitive(120),
+                "base" to json.parseToJsonElement("""{"hp":45,"attack":5,"defense":200,"special-attack":5,"special-defense":200,"speed":200}"""),
+                "moves" to json.parseToJsonElement("[$fakeOut, $confuseRay, $bite]"),
+            ))
+            JsonObject(save + ("team" to JsonArray(listOf(first))))
+        }
+        game(post("/travel", """{"step":1}"""))
+        game(post("/explore"))
+        // Bluff au premier tour : l'adversaire, plus lent, a peur
+        var v = game(post("/battle/attack", """{"move":0}"""))
+        assertTrue(v.battle!!.log.any { it.endsWith("adverse a peur ! Il ne peut pas attaquer.") }, v.battle!!.log.toString())
+        // … mais plus ensuite
+        v = game(post("/battle/attack", """{"move":0}"""))
+        assertTrue(v.battle!!.log.takeLast(4).contains("Mais cela échoue."), v.battle!!.log.toString())
+
+        v = game(post("/battle/attack", """{"move":1}"""))
+        assertTrue(v.battle!!.log.any { it.endsWith("adverse devient confus !") }, v.battle!!.log.toString())
+        assertTrue(v.battle!!.enemy.confused)
+        v = game(post("/battle/attack", """{"move":1}"""))
+        assertTrue(v.battle!!.log.takeLast(4).any { it.contains("est déjà confus") || it.contains("n'est plus confus") }, v.battle!!.log.toString())
+        repeat(6) { if (v.battle!!.outcome == null) v = game(post("/battle/attack", """{"move":2}""")) }
+        assertTrue(v.battle!!.log.any { it.endsWith("est confus…") }, v.battle!!.log.toString())
+        if (v.battle!!.outcome == null) v = game(post("/battle/flee"))
+        assertEquals(false, v.team[0].confused)
+    }
+
+    @Test
+    fun `aventure - verification des pokemon a l'ouverture`() = appTest {
+        suspend fun game(response: HttpResponse): GameView {
+            assertTrue(response.status.isSuccess(), response.bodyAsText())
+            return json.decodeFromString<GameView>(response.bodyAsText())
+        }
+        assertEquals(false, game(client.post("/game/verify")).started)
+        client.post("/game/new") { contentType(ContentType.Application.Json); setBody("""{"starter":"bulbasaur"}""") }
+        // Partie saine : rien à corriger
+        assertEquals(emptyList(), game(client.post("/game/verify")).corrections)
+
+        // Sauvegarde abîmée : mauvais nom et types, Fouet Lianes faussé, attaque connue perdue, 5 attaques dont une en double, trop de PV
+        editSave { save ->
+            val team = save["team"]!!.jsonArray
+            val p1 = team[0].jsonObject
+            val moves = p1["moves"]!!.jsonArray.map { m ->
+                if (m.jsonObject["name"]!!.jsonPrimitive.content == "vine-whip") JsonObject(m.jsonObject + ("power" to JsonPrimitive(999))) else m
+            }
+            val first = JsonObject(p1 + mapOf(
+                "nameFr" to JsonPrimitive("Mauvais nom"), "types" to json.parseToJsonElement("""["fire"]"""), "hp" to JsonPrimitive(999),
+                "moves" to JsonArray(moves + moves + moves.take(1)), "knownMoves" to JsonArray(moves.drop(1)),
+            ))
+            JsonObject(save + ("team" to JsonArray(listOf(first))))
+        }
+        val v = game(client.post("/game/verify"))
+        val p1 = v.team[0]
+        assertEquals("Bulbizarre", p1.name)
+        assertEquals(listOf("grass", "poison"), p1.types)
+        assertEquals(p1.maxHp, p1.hp)
+        assertEquals(45, p1.moves.single { it.name == "vine-whip" }.power)
+        assertEquals(listOf("vine-whip", "tackle"), p1.moves.map { it.name })
+        assertEquals(1, v.corrections.size, v.corrections.toString())
+        val line = v.corrections.single()
+        assertTrue(line.startsWith("Bulbizarre : informations") && "détail des attaques" in line && "attaques équipées" in line && "PV" in line, line)
+        // Corrigé et enregistré : plus rien à corriger
+        assertEquals(emptyList(), game(client.post("/game/verify")).corrections)
+    }
+
+    @Test
     fun `aventure - attaques equipees et connues`() = appTest {
         suspend fun game(response: HttpResponse): GameView {
             assertTrue(response.status.isSuccess(), response.bodyAsText())

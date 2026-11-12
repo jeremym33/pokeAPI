@@ -102,6 +102,8 @@ data class PokeApiMoveMeta(
     val category: NamedApiResource? = null,
     /** Chance de modifier les statistiques (%), 0 = toujours. */
     @SerialName("stat_chance") val statChance: Int = 0,
+    /** Chance d'apeurer la cible (%) : elle ne peut pas attaquer ce tour-ci (Morsure : 30). */
+    @SerialName("flinch_chance") val flinchChance: Int = 0,
 )
 
 @Serializable

@@ -209,6 +209,8 @@ data class LearnedMove(
     val statChanges: Map<String, Int> = emptyMap(),
     val statSelf: Boolean = false,
     val statChance: Int = 100,
+    /** Chance d'apeurer la cible (%). */
+    val flinchChance: Int = 0,
 )
 
 @Serializable

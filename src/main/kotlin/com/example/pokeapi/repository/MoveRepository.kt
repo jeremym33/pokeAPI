@@ -29,12 +29,14 @@ data class MoveInfo(
     val statChanges: Map<String, Int> = emptyMap(),
     val statSelf: Boolean = false,
     val statChance: Int = 100,
+    /** Chance d'apeurer la cible (%). */
+    val flinchChance: Int = 0,
     /** false : attaque en cache d'avant la gestion des effets (statuts, drain, coups multiples…). */
     val metaLoaded: Boolean = true,
 )
 
-/** Version des effets d'attaque enregistrés en base (2 : drain, soin, coups multiples ; 3 : statistiques). */
-const val MOVE_META_VERSION = 3
+/** Version des effets d'attaque enregistrés en base (2 : drain, soin, coups multiples ; 3 : statistiques ; 4 : peur). */
+const val MOVE_META_VERSION = 4
 
 /** Cibles d'une attaque de statut qui désignent le lanceur. */
 private val SELF_TARGETS = setOf("user", "user-and-allies", "users-field", "ally", "user-or-ally")
@@ -70,6 +72,7 @@ class MoveRepository(private val database: Database) {
                 statChanges = decodeStats(it[MoveTable.statChanges]),
                 statSelf = it[MoveTable.statSelf],
                 statChance = it[MoveTable.statChance],
+                flinchChance = it[MoveTable.flinchChance],
                 metaLoaded = it[MoveTable.metaLoaded] && it[MoveTable.metaVersion] >= MOVE_META_VERSION,
             )
         }
@@ -99,6 +102,7 @@ class MoveRepository(private val database: Database) {
             statSelf = if (move.damageClass?.name == "status") move.target?.name in SELF_TARGETS
             else move.meta?.category?.name == "damage-raise",
             statChance = move.meta?.statChance?.takeIf { it > 0 } ?: 100,
+            flinchChance = move.meta?.flinchChance ?: 0,
         )
         dbQuery {
             MoveTable.upsert {
@@ -120,6 +124,7 @@ class MoveRepository(private val database: Database) {
                 it[statChanges] = encodeStats(info.statChanges)
                 it[statSelf] = info.statSelf
                 it[statChance] = info.statChance
+                it[flinchChance] = info.flinchChance
                 it[metaLoaded] = true
                 it[metaVersion] = MOVE_META_VERSION
                 it[fetchedAt] = Instant.now()

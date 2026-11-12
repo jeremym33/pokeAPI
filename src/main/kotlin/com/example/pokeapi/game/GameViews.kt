@@ -25,6 +25,8 @@ data class FighterView(
     val status: String?,
     /** Niveaux de statistiques en combat (non nuls seulement). */
     val stages: Map<String, Int> = emptyMap(),
+    /** Confus (en combat). */
+    val confused: Boolean = false,
 )
 
 /** Objet d'évolution du sac : quantité et Pokémon sur lesquels il a un effet. */
@@ -89,4 +91,6 @@ data class GameView(
     val items: List<ItemView> = emptyList(),
     val lastEvent: String? = null,
     val settings: GameSettings = GameSettings(),
+    /** Corrections faites par la vérification (POST /game/verify), vide sinon. */
+    val corrections: List<String> = emptyList(),
 )

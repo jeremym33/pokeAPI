@@ -180,8 +180,25 @@ object GameRules {
     )
 
     /** Le statut peut-il être infligé ? (pas de deuxième statut, immunités de type) */
-    fun canReceive(f: Fighter, status: String): Boolean =
-        status in STATUSES && f.status == null && f.types.none { it in STATUS_IMMUNE_TYPES[status].orEmpty() }
+    fun canReceive(f: Fighter, status: String): Boolean = when (status) {
+        CONFUSION -> f.confusedTurns == 0
+        else -> status in STATUSES && f.status == null && f.types.none { it in STATUS_IMMUNE_TYPES[status].orEmpty() }
+    }
+
+    /** Confusion : à part des statuts (cumulable avec eux), elle dure 2 à 5 tours et disparaît en quittant le combat. */
+    const val CONFUSION = "confusion"
+
+    /** Effets gérés par le jeu : statuts et confusion. */
+    val AILMENTS = STATUSES + CONFUSION
+
+    /** Dégâts que se fait un Pokémon confus : attaque physique de puissance 40, sans type, avec ses propres stats. */
+    fun confusionDamage(f: Fighter, random: Random): Int {
+        val s = stats(f)
+        val atk = s.attack * stageMultiplier(f.stages["attack"] ?: 0)
+        val def = s.defense * stageMultiplier(f.stages["defense"] ?: 0)
+        val damage = (floor(floor(2.0 * f.level / 5 + 2) * 40 * atk / def / 50) + 2) * (0.85 + random.nextDouble() * 0.15)
+        return max(1, damage.toInt())
+    }
 
     /** Dégâts de fin de tour : 1/8 des PV pour le poison, 1/16 pour la brûlure. */
     fun residualDamage(f: Fighter): Int = when (f.status) {

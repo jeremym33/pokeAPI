@@ -77,7 +77,10 @@ class GameRulesTest {
         assertTrue(!GameRules.canReceive(fighter(20, types = listOf("poison")), "poison"))
         assertTrue(!GameRules.canReceive(fighter(20, types = listOf("electric")), "paralysis"))
         assertTrue(!GameRules.canReceive(grass.copy(status = "sleep"), "burn")) // un seul statut à la fois
-        assertTrue(!GameRules.canReceive(grass, "confusion")) // statut non géré
+        assertTrue(!GameRules.canReceive(grass, "infatuation")) // effet non géré
+        // La confusion se cumule avec un statut, mais pas avec elle-même
+        assertTrue(GameRules.canReceive(grass.copy(status = "sleep"), "confusion"))
+        assertTrue(!GameRules.canReceive(grass.copy(confusedTurns = 2), "confusion"))
 
         val full = grass.copy(hp = grass.maxHp)
         assertEquals(full.maxHp / 8, GameRules.residualDamage(full.copy(status = "poison")))

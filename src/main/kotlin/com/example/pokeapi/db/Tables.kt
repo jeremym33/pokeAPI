@@ -123,6 +123,8 @@ object MoveTable : Table("move") {
     val statChanges = varchar("stat_changes", 200).default("")
     val statSelf = bool("stat_self").default(false)
     val statChance = integer("stat_chance").default(0)
+    /** Chance d'apeurer la cible (%). */
+    val flinchChance = integer("flinch_chance").default(0)
     /** Version des effets enregistrés : une attaque d'une version plus ancienne est récupérée à nouveau. */
     val metaVersion = integer("meta_version").default(0)
     val fetchedAt = timestamp("fetched_at")

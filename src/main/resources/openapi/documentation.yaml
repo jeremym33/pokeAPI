@@ -237,6 +237,21 @@ paths:
               schema: { $ref: "#/components/schemas/GameView" }
         "400": { $ref: "#/components/responses/BadRequest" }
 
+  /game/verify:
+    post:
+      tags: [Aventure]
+      summary: Vérifier et corriger les Pokémon de la partie (appelée à l'ouverture de la page)
+      description: |
+        Contrôle chaque Pokémon de l'équipe et de la boîte d'après les données en base : nom, images, types, statistiques,
+        faiblesses, détail des attaques, attaques connues à son niveau, attaques équipées (1 à 4, dont une offensive),
+        expérience et PV. Les corrections sont enregistrées et listées dans `corrections`.
+      responses:
+        "200":
+          description: État de la partie, avec la liste des corrections
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameView" }
+
   /game/team:
     put:
       tags: [Aventure]

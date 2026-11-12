@@ -32,6 +32,8 @@ data class FighterMove(
     val statChanges: Map<String, Int> = emptyMap(),
     val statSelf: Boolean = false,
     val statChance: Int = 100,
+    /** Chance d'apeurer la cible (%) ; à 100 % (Bluff), l'attaque ne marche qu'au premier tour du lanceur au combat. */
+    val flinchChance: Int = 0,
 ) {
     /** Attaque de statut qui soigne le lanceur (Soin, Synthèse, Repos…). */
     val heals: Boolean get() = damageClass == "status" && (healing > 0 || name == REST)
@@ -67,16 +69,25 @@ data class Fighter(
     val knownMoves: List<FighterMove> = emptyList(),
     /** Multiplicateur de dégâts reçus par type attaquant. */
     val defenses: Map<String, Double>,
-    /** Statut (burn, poison, paralysis, sleep, freeze), conservé jusqu'au Centre Pokémon. */
+    /** Statut (burn, poison, paralysis, sleep, freeze), conservé jusqu'au Centre Pokémon. La confusion est à part. */
     val status: String? = null,
     /** Tours de sommeil restants. */
     val sleepTurns: Int = 0,
     /** Niveaux de statistiques en combat (-6 à +6 : attack, defense, special-attack, special-defense, speed, accuracy, evasion). */
     val stages: Map<String, Int> = emptyMap(),
+    /** Confusion : tours restants (0 = pas confus). Disparaît en quittant le combat. */
+    val confusedTurns: Int = 0,
+    /** Apeuré ce tour-ci : ne pourra pas attaquer (effacé en fin de tour). */
+    val flinched: Boolean = false,
+    /** Tours passés au combat depuis l'entrée (Bluff ne marche qu'au premier). */
+    val battleTurns: Int = 0,
 ) {
     val displayName: String get() = nameFr ?: name.replaceFirstChar(Char::uppercase)
     val maxHp: Int get() = GameRules.stats(this).hp
     val fainted: Boolean get() = hp <= 0
+    /** Effets qui disparaissent en quittant le combat : niveaux de statistiques, confusion, peur. */
+    fun leftBattle(): Fighter = copy(stages = emptyMap(), confusedTurns = 0, flinched = false, battleTurns = 0)
+
     /** Attaques équipées et connues, sans doublon. */
     val allMoves: List<FighterMove> get() = (moves + knownMoves).distinctBy { it.name }
 }
@@ -142,6 +153,6 @@ data class GameState(
     /** Message de la dernière action hors combat (évolution par pierre…). */
     val lastEvent: String? = null,
     val settings: GameSettings = GameSettings(),
-    /** Version des attaques enregistrées dans la partie (2 : drain, soin, coups multiples ; 3 : statistiques). */
+    /** Version des attaques enregistrées dans la partie (2 : drain, soin, coups multiples ; 3 : statistiques ; 4 : peur). */
     val movesVersion: Int = 0,
 )

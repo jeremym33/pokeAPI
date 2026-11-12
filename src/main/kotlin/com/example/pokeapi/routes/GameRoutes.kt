@@ -46,6 +46,8 @@ fun Route.gameRoutes(service: GameService) {
             call.respond(HttpStatusCode.NoContent)
         }
 
+        // Vérifie (et corrige) les Pokémon de la partie d'après les données en base : à l'ouverture de la page
+        post("/verify") { call.respond(service.verify()) }
         post("/travel") { call.respond(service.travel(call.receive<TravelRequest>().step)) }
         post("/heal") { call.respond(service.heal()) }
         post("/explore") { call.respond(service.explore()) }

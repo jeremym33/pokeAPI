@@ -71,6 +71,7 @@ class MoveService(
                 statChanges = info?.statChanges.orEmpty(),
                 statSelf = info?.statSelf ?: false,
                 statChance = info?.statChance ?: 100,
+                flinchChance = info?.flinchChance ?: 0,
                 method = e.k,
                 methodLabel = learnMethodLabel(e.k),
                 level = e.l.takeIf { e.k == "level-up" },
