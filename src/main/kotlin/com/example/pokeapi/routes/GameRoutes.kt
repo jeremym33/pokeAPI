@@ -55,6 +55,8 @@ fun Route.gameRoutes(service: GameService, auth: AuthService) {
             post("/retrieve") { call.respond(service.retrieveTrainee(call.user())) }
             post("/swap") { call.respond(service.swapTrainee(call.user(), call.receive<SwitchRequest>().uid)) }
         }
+        // Badges d'arène et leurs effets (profil)
+        get("/badges") { call.respond(service.badges(call.user())) }
         // Succès : objectifs qui donnent les objets d'évolution
         get("/achievements") { call.respond(service.achievements(call.user())) }
         // Motisdex : espèces de Kanto vues et rejointes

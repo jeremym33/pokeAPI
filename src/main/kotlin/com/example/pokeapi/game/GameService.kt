@@ -188,6 +188,25 @@ class GameService(
         )
     }
 
+    /** Badges d'arène de la partie (obtenus ou non) et leurs effets. */
+    suspend fun badges(userId: Int): BadgesView = lock.withLock {
+        val s = loadMigrated(userId) ?: throw NotFoundException("Aucune partie en cours")
+        val names = locationService.regionLocations("kanto")?.locations?.associate { it.name to it.nameFr }.orEmpty()
+        val gyms = GameRules.STEPS.indices.filter { GameRules.STEPS[it].gym }
+        val badges = gyms.mapIndexed { k, step ->
+            val type = s.gymTypes[step]
+            BadgeView(
+                number = k + 1,
+                name = type?.let { "Badge ${TYPES_FR[it] ?: it}" } ?: "Badge n° ${k + 1}",
+                location = names[GameRules.STEPS[step].location],
+                type = type,
+                obtained = step in s.badges,
+                effects = GameRules.badgeEffects(k + 1),
+            )
+        }
+        BadgesView(s.badges.size, badges.size, GameRules.levelCap(s.badges.size), badges)
+    }
+
     /** Succès de la partie, avec leur progression et leurs récompenses. */
     suspend fun achievements(userId: Int): AchievementsView = lock.withLock {
         val s = loadMigrated(userId) ?: throw NotFoundException("Aucune partie en cours")

@@ -365,6 +365,37 @@ paths:
               schema: { $ref: "#/components/schemas/GameView" }
         "400": { $ref: "#/components/responses/BadRequest" }
 
+  /game/badges:
+    get:
+      tags: [Aventure]
+      security: [{ bearerAuth: [] }]
+      summary: Badges d'arène (obtenus ou non) et leurs effets
+      description: Chaque badge relève le niveau maximum ; le 3e débloque la pêche à la Super Canne, le 5e le Surf et la Méga Canne.
+      responses:
+        "200":
+          description: Badges
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  obtained: { type: integer }
+                  total: { type: integer, example: 8 }
+                  levelCap: { type: integer, description: Niveau maximum actuel }
+                  badges:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        number: { type: integer, example: 1 }
+                        name: { type: string, example: Badge Roche }
+                        location: { type: string, nullable: true, example: Argenta }
+                        type: { type: string, nullable: true, description: Type de l'arène, connu une fois l'arène accessible }
+                        obtained: { type: boolean }
+                        effects: { type: array, items: { type: string }, example: ["Niveau maximum : 15 → 22"] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Aucune partie en cours }
+
   /game/achievements:
     get:
       tags: [Aventure]

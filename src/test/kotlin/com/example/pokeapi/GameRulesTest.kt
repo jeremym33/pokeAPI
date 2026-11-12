@@ -213,4 +213,12 @@ class GameRulesTest {
         val strong = (1..200).sumOf { GameRules.attack(f.copy(stages = mapOf("attack" to 2)), target, tackle, Random(it)).damage }
         assertTrue(strong > normal * 1.6, "$normal -> $strong")
     }
+
+    @Test
+    fun `effets des badges`() {
+        assertEquals(listOf("Niveau maximum : 15 → 22"), GameRules.badgeEffects(1))
+        assertEquals(listOf("Niveau maximum : 28 → 34", "Pêche à la Super Canne : nouveaux Pokémon dans l'eau"), GameRules.badgeEffects(3))
+        assertEquals(3, GameRules.badgeEffects(5).size) // niveau, Surf, Méga Canne
+        assertEquals("Niveau maximum : 57 → 100", GameRules.badgeEffects(8).single())
+    }
 }

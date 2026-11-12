@@ -97,6 +97,18 @@ object GameRules {
 
     fun levelCap(badges: Int): Int = LEVEL_CAPS[badges.coerceIn(0, LEVEL_CAPS.lastIndex)]
 
+    private val METHOD_EFFECTS = mapOf(
+        "good-rod" to "Pêche à la Super Canne : nouveaux Pokémon dans l'eau",
+        "surf" to "Surf : rencontres sur l'eau",
+        "super-rod" to "Pêche à la Méga Canne : encore d'autres Pokémon dans l'eau",
+    )
+
+    /** Effets du n-ième badge (1 à 8) : niveau maximum relevé, nouvelles façons de rencontrer des Pokémon. */
+    fun badgeEffects(n: Int): List<String> = buildList {
+        add("Niveau maximum : ${levelCap(n - 1)} → ${levelCap(n)}")
+        (allowedMethods(n) - allowedMethods(n - 1)).sortedBy { METHOD_EFFECTS.keys.indexOf(it) }.forEach { m -> METHOD_EFFECTS[m]?.let { add(it) } }
+    }
+
     /** Numéro (0 à 7) de l'arène d'une étape. */
     fun gymNumber(step: Int): Int = STEPS.take(step).count { it.gym }
 

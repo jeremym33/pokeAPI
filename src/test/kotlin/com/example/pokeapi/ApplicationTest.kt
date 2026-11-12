@@ -1,5 +1,6 @@
 package com.example.pokeapi
 
+import com.example.pokeapi.game.BadgesView
 import com.example.pokeapi.game.RouteSpecies
 import com.example.pokeapi.game.UnlockedAchievement
 import com.example.pokeapi.game.Achievements
@@ -652,6 +653,14 @@ class ApplicationTest {
         v = game(post("/gym"))
         assertEquals(BattleKind.GYM, v.battle!!.kind)
         assertEquals(HttpStatusCode.BadRequest, post("/battle/flee").status) // pas de fuite en arène
+
+        // Profil : badges (aucun obtenu), premier badge : type connu car l'arène est accessible
+        val badges = json.decodeFromString<BadgesView>(client.get("/game/badges").bodyAsText())
+        assertEquals(8, badges.total)
+        assertEquals(0, badges.obtained)
+        assertEquals("Badge Plante", badges.badges.first().name)
+        assertEquals(false, badges.badges.first().obtained)
+        assertEquals("Niveau maximum : 15 → 22", badges.badges.first().effects.first())
 
         assertEquals(HttpStatusCode.NoContent, client.delete("/game").status)
         assertEquals(false, game(client.get("/game")).started)

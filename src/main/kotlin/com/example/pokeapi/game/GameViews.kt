@@ -81,6 +81,23 @@ data class StepView(
     val unlocked: Boolean,
 )
 
+/** Badge d'arène : obtenu ou non, et ses effets. */
+@Serializable
+data class BadgeView(
+    /** 1 à 8, dans l'ordre du parcours. */
+    val number: Int,
+    val name: String,
+    /** Ville de l'arène. */
+    val location: String?,
+    /** Type de l'arène, connu une fois l'arène accessible. */
+    val type: String?,
+    val obtained: Boolean,
+    val effects: List<String>,
+)
+
+@Serializable
+data class BadgesView(val obtained: Int, val total: Int, val levelCap: Int, val badges: List<BadgeView>)
+
 /** Pokémon à l'entraînement sur un lieu. */
 @Serializable
 data class TraineeView(
