@@ -64,6 +64,10 @@ class MoveService(
                 description = info?.descriptionFr,
                 ailment = info?.ailment,
                 ailmentChance = info?.ailmentChance ?: 0,
+                drain = info?.drain ?: 0,
+                healing = info?.healing ?: 0,
+                minHits = info?.minHits,
+                maxHits = info?.maxHits,
                 method = e.k,
                 methodLabel = learnMethodLabel(e.k),
                 level = e.l.takeIf { e.k == "level-up" },
@@ -79,9 +83,12 @@ class MoveService(
         return PokemonMoves(pokemon.id, VersionGroup(selected, VersionGroupInfo.label(selected)), moves)
     }
 
+    /** Détails d'attaques par nom (nom FR, puissance, effets…), depuis la base ou PokéAPI. */
+    suspend fun details(names: Collection<String>): Map<String, MoveInfo> = loadMoves(names.distinct())
+
     /** Détails des attaques : depuis la base, sinon PokéAPI (puis mise en cache). */
     private suspend fun loadMoves(names: List<String>): Map<String, MoveInfo> = coroutineScope {
-        // Les attaques mises en cache avant la gestion des statuts sont récupérées à nouveau.
+        // Les attaques mises en cache avant la gestion de leurs effets sont récupérées à nouveau.
         val cached = moveRepository.find(names).filterValues { it.metaLoaded }
         val fetched = names.filterNot { it in cached }.map { name ->
             async {

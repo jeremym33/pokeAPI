@@ -4,6 +4,7 @@ import com.example.pokeapi.client.PokeApiClient
 import com.example.pokeapi.client.pokeApiJson
 import com.example.pokeapi.db.GameSaveTable
 import com.example.pokeapi.model.EvolutionNode
+import com.example.pokeapi.model.LearnedMove
 import com.example.pokeapi.model.PokemonQuery
 import com.example.pokeapi.repository.PokemonRepository
 import com.example.pokeapi.service.EvolutionService
@@ -39,6 +40,9 @@ private val TYPES_FR = mapOf(
 /** Types des arènes quand les Pokémon rencontrés ne suffisent pas à en choisir un. */
 private val FALLBACK_GYM_TYPES = listOf("rock", "water", "electric", "grass", "poison", "psychic", "fire", "ground", "ice", "fighting", "ghost", "dragon")
 
+/** Version des attaques des parties (2 : drain, soin, coups multiples) ; une partie plus ancienne est mise à jour. */
+private const val GAME_MOVES_VERSION = 2
+
 private val TACKLE = FighterMove("tackle", "Charge", "normal", "physical", 40, 100)
 private val LEVEL_EVOLUTION = Regex("^Niveau (\\d+)$")
 
@@ -67,7 +71,7 @@ class GameService(
     suspend fun newGame(starter: String): GameView = lock.withLock {
         if (starter !in GameRules.STARTERS) throw BadRequestException("Starter inconnu : '$starter' (${GameRules.STARTERS.joinToString()})")
         val first = buildFighter(starter, GameRules.STARTER_LEVEL, "p1")
-        val state = GameState(starter = starter, team = listOf(first), caught = setOf(first.speciesId), seen = setOf(first.speciesId), uidCounter = 1)
+        val state = GameState(movesVersion = GAME_MOVES_VERSION, starter = starter, team = listOf(first), caught = setOf(first.speciesId), seen = setOf(first.speciesId), uidCounter = 1)
         save(state)
         toView(state)
     }
@@ -97,14 +101,17 @@ class GameService(
         if ((s.items[item] ?: 0) <= 0) throw BadRequestException("Vous n'avez pas de ${evolutionItem.nameFr}")
         val f = (s.team + s.box).firstOrNull { it.uid == uid } ?: throw BadRequestException("Pokémon introuvable")
         val target = itemEvolutions(f)[item] ?: throw BadRequestException("${evolutionItem.nameFr} n'a aucun effet sur ${f.displayName}")
-        val evolved = evolve(f, target)
+        val form = evolve(f, target)
+        val log = mutableListOf("Quoi ? ${f.displayName} évolue en ${form.displayName} !")
+        // Attaques apprises à l'évolution (Raichu : Poing Éclair…)
+        val evolved = learnNewMoves(form, sinceLevel = f.level, s.settings, log, evolved = true)
         val count = (s.items[item] ?: 0) - 1
         s.copy(
             team = s.team.replaceUid(evolved),
             box = s.box.replaceUid(evolved),
             caught = s.caught + evolved.speciesId,
             items = if (count > 0) s.items + (item to count) else s.items - item,
-            lastEvent = "Quoi ? ${f.displayName} évolue en ${evolved.displayName} !",
+            lastEvent = log.joinToString(" "),
         )
     }
 
@@ -220,9 +227,9 @@ class GameService(
         var state = if (playerTurn) s.copy(team = s.team.replaceUid(ready)) else s.withEnemy(ready)
         if (!acts) return state
         val defender = if (playerTurn) e else state.team.first { it.uid == battle.activeUid }
-        val (hitDefender, lines) = hit(ready, defender, move, enemy = !playerTurn)
-        log += lines
-        state = if (playerTurn) state.withEnemy(hitDefender) else state.copy(team = state.team.replaceUid(hitDefender))
+        val (user, hitDefender) = hit(ready, defender, move, enemy = !playerTurn, log)
+        state = if (playerTurn) state.copy(team = state.team.replaceUid(user)).withEnemy(hitDefender)
+        else state.withEnemy(user).copy(team = state.team.replaceUid(hitDefender))
         return afterHit(state, log)
     }
 
@@ -304,36 +311,80 @@ class GameService(
 
     // ---------- Combat ----------
 
-    private fun hit(attacker: Fighter, defender: Fighter, move: FighterMove, enemy: Boolean): Pair<Fighter, List<String>> {
+    /**
+     * Le lanceur utilise une attaque : soin, statut, ou dégâts (en plusieurs coups pour Combo-Griffe…),
+     * avec PV drainés (Vole-Vie…) ou contrecoup (Damoclès…). Renvoie le lanceur et la cible modifiés.
+     */
+    private fun hit(attacker: Fighter, defender: Fighter, move: FighterMove, enemy: Boolean, lines: MutableList<String>): Pair<Fighter, Fighter> {
         val who = if (enemy) "${attacker.displayName} adverse" else attacker.displayName
         val target = if (enemy) defender.displayName else "${defender.displayName} adverse"
-        val lines = mutableListOf("$who utilise ${move.nameFr ?: move.name} !")
+        lines += "$who utilise ${move.nameFr ?: move.name} !"
+
+        if (move.heals) {
+            val heal = GameRules.healAmount(attacker, move)
+            if (move.name == FighterMove.REST) {
+                if (heal == 0 && attacker.status == null) return attacker to defender.also { lines += "Mais cela échoue." }
+                lines += "$who s'endort et récupère tous ses PV !"
+                return attacker.copy(hp = attacker.maxHp, status = "sleep", sleepTurns = 3) to defender
+            }
+            if (heal <= 0) return attacker to defender.also { lines += "Mais ses PV sont déjà au maximum." }
+            lines += "$who récupère $heal PV."
+            return attacker.copy(hp = attacker.hp + heal) to defender
+        }
 
         if (move.damageClass == "status") {
             val ailment = move.ailment
-            if (move.accuracy != null && random.nextInt(100) >= move.accuracy) return defender to (lines + "Mais l'attaque échoue.")
-            if (ailment == null || !GameRules.canReceive(defender, ailment)) return defender to (lines + "Mais cela n'a aucun effet.")
-            return inflict(defender, ailment, target, lines)
+            if (move.accuracy != null && random.nextInt(100) >= move.accuracy) return attacker to defender.also { lines += "Mais l'attaque échoue." }
+            if (ailment == null || !GameRules.canReceive(defender, ailment)) return attacker to defender.also { lines += "Mais cela n'a aucun effet." }
+            return attacker to inflict(defender, ailment, target, lines)
         }
 
-        val result = GameRules.attack(attacker, defender, move, random)
-        if (!result.hit) return defender to (lines + "Mais l'attaque échoue.")
-        if (result.critical) lines += "Coup critique !"
-        GameRules.effectivenessText(result.effectiveness)?.let { lines += it }
-        val hp = (defender.hp - result.damage).coerceAtLeast(0)
-        if (result.damage > 0) lines += "${defender.displayName} perd ${defender.hp - hp} PV."
-        val damaged = defender.copy(hp = hp)
+        // Coups successifs : la précision n'est vérifiée qu'au premier, l'attaque s'arrête si la cible est K.O.
+        val hits = GameRules.hitCount(move, random)
+        var hp = defender.hp
+        var dealt = 0
+        var landed = 0
+        var effectiveness = 1.0
+        for (i in 0 until hits) {
+            val result = GameRules.attack(attacker, defender.copy(hp = hp), move, random, checkAccuracy = i == 0)
+            if (!result.hit) return attacker to defender.also { lines += "Mais l'attaque échoue." }
+            effectiveness = result.effectiveness
+            if (result.effectiveness == 0.0) break
+            if (result.critical) lines += "Coup critique !"
+            val damage = minOf(result.damage, hp)
+            hp -= damage
+            dealt += damage
+            landed++
+            if (hp <= 0) break
+        }
+        GameRules.effectivenessText(effectiveness)?.let { lines += it }
+        if (dealt > 0) lines += "${defender.displayName} perd $dealt PV."
+        if (hits > 1 && landed > 0) lines += "Touché $landed fois !"
+        var damaged = defender.copy(hp = hp)
+
+        // PV drainés ou contrecoup, proportionnels aux dégâts infligés
+        var user = attacker
+        if (dealt > 0 && move.drain > 0 && attacker.hp < attacker.maxHp) {
+            val gain = minOf(attacker.maxHp - attacker.hp, maxOf(1, dealt * move.drain / 100))
+            lines += "$target a son énergie drainée ! $who récupère $gain PV."
+            user = attacker.copy(hp = attacker.hp + gain)
+        } else if (dealt > 0 && move.drain < 0) {
+            val recoil = minOf(attacker.hp, maxOf(1, dealt * -move.drain / 100))
+            lines += "$who est blessé par le contrecoup ! (-$recoil PV)"
+            user = attacker.copy(hp = attacker.hp - recoil)
+        }
+
         // Effet secondaire (Flammèche brûle 1 fois sur 10…)
         val ailment = move.ailment
-        if (hp > 0 && result.damage > 0 && ailment != null && move.ailmentChance > 0 &&
+        if (hp > 0 && dealt > 0 && ailment != null && move.ailmentChance > 0 &&
             GameRules.canReceive(damaged, ailment) && random.nextInt(100) < move.ailmentChance
-        ) return inflict(damaged, ailment, target, lines)
-        return damaged to lines
+        ) damaged = inflict(damaged, ailment, target, lines)
+        return user to damaged
     }
 
-    private fun inflict(f: Fighter, status: String, who: String, lines: MutableList<String>): Pair<Fighter, List<String>> {
+    private fun inflict(f: Fighter, status: String, who: String, lines: MutableList<String>): Fighter {
         lines += "$who est ${GameRules.STATUS_FR[status]} !"
-        return f.copy(status = status, sleepTurns = if (status == "sleep") random.nextInt(1, 4) else 0) to lines
+        return f.copy(status = status, sleepTurns = if (status == "sleep") random.nextInt(1, 4) else 0)
     }
 
     /** Après une attaque : K.O. éventuels, expérience, fin du combat. */
@@ -350,7 +401,14 @@ class GameService(
             if (battle.enemyIndex + 1 < battle.enemies.size) {
                 val next = battle.enemies[battle.enemyIndex + 1]
                 log += "Le champion envoie ${next.displayName} (niv. ${next.level}) !"
-                return state.copy(battle = battle.copy(enemyIndex = battle.enemyIndex + 1, participants = setOf(battle.activeUid)))
+                state = state.copy(battle = battle.copy(enemyIndex = battle.enemyIndex + 1, participants = setOf(battle.activeUid)))
+                // Lanceur K.O. par le contrecoup en même temps que l'adversaire
+                if (state.team.first { it.uid == battle.activeUid }.fainted) {
+                    log += "${player.displayName} est K.O. !"
+                    if (state.team.any { !it.fainted }) return state.copy(battle = state.battle!!.copy(mustSwitch = true))
+                    return defeat(evolveTeam(state, log), log)
+                }
+                return state
             }
             return victory(state, log)
         }
@@ -434,7 +492,7 @@ class GameService(
             val evolved = evolve(f, target)
             log += "Quoi ? ${f.displayName} évolue en ${evolved.displayName} !"
             caught = caught + evolved.speciesId
-            learnNewMoves(evolved, sinceLevel = f.level - 1, s.settings, log)
+            learnNewMoves(evolved, sinceLevel = f.level - 1, s.settings, log, evolved = true)
         }
         return s.copy(team = team, caught = caught)
     }
@@ -444,13 +502,16 @@ class GameService(
      * au-delà de [sinceLevel] sont annoncées : équipées s'il reste une place, sinon elles remplacent la plus
      * ancienne (réglage [GameSettings.autoReplaceMoves]) ou attendent que le joueur les équipe. Les autres
      * (attaques d'une nouvelle forme après évolution) rejoignent les attaques connues sans être équipées.
+     * Après une évolution ([evolved]), les attaques « à l'évolution » (niveau 0) sont apprises aussi.
      */
-    private suspend fun learnNewMoves(f: Fighter, sinceLevel: Int, settings: GameSettings, log: MutableList<String>): Fighter {
+    private suspend fun learnNewMoves(
+        f: Fighter, sinceLevel: Int, settings: GameSettings, log: MutableList<String>, evolved: Boolean = false,
+    ): Fighter {
         val known = f.allMoves
         val fresh = learnableMoves(f.pokemonId, f.level).filter { m -> known.none { it.name == m.name } }
         if (fresh.isEmpty()) return f
         var moves = f.moves
-        fresh.filter { (it.level ?: 0) > sinceLevel }.sortedBy { it.level ?: 0 }.forEach { m ->
+        fresh.filter { (it.level ?: 0) > sinceLevel || (evolved && it.level == 0) }.sortedBy { it.level ?: 0 }.forEach { m ->
             val name = m.nameFr ?: m.name
             if (moves.size < 4) {
                 moves = moves + m
@@ -458,7 +519,7 @@ class GameService(
                 return@forEach
             }
             // La plus ancienne attaque dont le remplacement laisse au moins une attaque offensive.
-            val replaced = if (!settings.autoReplaceMoves) null else moves.indices.sortedBy { moves[it].level ?: 0 }.firstOrNull { i ->
+            val replaced = if (!settings.autoReplaceMoves) null else moves.indices.sortedBy { replaceOrder(moves[it]) }.firstOrNull { i ->
                 moves.filterIndexed { j, _ -> j != i }.plus(m).any { it.damageClass != "status" }
             }
             if (replaced == null) {
@@ -469,6 +530,13 @@ class GameService(
             }
         }
         return f.copy(moves = moves, knownMoves = known + fresh)
+    }
+
+    /** Ordre de remplacement automatique : les plus anciennes d'abord, les attaques d'évolution en dernier. */
+    private fun replaceOrder(m: FighterMove): Int = when (val level = m.level) {
+        null -> -1
+        0 -> Int.MAX_VALUE
+        else -> level
     }
 
     /** Le Pokémon évolue : même niveau, expérience, statut et proportion de PV. */
@@ -540,7 +608,7 @@ class GameService(
 
     /**
      * Attaques apprises par niveau jusqu'à [level] et utilisables en combat, de la plus récente à la plus
-     * ancienne : offensives, ou de statut infligeant un statut géré (Cage Éclair, Poudre Dodo…).
+     * ancienne : offensives, de statut infligeant un statut géré (Cage Éclair, Poudre Dodo…) ou de soin.
      */
     private suspend fun learnableMoves(pokemonId: Int, level: Int): List<FighterMove> =
         moveService.moves(pokemonId.toString())?.moves.orEmpty()
@@ -549,9 +617,14 @@ class GameService(
             .distinctBy { it.name }
             .filter {
                 ((it.power ?: 0) > 0 && it.damageClass in setOf("physical", "special")) ||
-                    (it.damageClass == "status" && it.ailment in GameRules.STATUSES)
+                    (it.damageClass == "status" && (it.ailment in GameRules.STATUSES || it.healing > 0 || it.name == FighterMove.REST))
             }
-            .map { FighterMove(it.name, it.nameFr, it.type ?: "normal", it.damageClass!!, it.power ?: 0, it.accuracy, it.priority, it.ailment, it.ailmentChance, it.level) }
+            .map(::toFighterMove)
+
+    private fun toFighterMove(m: LearnedMove) = FighterMove(
+        m.name, m.nameFr, m.type ?: "normal", m.damageClass!!, m.power ?: 0, m.accuracy, m.priority, m.ailment, m.ailmentChance,
+        m.level, drain = m.drain, healing = m.healing, minHits = m.minHits, maxHits = m.maxHits,
+    )
 
     /** Attaques équipées par défaut : les 4 plus récentes, dont au moins une offensive (Charge à défaut). */
     private fun defaultMoves(learnable: List<FighterMove>): List<FighterMove> {
@@ -754,10 +827,22 @@ class GameService(
      */
     private suspend fun loadMigrated(): GameState? {
         val s = load() ?: return null
-        if ((s.team + s.box).all { it.knownMoves.isNotEmpty() }) return s
-        suspend fun migrate(f: Fighter) =
-            if (f.knownMoves.isNotEmpty()) f else f.copy(knownMoves = (f.moves + learnableMoves(f.pokemonId, f.level)).distinctBy { it.name })
-        return s.copy(team = s.team.map { migrate(it) }, box = s.box.map { migrate(it) }).also { save(it) }
+        if (s.movesVersion >= GAME_MOVES_VERSION && (s.team + s.box).all { it.knownMoves.isNotEmpty() }) return s
+        // Attaques complétées avec leurs effets (drain, soin, coups multiples) ; les attaques de soin
+        // désormais utilisables rejoignent les attaques connues.
+        val details = moveService.details(
+            (s.team + s.box + s.battle?.enemies.orEmpty() + listOfNotNull(s.battle?.recruit)).flatMap { f -> f.allMoves.map { it.name } },
+        )
+        suspend fun migrate(f: Fighter): Fighter {
+            fun refresh(m: FighterMove) = details[m.name]?.let {
+                m.copy(drain = it.drain, healing = it.healing, minHits = it.minHits, maxHits = it.maxHits)
+            } ?: m
+            val moves = f.moves.map(::refresh)
+            return f.copy(moves = moves, knownMoves = (f.allMoves.map(::refresh) + learnableMoves(f.pokemonId, f.level)).distinctBy { it.name })
+        }
+        val battle = s.battle?.let { b -> b.copy(enemies = b.enemies.map { migrate(it) }, recruit = b.recruit?.let { migrate(it) }) }
+        return s.copy(team = s.team.map { migrate(it) }, box = s.box.map { migrate(it) }, battle = battle, movesVersion = GAME_MOVES_VERSION)
+            .also { save(it) }
     }
 
     private suspend fun load(): GameState? = newSuspendedTransaction(Dispatchers.IO, database) {

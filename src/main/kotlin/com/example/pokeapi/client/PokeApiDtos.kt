@@ -84,6 +84,13 @@ data class PokeApiMove(
 data class PokeApiMoveMeta(
     val ailment: NamedApiResource? = null,
     @SerialName("ailment_chance") val ailmentChance: Int = 0,
+    /** % des dégâts infligés récupérés en PV (Vole-Vie : 50) ; négatif = contrecoup (Damoclès : -33). */
+    val drain: Int = 0,
+    /** % des PV max récupérés (Soin : 50). */
+    val healing: Int = 0,
+    /** Nombre de coups (Combo-Griffe : 2 à 5, Double Pied : 2), null pour un seul coup. */
+    @SerialName("min_hits") val minHits: Int? = null,
+    @SerialName("max_hits") val maxHits: Int? = null,
 )
 
 @Serializable

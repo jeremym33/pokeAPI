@@ -21,8 +21,16 @@ data class MoveInfo(
     val descriptionFr: String?,
     val ailment: String? = null,
     val ailmentChance: Int = 0,
+    val drain: Int = 0,
+    val healing: Int = 0,
+    val minHits: Int? = null,
+    val maxHits: Int? = null,
+    /** false : attaque en cache d'avant la gestion des effets (statuts, drain, coups multiples…). */
     val metaLoaded: Boolean = true,
 )
+
+/** Version des effets d'attaque enregistrés en base (2 : drain, soin, coups multiples). */
+const val MOVE_META_VERSION = 2
 
 class MoveRepository(private val database: Database) {
 
@@ -44,7 +52,11 @@ class MoveRepository(private val database: Database) {
                 descriptionFr = it[MoveTable.descriptionFr]?.let(::cleanGameText),
                 ailment = it[MoveTable.ailment],
                 ailmentChance = it[MoveTable.ailmentChance],
-                metaLoaded = it[MoveTable.metaLoaded],
+                drain = it[MoveTable.drain],
+                healing = it[MoveTable.healing],
+                minHits = it[MoveTable.minHits],
+                maxHits = it[MoveTable.maxHits],
+                metaLoaded = it[MoveTable.metaLoaded] && it[MoveTable.metaVersion] >= MOVE_META_VERSION,
             )
         }
     }
@@ -64,6 +76,10 @@ class MoveRepository(private val database: Database) {
                 ?.flavorText?.let(::cleanGameText),
             ailment = move.meta?.ailment?.name?.takeIf { it != "none" },
             ailmentChance = move.meta?.ailmentChance ?: 0,
+            drain = move.meta?.drain ?: 0,
+            healing = move.meta?.healing ?: 0,
+            minHits = move.meta?.minHits,
+            maxHits = move.meta?.maxHits,
         )
         dbQuery {
             MoveTable.upsert {
@@ -78,7 +94,12 @@ class MoveRepository(private val database: Database) {
                 it[descriptionFr] = info.descriptionFr
                 it[ailment] = info.ailment
                 it[ailmentChance] = info.ailmentChance
+                it[drain] = info.drain
+                it[healing] = info.healing
+                it[minHits] = info.minHits
+                it[maxHits] = info.maxHits
                 it[metaLoaded] = true
+                it[metaVersion] = MOVE_META_VERSION
                 it[fetchedAt] = Instant.now()
             }
         }

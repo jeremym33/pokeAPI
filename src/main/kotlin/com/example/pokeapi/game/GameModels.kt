@@ -21,7 +21,22 @@ data class FighterMove(
     val ailmentChance: Int = 0,
     /** Niveau auquel l'attaque est apprise (null : attaque de secours). */
     val level: Int? = null,
-)
+    /** % des dégâts infligés récupérés en PV (Vole-Vie : 50) ; négatif = contrecoup (Damoclès : -33). */
+    val drain: Int = 0,
+    /** % des PV max récupérés (Soin : 50). */
+    val healing: Int = 0,
+    /** Nombre de coups (Combo-Griffe : 2 à 5, Double Pied : 2), null pour un seul coup. */
+    val minHits: Int? = null,
+    val maxHits: Int? = null,
+) {
+    /** Attaque de statut qui soigne le lanceur (Soin, Synthèse, Repos…). */
+    val heals: Boolean get() = damageClass == "status" && (healing > 0 || name == REST)
+
+    companion object {
+        /** Repos : soigne entièrement et guérit le statut, mais endort le lanceur 2 tours. */
+        const val REST = "rest"
+    }
+}
 
 /** Pokémon de l'équipe, de la boîte ou adversaire. */
 @Serializable
@@ -121,4 +136,6 @@ data class GameState(
     /** Message de la dernière action hors combat (évolution par pierre…). */
     val lastEvent: String? = null,
     val settings: GameSettings = GameSettings(),
+    /** Version des attaques enregistrées dans la partie (2 : drain, soin, coups multiples). */
+    val movesVersion: Int = 0,
 )

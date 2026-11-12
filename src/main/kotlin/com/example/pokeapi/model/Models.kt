@@ -198,6 +198,13 @@ data class LearnedMove(
     val ailment: String? = null,
     /** Chance d'infliger le statut (%) ; 0 pour une attaque de statut = toujours (si elle touche). */
     val ailmentChance: Int = 0,
+    /** % des dégâts récupérés en PV ; négatif = contrecoup. */
+    val drain: Int = 0,
+    /** % des PV max récupérés (attaque de soin). */
+    val healing: Int = 0,
+    /** Nombre de coups, null pour un seul. */
+    val minHits: Int? = null,
+    val maxHits: Int? = null,
 )
 
 @Serializable

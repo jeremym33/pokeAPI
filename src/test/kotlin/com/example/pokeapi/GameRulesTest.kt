@@ -146,4 +146,29 @@ class GameRulesTest {
         assertTrue("surf" !in GameRules.allowedMethods(0))
         assertTrue("surf" in GameRules.allowedMethods(5))
     }
+
+    @Test
+    fun `coups multiples comme dans les jeux`() {
+        val furySwipes = FighterMove("fury-swipes", "Combo-Griffe", "normal", "physical", 18, 80, minHits = 2, maxHits = 5)
+        val doubleKick = FighterMove("double-kick", "Double Pied", "fighting", "physical", 30, 100, minHits = 2, maxHits = 2)
+        val random = Random(1)
+        val counts = (1..10_000).groupingBy { GameRules.hitCount(furySwipes, random) }.eachCount()
+        assertEquals(setOf(2, 3, 4, 5), counts.keys)
+        assertTrue(counts.getValue(2) in 3200..3800 && counts.getValue(5) in 1200..1800, counts.toString())
+        assertEquals(2, GameRules.hitCount(doubleKick, random))
+        assertEquals(1, GameRules.hitCount(ember, random))
+        assertEquals(3.1, GameRules.averageHits(furySwipes), 1e-9)
+    }
+
+    @Test
+    fun `attaques de soin`() {
+        val recover = FighterMove("recover", "Soin", "normal", "status", 0, null, healing = 50)
+        val rest = FighterMove(FighterMove.REST, "Repos", "psychic", "status", 0, null)
+        val f = fighter(20)
+        val max = f.maxHp
+        assertTrue(recover.heals && rest.heals && !ember.heals)
+        assertEquals(max / 2, GameRules.healAmount(f.copy(hp = 1), recover))
+        assertEquals(3, GameRules.healAmount(f.copy(hp = max - 3), recover)) // sans dépasser le maximum
+        assertEquals(max - 1, GameRules.healAmount(f.copy(hp = 1), rest))
+    }
 }

@@ -148,7 +148,11 @@ class ApplicationTest {
     /** Pokémon accessibles individuellement mais absents de la liste (/pokemon), pour les évolutions. */
     private val extraPokemon = mapOf(
         "ivysaur" to pokemonJson(2, "ivysaur", listOf("grass", "poison"), hp = 60),
-        "venusaur" to pokemonJson(3, "venusaur", listOf("grass", "poison"), hp = 80),
+        // Florizarre apprend Danse Fleurs en évoluant (niveau 0)
+        "venusaur" to pokemonJson(3, "venusaur", listOf("grass", "poison"), hp = 80, moves = """
+            [{"move": {"name": "tackle", "url": "x"}, "version_group_details": [${learn(1, "level-up", "scarlet-violet")}]},
+             {"move": {"name": "petal-dance", "url": "x"}, "version_group_details": [${learn(0, "level-up", "scarlet-violet")}]}]
+        """.trimIndent()),
         // Formes fictives de Germignon : une forme régionale (importée avec l'espèce) et une méga (ignorée)
         "bayleef" to pokemonJson(153, "bayleef", listOf("grass"), hp = 60),
         "chikorita-hisui" to pokemonJson(10999, "chikorita-hisui", listOf("water"), hp = 10, species = "chikorita" to 152, isDefault = false),
@@ -592,6 +596,47 @@ class ApplicationTest {
     }
 
     @Test
+    fun `aventure - attaques qui drainent et qui frappent plusieurs fois`() = appTest {
+        suspend fun game(response: HttpResponse): GameView {
+            assertTrue(response.status.isSuccess(), response.bodyAsText())
+            return json.decodeFromString<GameView>(response.bodyAsText())
+        }
+        suspend fun post(path: String, body: String? = null) = client.post("/game$path") {
+            if (body != null) { contentType(ContentType.Application.Json); setBody(body) }
+        }
+        game(post("/new", """{"starter":"bulbasaur"}"""))
+        // Attaques sans échec possible : Méga-Sangsue (draine 50 %) et un double coup faible
+        val drain = """{"name":"mega-drain","nameFr":"Méga-Sangsue","type":"grass","damageClass":"special","power":40,"accuracy":null,"drain":50}"""
+        val double = """{"name":"double-kick","nameFr":"Double Pied","type":"fighting","damageClass":"physical","power":5,"accuracy":null,"minHits":2,"maxHits":2}"""
+        editSave { save ->
+            val team = save["team"]!!.jsonArray
+            val moves = json.parseToJsonElement("[$drain, $double]")
+            val first = JsonObject(team[0].jsonObject + mapOf("level" to JsonPrimitive(30), "xp" to JsonPrimitive(27000), "hp" to JsonPrimitive(5), "moves" to moves))
+            JsonObject(save + ("team" to JsonArray(listOf(first))))
+        }
+        game(post("/travel", """{"step":1}"""))
+        var v = game(post("/explore"))
+        v = game(post("/battle/attack", """{"move":0}"""))
+        val log = v.battle!!.log
+        assertTrue(log.any { it.contains("a son énergie drainée ! Bulbizarre récupère") }, log.toString())
+        assertTrue(v.team[0].hp > 5)
+
+        var multi = false
+        repeat(10) {
+            if (multi) return@repeat
+            if (v.battle?.outcome != null) {
+                if (v.battle!!.recruit != null) v = game(post("/battle/recruit", """{"accept":false}"""))
+                v = game(post("/battle/close"))
+                if (v.currentStep != 1) game(post("/travel", """{"step":1}"""))
+                v = game(post("/explore"))
+            }
+            v = game(post("/battle/attack", """{"move":1}"""))
+            multi = v.battle!!.log.any { it == "Touché 2 fois !" }
+        }
+        assertTrue(multi, "Double Pied n'a jamais frappé deux fois")
+    }
+
+    @Test
     fun `aventure - attaques equipees et connues`() = appTest {
         suspend fun game(response: HttpResponse): GameView {
             assertTrue(response.status.isSuccess(), response.bodyAsText())
@@ -771,6 +816,9 @@ class ApplicationTest {
         assertEquals(3, v.team[0].pokemonId) // Florizarre
         assertTrue(v.items.none { it.item == "thunder-stone" }) // pierre consommée
         assertTrue(v.lastEvent!!.contains("évolue"))
+        // Attaque apprise à l'évolution, équipée (place libre)
+        assertTrue(v.lastEvent!!.contains("Florizarre apprend Danse Fleurs !"), v.lastEvent)
+        assertEquals(0, v.team[0].moves.single { it.name == "petal-dance" }.level)
         // Un objet sans effet est refusé
         assertEquals(HttpStatusCode.BadRequest, post("/items/use", """{"item":"moon-stone","uid":"p1"}""").status)
         assertEquals(HttpStatusCode.NotFound, post("/shop/buy", """{"item":"moon-stone"}""").status) // plus de boutique

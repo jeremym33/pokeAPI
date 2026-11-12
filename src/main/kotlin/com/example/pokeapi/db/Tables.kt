@@ -114,6 +114,13 @@ object MoveTable : Table("move") {
     val ailmentChance = integer("ailment_chance").default(0)
     /** false pour les attaques en cache d'avant la gestion des statuts : elles sont récupérées à nouveau. */
     val metaLoaded = bool("meta_loaded").default(false)
+    /** Effets : drain / contrecoup (%), soin (%), nombre de coups. */
+    val drain = integer("drain").default(0)
+    val healing = integer("healing").default(0)
+    val minHits = integer("min_hits").nullable()
+    val maxHits = integer("max_hits").nullable()
+    /** Version des effets enregistrés : une attaque d'une version plus ancienne est récupérée à nouveau. */
+    val metaVersion = integer("meta_version").default(0)
     val fetchedAt = timestamp("fetched_at")
 
     override val primaryKey = PrimaryKey(name)

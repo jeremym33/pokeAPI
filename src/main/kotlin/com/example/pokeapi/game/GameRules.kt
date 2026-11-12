@@ -193,9 +193,9 @@ object GameRules {
     fun joinChance(captureRate: Int): Double = 0.15 + 0.55 * (captureRate.coerceIn(0, 255) / 255.0)
 
     /** Dégâts d'une attaque (formule simplifiée des jeux : niveau, puissance, stats, STAB, types, aléa). */
-    fun attack(attacker: Fighter, defender: Fighter, move: FighterMove, random: Random): AttackResult {
+    fun attack(attacker: Fighter, defender: Fighter, move: FighterMove, random: Random, checkAccuracy: Boolean = true): AttackResult {
         val effectiveness = defender.defenses[move.type] ?: 1.0
-        if (move.accuracy != null && random.nextInt(100) >= move.accuracy) return AttackResult(0, false, false, effectiveness)
+        if (checkAccuracy && move.accuracy != null && random.nextInt(100) >= move.accuracy) return AttackResult(0, false, false, effectiveness)
         if (effectiveness == 0.0) return AttackResult(0, true, false, 0.0)
 
         val a = stats(attacker)
@@ -212,13 +212,49 @@ object GameRules {
         return AttackResult(max(1, damage.toInt()), true, critical, effectiveness)
     }
 
+    /**
+     * Nombre de coups d'une attaque : fixe (Double Pied : 2) ou, de 2 à 5, comme dans les jeux
+     * (2 ou 3 coups 35 % du temps chacun, 4 ou 5 coups 15 %).
+     */
+    fun hitCount(move: FighterMove, random: Random): Int {
+        val min = move.minHits ?: return 1
+        val max = move.maxHits ?: min
+        if (max <= min) return min
+        if (min == 2 && max == 5) {
+            val r = random.nextInt(100)
+            return when {
+                r < 35 -> 2
+                r < 70 -> 3
+                r < 85 -> 4
+                else -> 5
+            }
+        }
+        return random.nextInt(min, max + 1)
+    }
+
+    /** Nombre moyen de coups (pour estimer l'intérêt d'une attaque). */
+    fun averageHits(move: FighterMove): Double {
+        val min = move.minHits ?: return 1.0
+        val max = move.maxHits ?: min
+        return if (min == 2 && max == 5) 3.1 else (min + max) / 2.0
+    }
+
+    /** PV récupérés par une attaque de soin (Repos : tous). */
+    fun healAmount(f: Fighter, move: FighterMove): Int =
+        if (move.name == FighterMove.REST) f.maxHp - f.hp
+        else minOf(f.maxHp - f.hp, maxOf(1, f.maxHp * move.healing / 100))
+
     /** Intérêt d'une attaque pour l'adversaire : dégâts attendus, ou statut à infliger. */
     private fun moveScore(attacker: Fighter, defender: Fighter, m: FighterMove): Double {
         val accuracy = (m.accuracy ?: 100) / 100.0
+        if (m.heals) {
+            // Se soigner quand il reste moins de la moitié des PV
+            return if (attacker.hp * 2 < attacker.maxHp && (m.name != FighterMove.REST || attacker.hp * 4 < attacker.maxHp)) 70.0 else 0.0
+        }
         if (m.damageClass == "status") {
             return if (m.ailment != null && canReceive(defender, m.ailment)) 45.0 * accuracy else 0.0
         }
-        return m.power * (if (m.type in attacker.types) 1.5 else 1.0) * (defender.defenses[m.type] ?: 1.0) * accuracy
+        return m.power * averageHits(m) * (if (m.type in attacker.types) 1.5 else 1.0) * (defender.defenses[m.type] ?: 1.0) * accuracy
     }
 
     /** Attaque choisie par l'adversaire : la plus intéressante, avec un peu de hasard. */
