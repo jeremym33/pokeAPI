@@ -77,7 +77,14 @@ data class PokeApiMove(
     val priority: Int = 0,
     @SerialName("flavor_text_entries") val flavorTextEntries: List<PokeApiFlavorText> = emptyList(),
     val meta: PokeApiMoveMeta? = null,
+    /** Statistiques modifiées (Danse Lames : attack +2, Rugissement : attack -1). */
+    @SerialName("stat_changes") val statChanges: List<PokeApiStatChange> = emptyList(),
+    /** Cible : user, selected-pokemon, all-opponents… */
+    val target: NamedApiResource? = null,
 )
+
+@Serializable
+data class PokeApiStatChange(val change: Int, val stat: NamedApiResource)
 
 /** Effets secondaires d'une attaque : statut infligé (paralysis, burn…) et sa chance (0 = toujours pour une attaque de statut). */
 @Serializable
@@ -91,6 +98,10 @@ data class PokeApiMoveMeta(
     /** Nombre de coups (Combo-Griffe : 2 à 5, Double Pied : 2), null pour un seul coup. */
     @SerialName("min_hits") val minHits: Int? = null,
     @SerialName("max_hits") val maxHits: Int? = null,
+    /** damage-raise (le lanceur change ses statistiques), damage-lower (la cible), net-good-stats… */
+    val category: NamedApiResource? = null,
+    /** Chance de modifier les statistiques (%), 0 = toujours. */
+    @SerialName("stat_chance") val statChance: Int = 0,
 )
 
 @Serializable

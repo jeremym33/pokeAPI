@@ -205,6 +205,10 @@ data class LearnedMove(
     /** Nombre de coups, null pour un seul. */
     val minHits: Int? = null,
     val maxHits: Int? = null,
+    /** Statistiques modifiées (attack -> +2), sur le lanceur (statSelf) ou la cible, avec statChance % de chance. */
+    val statChanges: Map<String, Int> = emptyMap(),
+    val statSelf: Boolean = false,
+    val statChance: Int = 100,
 )
 
 @Serializable

@@ -40,8 +40,8 @@ private val TYPES_FR = mapOf(
 /** Types des arènes quand les Pokémon rencontrés ne suffisent pas à en choisir un. */
 private val FALLBACK_GYM_TYPES = listOf("rock", "water", "electric", "grass", "poison", "psychic", "fire", "ground", "ice", "fighting", "ghost", "dragon")
 
-/** Version des attaques des parties (2 : drain, soin, coups multiples) ; une partie plus ancienne est mise à jour. */
-private const val GAME_MOVES_VERSION = 2
+/** Version des attaques des parties (2 : drain, soin, coups multiples ; 3 : statistiques) ; une partie plus ancienne est mise à jour. */
+private const val GAME_MOVES_VERSION = 3
 
 private val TACKLE = FighterMove("tackle", "Charge", "normal", "physical", 40, 100)
 private val LEVEL_EVOLUTION = Regex("^Niveau (\\d+)$")
@@ -284,7 +284,11 @@ class GameService(
         if (target.fainted) throw BadRequestException("${target.displayName} est K.O.")
         if (uid == b.activeUid) throw BadRequestException("${target.displayName} est déjà au combat")
         val log = mutableListOf("Go, ${target.displayName} !")
-        var state = s.copy(battle = b.copy(activeUid = uid, mustSwitch = false, participants = b.participants + uid))
+        // Le Pokémon qui sort perd ses changements de statistiques.
+        var state = s.copy(
+            team = s.team.map { if (it.uid == b.activeUid) it.copy(stages = emptyMap()) else it },
+            battle = b.copy(activeUid = uid, mustSwitch = false, participants = b.participants + uid),
+        )
         if (!b.mustSwitch) {
             // Changement volontaire : l'adversaire attaque le Pokémon qui entre.
             val enemyMove = GameRules.chooseMove(b.enemy, target, random)
@@ -297,7 +301,7 @@ class GameService(
     suspend fun flee(): GameView = act { s ->
         val b = activeBattle(s)
         if (b.kind != BattleKind.WILD) throw BadRequestException("Impossible de fuir un combat d'arène")
-        s.copy(battle = b.copy(outcome = BattleOutcome.FLED, log = b.log + "Vous prenez la fuite."))
+        s.copy(team = s.team.map { it.copy(stages = emptyMap()) }, battle = b.copy(outcome = BattleOutcome.FLED, log = b.log + "Vous prenez la fuite."))
     }
 
     /** Ferme un combat terminé. */
@@ -334,7 +338,21 @@ class GameService(
 
         if (move.damageClass == "status") {
             val ailment = move.ailment
-            if (move.accuracy != null && random.nextInt(100) >= move.accuracy) return attacker to defender.also { lines += "Mais l'attaque échoue." }
+            // Une attaque sur soi (Danse Lames, Reflet…) ne peut pas rater
+            if (!(move.statSelf && move.statChanges.isNotEmpty()) && !GameRules.hits(attacker, defender, move, random)) {
+                return attacker to defender.also { lines += "Mais l'attaque échoue." }
+            }
+            if (move.statChanges.isNotEmpty()) {
+                return if (move.statSelf) {
+                    val (user, stageLines) = GameRules.applyStages(attacker, move.statChanges, who)
+                    lines += stageLines
+                    user to defender
+                } else {
+                    val (hitTarget, stageLines) = GameRules.applyStages(defender, move.statChanges, target)
+                    lines += stageLines
+                    attacker to hitTarget
+                }
+            }
             if (ailment == null || !GameRules.canReceive(defender, ailment)) return attacker to defender.also { lines += "Mais cela n'a aucun effet." }
             return attacker to inflict(defender, ailment, target, lines)
         }
@@ -372,6 +390,19 @@ class GameService(
             val recoil = minOf(attacker.hp, maxOf(1, dealt * -move.drain / 100))
             lines += "$who est blessé par le contrecoup ! (-$recoil PV)"
             user = attacker.copy(hp = attacker.hp - recoil)
+        }
+
+        // Statistiques modifiées par une attaque offensive (Poing Boost, Acide 1 fois sur 10…)
+        if (dealt > 0 && move.statChanges.isNotEmpty() && random.nextInt(100) < move.statChance) {
+            if (move.statSelf && user.hp > 0) {
+                val (changed, stageLines) = GameRules.applyStages(user, move.statChanges, who)
+                user = changed
+                lines += stageLines
+            } else if (!move.statSelf && hp > 0) {
+                val (changed, stageLines) = GameRules.applyStages(damaged, move.statChanges, target)
+                damaged = changed
+                lines += stageLines
+            }
         }
 
         // Effet secondaire (Flammèche brûle 1 fois sur 10…)
@@ -470,13 +501,13 @@ class GameService(
             state = state.copy(badges = state.badges + b.step).withItem(reward)
         }
         state = evolveTeam(state, log)
-        return state.copy(battle = state.battle!!.copy(outcome = BattleOutcome.WON))
+        return state.copy(team = state.team.map { it.copy(stages = emptyMap()) }, battle = state.battle!!.copy(outcome = BattleOutcome.WON))
     }
 
     private fun defeat(s: GameState, log: MutableList<String>): GameState {
         log += "Votre équipe est K.O. ! Vous retournez au dernier Centre Pokémon visité et vos Pokémon sont soignés."
         return s.copy(
-            team = s.team.map { it.healed() },
+            team = s.team.map { it.healed().copy(stages = emptyMap()) },
             stepIndex = s.lastCenter,
             battle = s.battle!!.copy(outcome = BattleOutcome.LOST),
         )
@@ -617,19 +648,22 @@ class GameService(
             .distinctBy { it.name }
             .filter {
                 ((it.power ?: 0) > 0 && it.damageClass in setOf("physical", "special")) ||
-                    (it.damageClass == "status" && (it.ailment in GameRules.STATUSES || it.healing > 0 || it.name == FighterMove.REST))
+                    (it.damageClass == "status" && (it.ailment in GameRules.STATUSES || it.healing > 0 || it.name == FighterMove.REST ||
+                        it.statChanges.keys.any { stat -> stat in GameRules.STAT_FR }))
             }
             .map(::toFighterMove)
 
     private fun toFighterMove(m: LearnedMove) = FighterMove(
         m.name, m.nameFr, m.type ?: "normal", m.damageClass!!, m.power ?: 0, m.accuracy, m.priority, m.ailment, m.ailmentChance,
         m.level, drain = m.drain, healing = m.healing, minHits = m.minHits, maxHits = m.maxHits,
+        statChanges = m.statChanges.filterKeys { it in GameRules.STAT_FR }, statSelf = m.statSelf, statChance = m.statChance,
     )
 
-    /** Attaques équipées par défaut : les 4 plus récentes, dont au moins une offensive (Charge à défaut). */
+    /** Attaques équipées par défaut : les 4 plus récentes (2 de statut au plus), dont au moins une offensive (Charge à défaut). */
     private fun defaultMoves(learnable: List<FighterMove>): List<FighterMove> {
         val damaging = learnable.filter { it.damageClass != "status" }
-        val chosen = learnable.take(4)
+        val statusMoves = learnable.filter { it.damageClass == "status" }.take(2).toSet()
+        val chosen = learnable.filter { it in damaging || it in statusMoves }.take(4)
         val moves = if (chosen.none { it in damaging }) chosen.take(3) + listOfNotNull(damaging.firstOrNull()) else chosen
         return if (moves.none { it.damageClass != "status" }) moves.take(3) + TACKLE else moves
     }
@@ -788,6 +822,7 @@ class GameService(
             xpInLevel = xp - start, xpToNext = GameRules.xpForLevel(level + 1) - start, moves = moves,
             knownMoves = allMoves.filter { m -> moves.none { it.name == m.name } }, fainted = fainted,
             status = status,
+            stages = stages.filterValues { it != 0 },
         )
     }
 
@@ -835,7 +870,10 @@ class GameService(
         )
         suspend fun migrate(f: Fighter): Fighter {
             fun refresh(m: FighterMove) = details[m.name]?.let {
-                m.copy(drain = it.drain, healing = it.healing, minHits = it.minHits, maxHits = it.maxHits)
+                m.copy(
+                    drain = it.drain, healing = it.healing, minHits = it.minHits, maxHits = it.maxHits,
+                    statChanges = it.statChanges.filterKeys { stat -> stat in GameRules.STAT_FR }, statSelf = it.statSelf, statChance = it.statChance,
+                )
             } ?: m
             val moves = f.moves.map(::refresh)
             return f.copy(moves = moves, knownMoves = (f.allMoves.map(::refresh) + learnableMoves(f.pokemonId, f.level)).distinctBy { it.name })

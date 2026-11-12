@@ -637,6 +637,40 @@ class ApplicationTest {
     }
 
     @Test
+    fun `aventure - attaques qui modifient les statistiques`() = appTest {
+        suspend fun game(response: HttpResponse): GameView {
+            assertTrue(response.status.isSuccess(), response.bodyAsText())
+            return json.decodeFromString<GameView>(response.bodyAsText())
+        }
+        suspend fun post(path: String, body: String? = null) = client.post("/game$path") {
+            if (body != null) { contentType(ContentType.Application.Json); setBody(body) }
+        }
+        game(post("/new", """{"starter":"bulbasaur"}"""))
+        val swordsDance = """{"name":"swords-dance","nameFr":"Danse Lames","type":"normal","damageClass":"status","power":0,"accuracy":null,"statChanges":{"attack":2},"statSelf":true}"""
+        val growl = """{"name":"growl","nameFr":"Rugissement","type":"normal","damageClass":"status","power":0,"accuracy":null,"statChanges":{"attack":-1}}"""
+        val tackle = """{"name":"tackle","nameFr":"Charge","type":"normal","damageClass":"physical","power":1,"accuracy":null}"""
+        editSave { save ->
+            val team = save["team"]!!.jsonArray
+            val first = JsonObject(team[0].jsonObject + mapOf(
+                "level" to JsonPrimitive(30), "xp" to JsonPrimitive(27000), "hp" to JsonPrimitive(90),
+                "moves" to json.parseToJsonElement("[$swordsDance, $growl, $tackle]"),
+            ))
+            JsonObject(save + ("team" to JsonArray(listOf(first))))
+        }
+        game(post("/travel", """{"step":1}"""))
+        game(post("/explore"))
+        var v = game(post("/battle/attack", """{"move":0}"""))
+        assertTrue(v.battle!!.log.contains("L'Attaque de Bulbizarre augmente beaucoup !"), v.battle!!.log.toString())
+        assertEquals(mapOf("attack" to 2), v.battle!!.active.stages)
+        v = game(post("/battle/attack", """{"move":1}"""))
+        assertTrue(v.battle!!.log.any { it.matches(Regex("L'Attaque de .+ adverse baisse !")) }, v.battle!!.log.toString())
+        assertEquals(-1, v.battle!!.enemy.stages["attack"])
+        // Fuite : les changements de statistiques disparaissent
+        v = game(post("/battle/flee"))
+        assertEquals(emptyMap(), v.team[0].stages)
+    }
+
+    @Test
     fun `aventure - attaques equipees et connues`() = appTest {
         suspend fun game(response: HttpResponse): GameView {
             assertTrue(response.status.isSuccess(), response.bodyAsText())

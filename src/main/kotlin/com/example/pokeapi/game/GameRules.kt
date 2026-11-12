@@ -138,6 +138,42 @@ object GameRules {
         "burn" to "brûlé", "poison" to "empoisonné", "paralysis" to "paralysé", "sleep" to "endormi", "freeze" to "gelé",
     )
 
+    val STAT_FR = mapOf(
+        "attack" to "l'Attaque", "defense" to "la Défense", "special-attack" to "l'Attaque Spéciale",
+        "special-defense" to "la Défense Spéciale", "speed" to "la Vitesse", "accuracy" to "la Précision", "evasion" to "l'Esquive",
+    )
+
+    /** Multiplicateur d'un niveau de statistique : ×(2+n)/2 en hausse, ×2/(2-n) en baisse (×4 à +6, ×¼ à -6). */
+    fun stageMultiplier(stage: Int): Double = if (stage >= 0) (2 + stage) / 2.0 else 2.0 / (2 - stage)
+
+    /** Précision et esquive : ×(3+n)/3 en hausse, ×3/(3-n) en baisse. */
+    fun accuracyMultiplier(stage: Int): Double = if (stage >= 0) (3 + stage) / 3.0 else 3.0 / (3 - stage)
+
+    /**
+     * Applique des changements de niveaux (bornés à -6..+6). Renvoie le Pokémon et les phrases du journal
+     * (« L'Attaque de Bulbizarre augmente beaucoup ! »).
+     */
+    fun applyStages(f: Fighter, changes: Map<String, Int>, who: String): Pair<Fighter, List<String>> {
+        var stages = f.stages
+        val lines = changes.mapNotNull { (stat, change) ->
+            val name = STAT_FR[stat] ?: return@mapNotNull null
+            val before = stages[stat] ?: 0
+            val after = (before + change).coerceIn(-6, 6)
+            stages = (stages + (stat to after)).filterValues { it != 0 }
+            val label = "${name.replaceFirstChar(Char::uppercase)} de $who"
+            when {
+                after == before && change > 0 -> "$label ne peut plus augmenter !"
+                after == before -> "$label ne peut plus baisser !"
+                after - before >= 3 -> "$label augmente énormément !"
+                after - before == 2 -> "$label augmente beaucoup !"
+                after > before -> "$label augmente !"
+                before - after >= 2 -> "$label baisse beaucoup !"
+                else -> "$label baisse !"
+            }
+        }
+        return f.copy(stages = stages) to lines
+    }
+
     /** Types insensibles à un statut (un Pokémon Feu ne peut pas être brûlé…). */
     private val STATUS_IMMUNE_TYPES = mapOf(
         "burn" to setOf("fire"), "poison" to setOf("poison", "steel"), "paralysis" to setOf("electric"), "freeze" to setOf("ice"),
@@ -195,21 +231,33 @@ object GameRules {
     /** Dégâts d'une attaque (formule simplifiée des jeux : niveau, puissance, stats, STAB, types, aléa). */
     fun attack(attacker: Fighter, defender: Fighter, move: FighterMove, random: Random, checkAccuracy: Boolean = true): AttackResult {
         val effectiveness = defender.defenses[move.type] ?: 1.0
-        if (checkAccuracy && move.accuracy != null && random.nextInt(100) >= move.accuracy) return AttackResult(0, false, false, effectiveness)
+        if (checkAccuracy && !hits(attacker, defender, move, random)) return AttackResult(0, false, false, effectiveness)
         if (effectiveness == 0.0) return AttackResult(0, true, false, 0.0)
 
         val a = stats(attacker)
         val d = stats(defender)
-        val (atk0, def) = if (move.damageClass == "special") a.spAttack to d.spDefense else a.attack to d.defense
+        val special = move.damageClass == "special"
+        val critical = random.nextInt(24) == 0
+        // Niveaux de statistiques ; un coup critique ignore les baisses du lanceur et les hausses de la cible.
+        val atkStage = (attacker.stages[if (special) "special-attack" else "attack"] ?: 0).let { if (critical) maxOf(it, 0) else it }
+        val defStage = (defender.stages[if (special) "special-defense" else "defense"] ?: 0).let { if (critical) minOf(it, 0) else it }
+        val atk0 = (if (special) a.spAttack else a.attack) * stageMultiplier(atkStage)
+        val def = (if (special) d.spDefense else d.defense) * stageMultiplier(defStage)
         // La brûlure divise par deux l'Attaque physique.
         val atk = if (attacker.status == "burn" && move.damageClass == "physical") atk0 / 2 else atk0
-        val critical = random.nextInt(24) == 0
         var damage = floor(floor(2.0 * attacker.level / 5 + 2) * move.power * atk / def / 50) + 2
         if (move.type in attacker.types) damage *= 1.5
         damage *= effectiveness
         if (critical) damage *= 1.5
         damage *= 0.85 + random.nextDouble() * 0.15
         return AttackResult(max(1, damage.toInt()), true, critical, effectiveness)
+    }
+
+    /** L'attaque touche-t-elle ? Précision de l'attaque, modifiée par la précision du lanceur et l'esquive de la cible. */
+    fun hits(attacker: Fighter, defender: Fighter, move: FighterMove, random: Random): Boolean {
+        val accuracy = move.accuracy ?: return true
+        val stage = ((attacker.stages["accuracy"] ?: 0) - (defender.stages["evasion"] ?: 0)).coerceIn(-6, 6)
+        return random.nextDouble() * 100 < accuracy * accuracyMultiplier(stage)
     }
 
     /**
@@ -252,7 +300,15 @@ object GameRules {
             return if (attacker.hp * 2 < attacker.maxHp && (m.name != FighterMove.REST || attacker.hp * 4 < attacker.maxHp)) 70.0 else 0.0
         }
         if (m.damageClass == "status") {
-            return if (m.ailment != null && canReceive(defender, m.ailment)) 45.0 * accuracy else 0.0
+            if (m.ailment != null && canReceive(defender, m.ailment)) return 45.0 * accuracy
+            if (m.statChanges.isEmpty() || attacker.hp * 2 < attacker.maxHp) return 0.0
+            // Modifier les statistiques tant qu'elles ne sont pas déjà bien modifiées
+            val target = if (m.statSelf) attacker else defender
+            val useful = m.statChanges.any { (stat, change) ->
+                val stage = target.stages[stat] ?: 0
+                if (change > 0) stage < 2 else stage > -2
+            }
+            return if (useful) 35.0 * accuracy else 0.0
         }
         return m.power * averageHits(m) * (if (m.type in attacker.types) 1.5 else 1.0) * (defender.defenses[m.type] ?: 1.0) * accuracy
     }
@@ -265,7 +321,8 @@ object GameRules {
     }
 
     /** Vitesse effective (divisée par deux par la paralysie). */
-    fun speed(f: Fighter): Int = stats(f).speed / if (f.status == "paralysis") 2 else 1
+    fun speed(f: Fighter): Int =
+        (stats(f).speed * stageMultiplier(f.stages["speed"] ?: 0)).toInt() / if (f.status == "paralysis") 2 else 1
 
     /** Le premier à attaquer : priorité, puis vitesse (égalité tirée au sort). */
     fun firstToAct(a: Fighter, aMove: FighterMove, b: Fighter, bMove: FighterMove, random: Random): Boolean = when {

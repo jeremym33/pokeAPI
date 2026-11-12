@@ -28,6 +28,10 @@ data class FighterMove(
     /** Nombre de coups (Combo-Griffe : 2 à 5, Double Pied : 2), null pour un seul coup. */
     val minHits: Int? = null,
     val maxHits: Int? = null,
+    /** Statistiques modifiées (attack -> +2) : sur le lanceur si [statSelf], sinon sur la cible, avec [statChance] %. */
+    val statChanges: Map<String, Int> = emptyMap(),
+    val statSelf: Boolean = false,
+    val statChance: Int = 100,
 ) {
     /** Attaque de statut qui soigne le lanceur (Soin, Synthèse, Repos…). */
     val heals: Boolean get() = damageClass == "status" && (healing > 0 || name == REST)
@@ -67,6 +71,8 @@ data class Fighter(
     val status: String? = null,
     /** Tours de sommeil restants. */
     val sleepTurns: Int = 0,
+    /** Niveaux de statistiques en combat (-6 à +6 : attack, defense, special-attack, special-defense, speed, accuracy, evasion). */
+    val stages: Map<String, Int> = emptyMap(),
 ) {
     val displayName: String get() = nameFr ?: name.replaceFirstChar(Char::uppercase)
     val maxHp: Int get() = GameRules.stats(this).hp
@@ -136,6 +142,6 @@ data class GameState(
     /** Message de la dernière action hors combat (évolution par pierre…). */
     val lastEvent: String? = null,
     val settings: GameSettings = GameSettings(),
-    /** Version des attaques enregistrées dans la partie (2 : drain, soin, coups multiples). */
+    /** Version des attaques enregistrées dans la partie (2 : drain, soin, coups multiples ; 3 : statistiques). */
     val movesVersion: Int = 0,
 )

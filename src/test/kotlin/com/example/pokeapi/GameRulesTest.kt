@@ -171,4 +171,34 @@ class GameRulesTest {
         assertEquals(3, GameRules.healAmount(f.copy(hp = max - 3), recover)) // sans dépasser le maximum
         assertEquals(max - 1, GameRules.healAmount(f.copy(hp = 1), rest))
     }
+
+    @Test
+    fun `niveaux de statistiques`() {
+        assertEquals(2.0, GameRules.stageMultiplier(2))
+        assertEquals(4.0, GameRules.stageMultiplier(6))
+        assertEquals(0.5, GameRules.stageMultiplier(-2))
+        assertEquals(0.25, GameRules.stageMultiplier(-6))
+        assertEquals(0.75, GameRules.accuracyMultiplier(-1), 1e-9)
+
+        val f = fighter(20)
+        val (boosted, lines) = GameRules.applyStages(f, mapOf("attack" to 2), "Bulbizarre")
+        assertEquals(mapOf("attack" to 2), boosted.stages)
+        assertEquals(listOf("L'Attaque de Bulbizarre augmente beaucoup !"), lines)
+        val (maxed, maxLines) = GameRules.applyStages(boosted.copy(stages = mapOf("attack" to 6)), mapOf("attack" to 2), "Bulbizarre")
+        assertEquals(6, maxed.stages["attack"])
+        assertEquals(listOf("L'Attaque de Bulbizarre ne peut plus augmenter !"), maxLines)
+        val (lowered, lowLines) = GameRules.applyStages(f, mapOf("defense" to -1), "Bulbizarre adverse")
+        assertEquals(-1, lowered.stages["defense"])
+        assertEquals(listOf("La Défense de Bulbizarre adverse baisse !"), lowLines)
+        // Retour à 0 : le niveau disparaît
+        assertEquals(emptyMap(), GameRules.applyStages(lowered, mapOf("defense" to 1), "x").first.stages)
+
+        // Vitesse doublée à +2 ; dégâts plus forts avec l'Attaque augmentée
+        assertEquals(GameRules.speed(f) * 2, GameRules.speed(f.copy(stages = mapOf("speed" to 2))), GameRules.speed(f).toString())
+        val tackle = FighterMove("tackle", "Charge", "normal", "physical", 40, null)
+        val target = fighter(20).copy(hp = 1000)
+        val normal = (1..200).sumOf { GameRules.attack(f, target, tackle, Random(it)).damage }
+        val strong = (1..200).sumOf { GameRules.attack(f.copy(stages = mapOf("attack" to 2)), target, tackle, Random(it)).damage }
+        assertTrue(strong > normal * 1.6, "$normal -> $strong")
+    }
 }

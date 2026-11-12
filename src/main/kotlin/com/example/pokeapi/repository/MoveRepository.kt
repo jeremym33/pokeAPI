@@ -25,12 +25,23 @@ data class MoveInfo(
     val healing: Int = 0,
     val minHits: Int? = null,
     val maxHits: Int? = null,
+    /** Statistiques modifiées (attack -> +2), sur le lanceur ([statSelf]) ou la cible, avec [statChance] % (100 = toujours). */
+    val statChanges: Map<String, Int> = emptyMap(),
+    val statSelf: Boolean = false,
+    val statChance: Int = 100,
     /** false : attaque en cache d'avant la gestion des effets (statuts, drain, coups multiples…). */
     val metaLoaded: Boolean = true,
 )
 
-/** Version des effets d'attaque enregistrés en base (2 : drain, soin, coups multiples). */
-const val MOVE_META_VERSION = 2
+/** Version des effets d'attaque enregistrés en base (2 : drain, soin, coups multiples ; 3 : statistiques). */
+const val MOVE_META_VERSION = 3
+
+/** Cibles d'une attaque de statut qui désignent le lanceur. */
+private val SELF_TARGETS = setOf("user", "user-and-allies", "users-field", "ally", "user-or-ally")
+
+private fun encodeStats(stats: Map<String, Int>) = stats.entries.joinToString(",") { "${it.key}:${it.value}" }
+private fun decodeStats(text: String): Map<String, Int> = text.split(',').filter { ':' in it }
+    .associate { it.substringBefore(':') to it.substringAfter(':').toInt() }
 
 class MoveRepository(private val database: Database) {
 
@@ -56,6 +67,9 @@ class MoveRepository(private val database: Database) {
                 healing = it[MoveTable.healing],
                 minHits = it[MoveTable.minHits],
                 maxHits = it[MoveTable.maxHits],
+                statChanges = decodeStats(it[MoveTable.statChanges]),
+                statSelf = it[MoveTable.statSelf],
+                statChance = it[MoveTable.statChance],
                 metaLoaded = it[MoveTable.metaLoaded] && it[MoveTable.metaVersion] >= MOVE_META_VERSION,
             )
         }
@@ -80,6 +94,11 @@ class MoveRepository(private val database: Database) {
             healing = move.meta?.healing ?: 0,
             minHits = move.meta?.minHits,
             maxHits = move.meta?.maxHits,
+            statChanges = move.statChanges.associate { it.stat.name to it.change },
+            // Attaque offensive : « damage-raise » modifie le lanceur (Poing Boost, Close Combat), sinon la cible.
+            statSelf = if (move.damageClass?.name == "status") move.target?.name in SELF_TARGETS
+            else move.meta?.category?.name == "damage-raise",
+            statChance = move.meta?.statChance?.takeIf { it > 0 } ?: 100,
         )
         dbQuery {
             MoveTable.upsert {
@@ -98,6 +117,9 @@ class MoveRepository(private val database: Database) {
                 it[healing] = info.healing
                 it[minHits] = info.minHits
                 it[maxHits] = info.maxHits
+                it[statChanges] = encodeStats(info.statChanges)
+                it[statSelf] = info.statSelf
+                it[statChance] = info.statChance
                 it[metaLoaded] = true
                 it[metaVersion] = MOVE_META_VERSION
                 it[fetchedAt] = Instant.now()

@@ -23,6 +23,8 @@ data class FighterView(
     val fainted: Boolean,
     /** burn, poison, paralysis, sleep, freeze */
     val status: String?,
+    /** Niveaux de statistiques en combat (non nuls seulement). */
+    val stages: Map<String, Int> = emptyMap(),
 )
 
 /** Objet d'évolution du sac : quantité et Pokémon sur lesquels il a un effet. */
