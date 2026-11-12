@@ -78,6 +78,15 @@ data class Battle(
     val enemy: Fighter get() = enemies[enemyIndex]
 }
 
+/** Réglages du joueur, sauvegardés avec la partie. */
+@Serializable
+data class GameSettings(
+    /** En fin de combat sur une route, proposer d'enchaîner directement sur le Pokémon suivant. */
+    val nextEncounterButton: Boolean = true,
+    /** Ne proposer de rejoindre l'équipe qu'aux espèces pas encore obtenues. */
+    val recruitOnlyNew: Boolean = false,
+)
+
 /** Sauvegarde de la partie. */
 @Serializable
 data class GameState(
@@ -102,4 +111,5 @@ data class GameState(
     val items: Map<String, Int> = emptyMap(),
     /** Message de la dernière action hors combat (évolution par pierre…). */
     val lastEvent: String? = null,
+    val settings: GameSettings = GameSettings(),
 )

@@ -337,6 +337,38 @@ paths:
               schema: { $ref: "#/components/schemas/GameView" }
         "400": { $ref: "#/components/responses/BadRequest" }
 
+  /game/battle/next:
+    post:
+      tags: [Aventure]
+      summary: Fermer le combat terminé et enchaîner sur le Pokémon sauvage suivant, au même endroit
+      responses:
+        "200":
+          description: État de la partie
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /game/settings:
+    put:
+      tags: [Aventure]
+      summary: Réglages du joueur
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                nextEncounterButton: { type: boolean, description: "Proposer « Pokémon suivant » en fin de combat sur une route", default: true }
+                recruitOnlyNew: { type: boolean, description: Ne proposer de rejoindre l'équipe qu'aux espèces pas encore obtenues, default: false }
+      responses:
+        "200":
+          description: État de la partie
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameView" }
+
   /game/battle/close:
     post:
       tags: [Aventure]

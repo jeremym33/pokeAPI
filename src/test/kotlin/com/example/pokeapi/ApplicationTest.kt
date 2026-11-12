@@ -9,6 +9,8 @@ import com.example.pokeapi.model.AbilityDetail
 import com.example.pokeapi.model.learnsetOf
 import com.example.pokeapi.db.GameSaveTable
 import com.example.pokeapi.game.BattleKind
+import com.example.pokeapi.game.BattleOutcome
+import com.example.pokeapi.game.GameSettings
 import com.example.pokeapi.game.GameView
 import com.example.pokeapi.model.EncounterMethod
 import com.example.pokeapi.model.EvolutionChain
@@ -587,6 +589,67 @@ class ApplicationTest {
         }
         assertTrue(learned, "Fouet Lianes jamais appris")
         assertTrue(v.team[0].moves.any { it.name == "vine-whip" })
+    }
+
+    @Test
+    fun `aventure - reglages - pokemon suivant et recrues seulement nouvelles`() = appTest {
+        suspend fun game(response: HttpResponse): GameView {
+            assertTrue(response.status.isSuccess(), response.bodyAsText())
+            return json.decodeFromString<GameView>(response.bodyAsText())
+        }
+        suspend fun post(path: String, body: String? = null) = client.post("/game$path") {
+            if (body != null) { contentType(ContentType.Application.Json); setBody(body) }
+        }
+        suspend fun settings(next: Boolean, onlyNew: Boolean) = game(client.put("/game/settings") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"nextEncounterButton":$next,"recruitOnlyNew":$onlyNew}""")
+        })
+
+        var v = game(post("/new", """{"starter":"bulbasaur"}"""))
+        assertEquals(GameSettings(nextEncounterButton = true, recruitOnlyNew = false), v.settings)
+        v = settings(next = true, onlyNew = true)
+        assertEquals(true, v.settings.recruitOnlyNew)
+        v = game(post("/travel", """{"step":1}"""))
+
+        // La Route 1 simulée n'a que des Bulbizarre, déjà obtenu avec le starter : aucune proposition
+        v = game(post("/explore"))
+        var wins = 0
+        var chained = 0
+        val logs = mutableListOf<String>()
+        while (wins < 3 && chained < 30) {
+            while (v.battle!!.outcome == null) {
+                v = if (v.battle!!.mustSwitch) game(post("/battle/switch", """{"uid":"${v.team.first { !it.fainted }.uid}"}"""))
+                else game(post("/battle/attack", """{"move":0}"""))
+            }
+            val b = v.battle!!
+            logs += b.log
+            assertEquals(null, b.recruit)
+            if (b.outcome == BattleOutcome.WON) {
+                wins++
+                assertTrue(b.canContinue) // « Pokémon suivant » proposé
+                v = game(post("/battle/next")) // enchaîne directement
+                assertEquals(null, v.battle!!.outcome)
+                assertEquals(1, v.currentStep)
+                chained++
+            } else {
+                assertEquals(false, b.canContinue) // défaite : retour au Centre Pokémon
+                v = game(post("/battle/close"))
+                v = game(post("/travel", """{"step":1}"""))
+                v = game(post("/explore"))
+            }
+        }
+        assertTrue(wins >= 3, "seulement $wins victoires")
+        assertTrue(logs.any { it.contains("déjà dans votre Pokédex") })
+
+        // Réglage désactivé : plus de « Pokémon suivant »
+        settings(next = false, onlyNew = true)
+        v = game(client.get("/game"))
+        while (v.battle!!.outcome == null) {
+            v = if (v.battle!!.mustSwitch) game(post("/battle/switch", """{"uid":"${v.team.first { !it.fainted }.uid}"}"""))
+            else game(post("/battle/attack", """{"move":0}"""))
+        }
+        assertEquals(false, v.battle!!.canContinue)
+        assertEquals(HttpStatusCode.BadRequest, post("/battle/attack", """{"move":0}""").status)
     }
 
     @Test

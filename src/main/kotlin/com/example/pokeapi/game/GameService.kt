@@ -127,6 +127,20 @@ class GameService(
     /** Cherche un Pokémon sauvage à l'étape actuelle. */
     suspend fun explore(): GameView = act { s ->
         noBattle(s)
+        startWildBattle(s)
+    }
+
+    /** Ferme le combat terminé et enchaîne sur le Pokémon sauvage suivant, au même endroit. */
+    suspend fun nextEncounter(): GameView = act { s ->
+        val b = s.battle ?: throw BadRequestException("Aucun combat en cours")
+        if (b.outcome == null) throw BadRequestException("Le combat n'est pas terminé")
+        if (b.recruit != null) throw BadRequestException("Décidez d'abord si ${b.recruit.displayName} vous rejoint")
+        startWildBattle(s.copy(battle = null))
+    }
+
+    suspend fun updateSettings(settings: GameSettings): GameView = act { s -> s.copy(settings = settings) }
+
+    private suspend fun startWildBattle(s: GameState): GameState {
         val active = s.team.firstOrNull { !it.fainted } ?: throw BadRequestException("Votre équipe est K.O. : passez au Centre Pokémon")
         val pool = pool(s.stepIndex, s.badges.size)
         if (pool.isEmpty()) throw BadRequestException("Aucun Pokémon sauvage ici")
@@ -137,7 +151,7 @@ class GameService(
             kind = BattleKind.WILD, step = s.stepIndex, enemies = listOf(enemy), activeUid = active.uid,
             participants = setOf(active.uid), log = listOf("Un ${enemy.displayName} sauvage (niv. $level) apparaît !", "Go, ${active.displayName} !"),
         )
-        s.copy(battle = battle, seen = s.seen + enemy.speciesId)
+        return s.copy(battle = battle, seen = s.seen + enemy.speciesId)
     }
 
     /** Défie l'arène de la ville actuelle. */
@@ -363,7 +377,11 @@ class GameService(
                 log += "${enemy.displayName} laisse tomber : ${item.nameFr} ! Vous la ramassez."
                 state = state.withItem(item)
             }
-            if (random.nextDouble() < GameRules.joinChance(enemy.captureRate)) {
+            val alreadyCaught = enemy.speciesId in state.caught
+            if (alreadyCaught && state.settings.recruitOnlyNew) {
+                // Réglage « seulement les nouveaux Pokémon » : pas de proposition pour une espèce déjà obtenue.
+                log += "${enemy.displayName} s'éloigne (déjà dans votre Pokédex)."
+            } else if (random.nextDouble() < GameRules.joinChance(enemy.captureRate)) {
                 val recruit = enemy.copy(uid = "p${state.uidCounter + 1}", xp = GameRules.xpForLevel(enemy.level)).healed()
                 log += "${enemy.displayName} veut vous rejoindre !" + if (enemy.speciesId in state.caught) " (vous en avez déjà un)" else " (nouveau !)"
                 state = state.copy(battle = state.battle!!.copy(recruit = recruit))
@@ -616,6 +634,8 @@ class GameService(
                 canFlee = b.kind == BattleKind.WILD && b.outcome == null,
                 recruit = b.recruit?.toView(),
                 recruitIsNew = b.recruit?.let { it.speciesId !in s.caught } ?: false,
+                canContinue = b.kind == BattleKind.WILD && b.outcome in setOf(BattleOutcome.WON, BattleOutcome.FLED) &&
+                    s.settings.nextEncounterButton && s.team.any { !it.fainted } && pool(s.stepIndex, s.badges.size).isNotEmpty(),
             )
         }
         // Objets possédés, avec les Pokémon sur lesquels ils ont un effet.
@@ -642,6 +662,7 @@ class GameService(
             battle = battle,
             items = items,
             lastEvent = s.lastEvent,
+            settings = s.settings,
         )
     }
 

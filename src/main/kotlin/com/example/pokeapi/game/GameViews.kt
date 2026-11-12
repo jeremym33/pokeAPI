@@ -62,6 +62,8 @@ data class BattleView(
     val recruit: FighterView?,
     /** La recrue est une espèce pas encore obtenue. */
     val recruitIsNew: Boolean,
+    /** Combat terminé sur un lieu avec des Pokémon sauvages : « Pokémon suivant » possible (selon les réglages). */
+    val canContinue: Boolean,
 )
 
 @Serializable
@@ -82,4 +84,5 @@ data class GameView(
     /** Objets d'évolution possédés, avec les Pokémon concernés. */
     val items: List<ItemView> = emptyList(),
     val lastEvent: String? = null,
+    val settings: GameSettings = GameSettings(),
 )

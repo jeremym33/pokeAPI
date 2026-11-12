@@ -1,6 +1,7 @@
 package com.example.pokeapi.routes
 
 import com.example.pokeapi.game.GameService
+import com.example.pokeapi.game.GameSettings
 import io.ktor.http.*
 import io.ktor.server.plugins.*
 import io.ktor.server.request.*
@@ -46,6 +47,7 @@ fun Route.gameRoutes(service: GameService) {
         post("/heal") { call.respond(service.heal()) }
         post("/explore") { call.respond(service.explore()) }
         post("/gym") { call.respond(service.challengeGym()) }
+        put("/settings") { call.respond(service.updateSettings(call.receive<GameSettings>())) }
         put("/team") { call.respond(service.setTeam(call.receive<TeamRequest>().uids)) }
         post("/items/use") {
             val request = call.receive<UseItemRequest>()
@@ -57,6 +59,8 @@ fun Route.gameRoutes(service: GameService) {
             post("/switch") { call.respond(service.switchTo(call.receive<SwitchRequest>().uid)) }
             post("/flee") { call.respond(service.flee()) }
             post("/close") { call.respond(service.closeBattle()) }
+            // Ferme le combat terminé et enchaîne sur le Pokémon sauvage suivant
+            post("/next") { call.respond(service.nextEncounter()) }
             // Accueillir ou non le Pokémon qui veut rejoindre l'équipe
             post("/recruit") { call.respond(service.recruit(call.receive<RecruitRequest>().accept)) }
         }
