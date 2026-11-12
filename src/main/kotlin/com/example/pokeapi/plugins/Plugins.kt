@@ -46,6 +46,7 @@ fun Application.configureCors(hosts: List<String>) {
         allowMethod(HttpMethod.Patch)
         allowMethod(HttpMethod.Delete)
         allowHeader(HttpHeaders.ContentType)
+        allowHeader(HttpHeaders.Authorization)
         if (hosts.isEmpty() || "*" in hosts) {
             anyHost()
         } else {
@@ -67,6 +68,12 @@ fun Application.configureStatusPages() {
             val message = if (invalidBody) "Corps de requête invalide" else chain.firstNotNullOfOrNull { it.message }
             if (invalidBody) call.application.log.warn("Requête invalide sur ${call.request.path()} : ${cause.cause}")
             call.respond(HttpStatusCode.BadRequest, ErrorResponse(message ?: "Requête invalide"))
+        }
+        exception<com.example.pokeapi.auth.UnauthorizedException> { call, cause ->
+            call.respond(HttpStatusCode.Unauthorized, ErrorResponse(cause.message ?: "Connexion requise"))
+        }
+        exception<com.example.pokeapi.auth.ConflictException> { call, cause ->
+            call.respond(HttpStatusCode.Conflict, ErrorResponse(cause.message ?: "Conflit"))
         }
         exception<PokeApiException> { call, cause ->
             call.application.log.warn("Erreur PokéAPI : ${cause.message}")

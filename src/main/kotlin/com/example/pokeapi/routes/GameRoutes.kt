@@ -1,5 +1,7 @@
 package com.example.pokeapi.routes
 
+import com.example.pokeapi.auth.AuthService
+import com.example.pokeapi.auth.requireUser
 import com.example.pokeapi.game.GameService
 import com.example.pokeapi.game.GameSettings
 import io.ktor.http.*
@@ -33,44 +35,45 @@ data class RecruitRequest(val accept: Boolean)
 @Serializable
 data class UseItemRequest(val item: String, val uid: String)
 
-/** Jeu d'aventure : chaque action renvoie l'état complet de la partie. */
-fun Route.gameRoutes(service: GameService) {
+/** Jeu d'aventure : chaque action renvoie l'état complet de la partie du compte connecté. */
+fun Route.gameRoutes(service: GameService, auth: AuthService) {
+    suspend fun RoutingCall.user(): Int = requireUser(auth).id
     route("/game") {
-        get { call.respond(service.view()) }
+        get { call.respond(service.view(call.user())) }
 
         // Nouvelle partie (remplace la partie en cours)
-        post("/new") { call.respond(HttpStatusCode.Created, service.newGame(call.receive<NewGameRequest>().starter)) }
+        post("/new") { call.respond(HttpStatusCode.Created, service.newGame(call.user(), call.receive<NewGameRequest>().starter)) }
 
         delete {
-            service.reset()
+            service.reset(call.user())
             call.respond(HttpStatusCode.NoContent)
         }
 
         // Vérifie (et corrige) les Pokémon de la partie d'après les données en base : à l'ouverture de la page
-        post("/verify") { call.respond(service.verify()) }
-        post("/travel") { call.respond(service.travel(call.receive<TravelRequest>().step)) }
-        post("/heal") { call.respond(service.heal()) }
-        post("/explore") { call.respond(service.explore()) }
-        post("/gym") { call.respond(service.challengeGym()) }
-        put("/settings") { call.respond(service.updateSettings(call.receive<GameSettings>())) }
+        post("/verify") { call.respond(service.verify(call.user())) }
+        post("/travel") { call.respond(service.travel(call.user(), call.receive<TravelRequest>().step)) }
+        post("/heal") { call.respond(service.heal(call.user())) }
+        post("/explore") { call.respond(service.explore(call.user())) }
+        post("/gym") { call.respond(service.challengeGym(call.user())) }
+        put("/settings") { call.respond(service.updateSettings(call.user(), call.receive<GameSettings>())) }
         put("/pokemon/{uid}/moves") {
-            call.respond(service.setMoves(call.parameters["uid"]!!, call.receive<MovesRequest>().moves))
+            call.respond(service.setMoves(call.user(), call.parameters["uid"]!!, call.receive<MovesRequest>().moves))
         }
-        put("/team") { call.respond(service.setTeam(call.receive<TeamRequest>().uids)) }
+        put("/team") { call.respond(service.setTeam(call.user(), call.receive<TeamRequest>().uids)) }
         post("/items/use") {
             val request = call.receive<UseItemRequest>()
-            call.respond(service.useItem(request.item, request.uid))
+            call.respond(service.useItem(call.user(), request.item, request.uid))
         }
 
         route("/battle") {
-            post("/attack") { call.respond(service.attack(call.receive<AttackRequest>().move)) }
-            post("/switch") { call.respond(service.switchTo(call.receive<SwitchRequest>().uid)) }
-            post("/flee") { call.respond(service.flee()) }
-            post("/close") { call.respond(service.closeBattle()) }
+            post("/attack") { call.respond(service.attack(call.user(), call.receive<AttackRequest>().move)) }
+            post("/switch") { call.respond(service.switchTo(call.user(), call.receive<SwitchRequest>().uid)) }
+            post("/flee") { call.respond(service.flee(call.user())) }
+            post("/close") { call.respond(service.closeBattle(call.user())) }
             // Ferme le combat terminé et enchaîne sur le Pokémon sauvage suivant
-            post("/next") { call.respond(service.nextEncounter()) }
+            post("/next") { call.respond(service.nextEncounter(call.user())) }
             // Accueillir ou non le Pokémon qui veut rejoindre l'équipe
-            post("/recruit") { call.respond(service.recruit(call.receive<RecruitRequest>().accept)) }
+            post("/recruit") { call.respond(service.recruit(call.user(), call.receive<RecruitRequest>().accept)) }
         }
     }
 }

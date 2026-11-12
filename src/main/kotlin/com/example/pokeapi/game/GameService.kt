@@ -66,15 +66,15 @@ class GameService(
 
     // ---------- Actions ----------
 
-    suspend fun view(): GameView = lock.withLock { loadMigrated()?.let { toView(it) } ?: GameView(started = false) }
+    suspend fun view(userId: Int): GameView = lock.withLock { loadMigrated(userId)?.let { toView(userId, it) } ?: GameView(started = false) }
 
     /**
      * Vérifie chaque Pokémon de l'équipe et de la boîte d'après les données à jour (Pokédex, attaques, types) :
      * nom, images, types, statistiques, faiblesses, détail des attaques, attaques connues à son niveau,
      * attaques équipées (1 à 4, dont une offensive), expérience et PV cohérents. Renvoie la partie et les corrections.
      */
-    suspend fun verify(): GameView = lock.withLock {
-        val s = loadMigrated() ?: return@withLock GameView(started = false)
+    suspend fun verify(userId: Int): GameView = lock.withLock {
+        val s = loadMigrated(userId) ?: return@withLock GameView(started = false)
         val corrections = mutableListOf<String>()
         val details = moveService.details((s.team + s.box).flatMap { f -> f.allMoves.map { it.name } })
         suspend fun check(f: Fighter): Fighter {
@@ -139,23 +139,23 @@ class GameService(
             return fixed
         }
         val checked = s.copy(team = s.team.map { check(it) }, box = s.box.map { check(it) })
-        if (checked != s) save(checked)
-        toView(checked).copy(corrections = corrections)
+        if (checked != s) save(userId, checked)
+        toView(userId, checked).copy(corrections = corrections)
     }
 
-    suspend fun newGame(starter: String): GameView = lock.withLock {
+    suspend fun newGame(userId: Int, starter: String): GameView = lock.withLock {
         if (starter !in GameRules.STARTERS) throw BadRequestException("Starter inconnu : '$starter' (${GameRules.STARTERS.joinToString()})")
         val first = buildFighter(starter, GameRules.STARTER_LEVEL, "p1")
         val state = GameState(movesVersion = GAME_MOVES_VERSION, starter = starter, team = listOf(first), caught = setOf(first.speciesId), seen = setOf(first.speciesId), uidCounter = 1)
-        save(state)
-        toView(state)
+        save(userId, state)
+        toView(userId, state)
     }
 
-    suspend fun reset(): Unit = lock.withLock {
-        newSuspendedTransaction(Dispatchers.IO, database) { GameSaveTable.deleteWhere { id eq 1 } }
+    suspend fun reset(userId: Int): Unit = lock.withLock {
+        newSuspendedTransaction(Dispatchers.IO, database) { GameSaveTable.deleteWhere { id eq userId } }
     }
 
-    suspend fun travel(step: Int): GameView = act { s ->
+    suspend fun travel(userId: Int, step: Int): GameView = act(userId) { s ->
         noBattle(s)
         if (step !in GameRules.STEPS.indices) throw BadRequestException("Étape inconnue : $step")
         if (step > unlockedStep(s)) throw BadRequestException("Cette étape n'est pas encore accessible")
@@ -163,14 +163,14 @@ class GameService(
         s.copy(stepIndex = step, lastCenter = if (city) step else s.lastCenter)
     }
 
-    suspend fun heal(): GameView = act { s ->
+    suspend fun heal(userId: Int): GameView = act(userId) { s ->
         noBattle(s)
         if (!GameRules.STEPS[s.stepIndex].city) throw BadRequestException("Le Centre Pokémon se trouve dans les villes")
         s.copy(team = s.team.map { it.healed() }, box = s.box.map { it.healed() })
     }
 
     /** Utilise un objet d'évolution (pierre, Câble Link) sur un Pokémon de l'équipe ou de la boîte. */
-    suspend fun useItem(item: String, uid: String): GameView = act { s ->
+    suspend fun useItem(userId: Int, item: String, uid: String): GameView = act(userId) { s ->
         noBattle(s)
         val evolutionItem = GameRules.ITEMS.firstOrNull { it.item == item } ?: throw BadRequestException("Objet inconnu : '$item'")
         if ((s.items[item] ?: 0) <= 0) throw BadRequestException("Vous n'avez pas de ${evolutionItem.nameFr}")
@@ -191,13 +191,13 @@ class GameService(
     }
 
     /** Accueille (ou non) le Pokémon sauvage qui veut rejoindre l'équipe après la victoire. */
-    suspend fun recruit(accept: Boolean): GameView = act { s ->
+    suspend fun recruit(userId: Int, accept: Boolean): GameView = act(userId) { s ->
         val b = s.battle ?: throw BadRequestException("Aucun combat en cours")
         val recruit = b.recruit ?: throw BadRequestException("Aucun Pokémon ne veut vous rejoindre")
         decideRecruit(s, recruit, accept)
     }
 
-    suspend fun setTeam(uids: List<String>): GameView = act { s ->
+    suspend fun setTeam(userId: Int, uids: List<String>): GameView = act(userId) { s ->
         noBattle(s)
         val all = (s.team + s.box).associateBy { it.uid }
         if (uids.isEmpty() || uids.size > 6 || uids.distinct().size != uids.size || uids.any { it !in all }) {
@@ -207,13 +207,13 @@ class GameService(
     }
 
     /** Cherche un Pokémon sauvage à l'étape actuelle. */
-    suspend fun explore(): GameView = act { s ->
+    suspend fun explore(userId: Int): GameView = act(userId) { s ->
         noBattle(s)
         startWildBattle(s)
     }
 
     /** Ferme le combat terminé et enchaîne sur le Pokémon sauvage suivant, au même endroit. */
-    suspend fun nextEncounter(): GameView = act { s ->
+    suspend fun nextEncounter(userId: Int): GameView = act(userId) { s ->
         val b = s.battle ?: throw BadRequestException("Aucun combat en cours")
         if (b.outcome == null) throw BadRequestException("Le combat n'est pas terminé")
         if (b.recruit != null) throw BadRequestException("Décidez d'abord si ${b.recruit.displayName} vous rejoint")
@@ -221,7 +221,7 @@ class GameService(
     }
 
     /** Choisit les attaques équipées (1 à 4, dans l'ordre donné) parmi celles que le Pokémon connaît. */
-    suspend fun setMoves(uid: String, names: List<String>): GameView = act { s ->
+    suspend fun setMoves(userId: Int, uid: String, names: List<String>): GameView = act(userId) { s ->
         noBattle(s)
         val f = (s.team + s.box).firstOrNull { it.uid == uid } ?: throw BadRequestException("Pokémon introuvable")
         val known = f.allMoves.associateBy { it.name }
@@ -235,7 +235,7 @@ class GameService(
         s.copy(team = s.team.replaceUid(updated), box = s.box.replaceUid(updated))
     }
 
-    suspend fun updateSettings(settings: GameSettings): GameView = act { s -> s.copy(settings = settings) }
+    suspend fun updateSettings(userId: Int, settings: GameSettings): GameView = act(userId) { s -> s.copy(settings = settings) }
 
     private suspend fun startWildBattle(s: GameState): GameState {
         val active = s.team.firstOrNull { !it.fainted } ?: throw BadRequestException("Votre équipe est K.O. : passez au Centre Pokémon")
@@ -252,7 +252,7 @@ class GameService(
     }
 
     /** Défie l'arène de la ville actuelle. */
-    suspend fun challengeGym(): GameView = act { s0 ->
+    suspend fun challengeGym(userId: Int): GameView = act(userId) { s0 ->
         noBattle(s0)
         val step = GameRules.STEPS[s0.stepIndex]
         if (!step.gym) throw BadRequestException("Pas d'arène ici")
@@ -272,7 +272,7 @@ class GameService(
         s.copy(battle = battle, seen = s.seen + enemies.map { it.speciesId })
     }
 
-    suspend fun attack(moveIndex: Int): GameView = act { s ->
+    suspend fun attack(userId: Int, moveIndex: Int): GameView = act(userId) { s ->
         val b = activeBattle(s)
         if (b.mustSwitch) throw BadRequestException("Choisissez le Pokémon à envoyer")
         val player = s.team.first { it.uid == b.activeUid }
@@ -379,7 +379,7 @@ class GameService(
         return state
     }
 
-    suspend fun switchTo(uid: String): GameView = act { s ->
+    suspend fun switchTo(userId: Int, uid: String): GameView = act(userId) { s ->
         val b = activeBattle(s)
         val target = s.team.firstOrNull { it.uid == uid } ?: throw BadRequestException("Ce Pokémon n'est pas dans l'équipe")
         if (target.fainted) throw BadRequestException("${target.displayName} est K.O.")
@@ -399,14 +399,14 @@ class GameService(
         state.withLog(log)
     }
 
-    suspend fun flee(): GameView = act { s ->
+    suspend fun flee(userId: Int): GameView = act(userId) { s ->
         val b = activeBattle(s)
         if (b.kind != BattleKind.WILD) throw BadRequestException("Impossible de fuir un combat d'arène")
         s.copy(team = s.team.map { it.leftBattle() }, battle = b.copy(outcome = BattleOutcome.FLED, log = b.log + "Vous prenez la fuite."))
     }
 
     /** Ferme un combat terminé. */
-    suspend fun closeBattle(): GameView = act { s ->
+    suspend fun closeBattle(userId: Int): GameView = act(userId) { s ->
         val b = s.battle ?: throw BadRequestException("Aucun combat en cours")
         if (b.outcome == null) throw BadRequestException("Le combat n'est pas terminé")
         // Fermer sans répondre revient à laisser partir le Pokémon.
@@ -868,12 +868,12 @@ class GameService(
 
     // ---------- Vue, sauvegarde ----------
 
-    private suspend fun toView(s0: GameState): GameView {
+    private suspend fun toView(userId: Int, s0: GameState): GameView {
         val unlocked = unlockedStep(s0)
         // Le type d'une arène est révélé dès qu'elle est accessible.
         var s = s0
         GameRules.STEPS.forEachIndexed { i, step -> if (step.gym && i <= unlocked) s = withGymType(s, i) }
-        if (s != s0) save(s)
+        if (s != s0) save(userId, s)
 
         val names = locationService.regionLocations("kanto")?.locations?.associate { it.name to it.nameFr }.orEmpty()
         val steps = GameRules.STEPS.mapIndexed { i, step ->
@@ -945,12 +945,12 @@ class GameService(
         )
     }
 
-    private suspend fun act(change: suspend (GameState) -> GameState): GameView = lock.withLock {
-        val state = loadMigrated() ?: throw NotFoundException("Aucune partie en cours")
+    private suspend fun act(userId: Int, change: suspend (GameState) -> GameState): GameView = lock.withLock {
+        val state = loadMigrated(userId) ?: throw NotFoundException("Aucune partie en cours")
         // Le message d'évènement ne vaut que pour l'action qui l'a produit.
         val updated = change(state.copy(lastEvent = null))
-        save(updated)
-        toView(updated)
+        save(userId, updated)
+        toView(userId, updated)
     }
 
     private fun noBattle(s: GameState) {
@@ -979,8 +979,8 @@ class GameService(
      * Partie sauvegardée, complétée pour les versions précédentes : les Pokémon sans liste d'attaques connues
      * reçoivent celles de leur niveau (les attaques équipées ne changent pas).
      */
-    private suspend fun loadMigrated(): GameState? {
-        val s = load() ?: return null
+    private suspend fun loadMigrated(userId: Int): GameState? {
+        val s = load(userId) ?: return null
         if (s.movesVersion >= GAME_MOVES_VERSION && (s.team + s.box).all { it.knownMoves.isNotEmpty() }) return s
         // Attaques complétées avec leurs effets (drain, soin, coups multiples) ; les attaques de soin
         // désormais utilisables rejoignent les attaques connues.
@@ -1000,17 +1000,17 @@ class GameService(
         }
         val battle = s.battle?.let { b -> b.copy(enemies = b.enemies.map { migrate(it) }, recruit = b.recruit?.let { migrate(it) }) }
         return s.copy(team = s.team.map { migrate(it) }, box = s.box.map { migrate(it) }, battle = battle, movesVersion = GAME_MOVES_VERSION)
-            .also { save(it) }
+            .also { save(userId, it) }
     }
 
-    private suspend fun load(): GameState? = newSuspendedTransaction(Dispatchers.IO, database) {
-        GameSaveTable.selectAll().where { GameSaveTable.id eq 1 }.singleOrNull()
+    private suspend fun load(userId: Int): GameState? = newSuspendedTransaction(Dispatchers.IO, database) {
+        GameSaveTable.selectAll().where { GameSaveTable.id eq userId }.singleOrNull()
             ?.let { pokeApiJson.decodeFromString(GameState.serializer(), it[GameSaveTable.data]) }
     }
 
-    private suspend fun save(state: GameState): Unit = newSuspendedTransaction(Dispatchers.IO, database) {
+    private suspend fun save(userId: Int, state: GameState): Unit = newSuspendedTransaction(Dispatchers.IO, database) {
         GameSaveTable.upsert {
-            it[id] = 1
+            it[id] = userId
             it[data] = pokeApiJson.encodeToString(GameState.serializer(), state)
             it[updatedAt] = Instant.now()
         }

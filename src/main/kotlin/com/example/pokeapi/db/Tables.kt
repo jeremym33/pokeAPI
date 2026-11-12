@@ -65,6 +65,8 @@ object PokemonAbilityTable : Table("pokemon_ability") {
 /** Équipes créées par les utilisateurs de l'API (6 Pokémon max). */
 object TeamTable : IntIdTable("team") {
     val name = varchar("name", 100)
+    /** Compte propriétaire (null : équipe créée avant les comptes, reprise par le premier compte). */
+    val ownerId = reference("owner_id", UserTable, onDelete = ReferenceOption.CASCADE).nullable()
     val createdAt = timestamp("created_at")
 }
 
@@ -204,6 +206,27 @@ object VersionTable : Table("version_info") {
 }
 
 /** Sauvegarde du jeu d'aventure (une seule partie, id = 1). */
+/** Comptes utilisateurs. */
+object UserTable : IntIdTable("app_user") {
+    val username = varchar("username", 20)
+    /** Nom en minuscules : unicité sans tenir compte de la casse. */
+    val usernameKey = varchar("username_key", 20).uniqueIndex()
+    /** Mot de passe haché : « pbkdf2-sha256:itérations:sel:hachage ». */
+    val passwordHash = varchar("password_hash", 200)
+    val createdAt = timestamp("created_at")
+}
+
+/** Sessions : seul le hachage SHA-256 du jeton est enregistré. */
+object SessionTable : Table("user_session") {
+    val tokenHash = varchar("token_hash", 64)
+    val userId = reference("user_id", UserTable, onDelete = ReferenceOption.CASCADE)
+    val createdAt = timestamp("created_at")
+    val expiresAt = timestamp("expires_at")
+
+    override val primaryKey = PrimaryKey(tokenHash)
+}
+
+/** Partie du jeu d'aventure, une par compte (id = id du compte ; la partie d'avant les comptes revient au premier). */
 object GameSaveTable : Table("game_save") {
     val id = integer("id")
     val data = text("data")

@@ -9,6 +9,11 @@ info:
 servers:
   - url: /
 tags:
+  - name: Comptes
+    description: |
+      Inscription et connexion. La réponse contient un jeton de session (valable 30 jours) à envoyer dans
+      l'en-tête `Authorization: Bearer <jeton>` : bouton « Authorize » de Swagger. L'aventure et les équipes
+      sont propres à chaque compte ; le Pokédex et les régions restent publics.
   - name: Aventure
     description: |
       Jeu d'aventure dans Kanto (rencontres de Vert Feuille). Chaque action renvoie l'état complet de la partie (GameView).
@@ -23,6 +28,67 @@ tags:
   - name: Divers
 
 paths:
+  /auth/register:
+    post:
+      tags: [Comptes]
+      summary: Créer un compte (et se connecter)
+      description: Nom d'utilisateur de 3 à 20 caractères (lettres, chiffres, - et _), unique sans tenir compte de la casse ; mot de passe d'au moins 8 caractères.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Credentials" }
+      responses:
+        "201":
+          description: Compte créé, session ouverte
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "409":
+          description: Nom d'utilisateur déjà pris
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /auth/login:
+    post:
+      tags: [Comptes]
+      summary: Se connecter
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Credentials" }
+      responses:
+        "200":
+          description: Session ouverte
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /auth/logout:
+    post:
+      tags: [Comptes]
+      summary: Se déconnecter (le jeton est révoqué)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204": { description: Session fermée }
+
+  /auth/me:
+    get:
+      tags: [Comptes]
+      summary: Compte connecté
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Compte
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
   /health:
     get:
       tags: [Divers]
@@ -153,6 +219,7 @@ paths:
   /game:
     get:
       tags: [Aventure]
+      security: [{ bearerAuth: [] }]
       summary: État de la partie (started = false s'il n'y en a pas)
       responses:
         "200":
@@ -163,6 +230,7 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
     delete:
       tags: [Aventure]
+      security: [{ bearerAuth: [] }]
       summary: Supprime la partie
       responses:
         "204": { description: Partie supprimée }
@@ -170,6 +238,7 @@ paths:
   /game/new:
     post:
       tags: [Aventure]
+      security: [{ bearerAuth: [] }]
       summary: Nouvelle partie avec un starter (bulbasaur, charmander ou squirtle)
       requestBody:
         required: true
@@ -187,6 +256,7 @@ paths:
   /game/travel:
     post:
       tags: [Aventure]
+      security: [{ bearerAuth: [] }]
       summary: Se rendre à une étape déjà accessible
       requestBody:
         required: true
@@ -204,6 +274,7 @@ paths:
   /game/heal:
     post:
       tags: [Aventure]
+      security: [{ bearerAuth: [] }]
       summary: Soigner l'équipe au Centre Pokémon (dans une ville)
       responses:
         "200":
@@ -216,6 +287,7 @@ paths:
   /game/explore:
     post:
       tags: [Aventure]
+      security: [{ bearerAuth: [] }]
       summary: Chercher un Pokémon sauvage à l'étape actuelle (lance un combat)
       responses:
         "200":
@@ -228,6 +300,7 @@ paths:
   /game/gym:
     post:
       tags: [Aventure]
+      security: [{ bearerAuth: [] }]
       summary: Défier l'arène de la ville actuelle
       responses:
         "200":
@@ -240,6 +313,7 @@ paths:
   /game/verify:
     post:
       tags: [Aventure]
+      security: [{ bearerAuth: [] }]
       summary: Vérifier et corriger les Pokémon de la partie (appelée à l'ouverture de la page)
       description: |
         Contrôle chaque Pokémon de l'équipe et de la boîte d'après les données en base : nom, images, types, statistiques,
@@ -255,6 +329,7 @@ paths:
   /game/team:
     put:
       tags: [Aventure]
+      security: [{ bearerAuth: [] }]
       summary: Composer l'équipe (1 à 6 Pokémon de l'équipe ou de la boîte, dans l'ordre)
       requestBody:
         required: true
@@ -272,6 +347,7 @@ paths:
   /game/pokemon/{uid}/moves:
     put:
       tags: [Aventure]
+      security: [{ bearerAuth: [] }]
       summary: Choisir les attaques équipées d'un Pokémon (1 à 4, parmi celles qu'il connaît)
       description: Hors combat. Les attaques non équipées restent dans ses attaques connues (knownMoves).
       parameters:
@@ -292,6 +368,7 @@ paths:
   /game/battle/attack:
     post:
       tags: [Aventure]
+      security: [{ bearerAuth: [] }]
       summary: Attaquer avec l'attaque n° move du Pokémon actif
       requestBody:
         required: true
@@ -309,6 +386,7 @@ paths:
   /game/battle/switch:
     post:
       tags: [Aventure]
+      security: [{ bearerAuth: [] }]
       summary: Envoyer un autre Pokémon de l'équipe
       requestBody:
         required: true
@@ -326,6 +404,7 @@ paths:
   /game/battle/flee:
     post:
       tags: [Aventure]
+      security: [{ bearerAuth: [] }]
       summary: Fuir (combat contre un Pokémon sauvage uniquement)
       responses:
         "200":
@@ -338,6 +417,7 @@ paths:
   /game/battle/recruit:
     post:
       tags: [Aventure]
+      security: [{ bearerAuth: [] }]
       summary: Accueillir (accept = true) ou laisser partir le Pokémon vaincu qui veut rejoindre l'équipe
       requestBody:
         required: true
@@ -355,6 +435,7 @@ paths:
   /game/items/use:
     post:
       tags: [Aventure]
+      security: [{ bearerAuth: [] }]
       summary: Utiliser un objet d'évolution (pierre ou Câble Link) sur un Pokémon de l'équipe ou de la boîte
       description: |
         Les objets se trouvent sur les Pokémon sauvages vaincus (10 % de chance, objet lié à leur type) et sont remis par les arènes.
@@ -375,6 +456,7 @@ paths:
   /game/battle/next:
     post:
       tags: [Aventure]
+      security: [{ bearerAuth: [] }]
       summary: Fermer le combat terminé et enchaîner sur le Pokémon sauvage suivant, au même endroit
       responses:
         "200":
@@ -387,6 +469,7 @@ paths:
   /game/settings:
     put:
       tags: [Aventure]
+      security: [{ bearerAuth: [] }]
       summary: Réglages du joueur
       requestBody:
         required: true
@@ -408,6 +491,7 @@ paths:
   /game/battle/close:
     post:
       tags: [Aventure]
+      security: [{ bearerAuth: [] }]
       summary: Fermer un combat terminé
       responses:
         "200":
@@ -604,6 +688,7 @@ paths:
   /teams:
     get:
       tags: [Équipes]
+      security: [{ bearerAuth: [] }]
       summary: Liste des équipes
       responses:
         "200":
@@ -615,6 +700,7 @@ paths:
                 items: { $ref: "#/components/schemas/Team" }
     post:
       tags: [Équipes]
+      security: [{ bearerAuth: [] }]
       summary: Crée une équipe
       requestBody:
         required: true
@@ -634,6 +720,7 @@ paths:
       - $ref: "#/components/parameters/TeamId"
     get:
       tags: [Équipes]
+      security: [{ bearerAuth: [] }]
       summary: Détail d'une équipe
       responses:
         "200":
@@ -644,6 +731,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
     patch:
       tags: [Équipes]
+      security: [{ bearerAuth: [] }]
       summary: Renomme une équipe
       requestBody:
         required: true
@@ -660,6 +748,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
     delete:
       tags: [Équipes]
+      security: [{ bearerAuth: [] }]
       summary: Supprime une équipe
       responses:
         "204": { description: Équipe supprimée }
@@ -668,6 +757,7 @@ paths:
   /teams/{teamId}/pokemon/{idOrName}:
     post:
       tags: [Équipes]
+      security: [{ bearerAuth: [] }]
       summary: Ajoute un Pokémon à l'équipe
       parameters:
         - $ref: "#/components/parameters/TeamId"
@@ -692,6 +782,7 @@ paths:
   /teams/{teamId}/members/{position}:
     delete:
       tags: [Équipes]
+      security: [{ bearerAuth: [] }]
       summary: Retire le Pokémon à une position
       parameters:
         - $ref: "#/components/parameters/TeamId"
@@ -708,6 +799,11 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
 
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Jeton renvoyé par /auth/login ou /auth/register
   parameters:
     TeamId:
       name: teamId
@@ -717,6 +813,11 @@ components:
       example: 1
 
   responses:
+    Unauthorized:
+      description: Connexion requise (jeton absent, invalide ou expiré), ou identifiants incorrects
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
     BadRequest:
       description: Requête invalide
       content:
@@ -734,6 +835,23 @@ components:
           schema: { $ref: "#/components/schemas/Error" }
 
   schemas:
+    Credentials:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string, example: sacha }
+        password: { type: string, format: password, example: pikachu123 }
+    User:
+      type: object
+      properties:
+        id: { type: integer, example: 1 }
+        username: { type: string, example: sacha }
+        createdAt: { type: string, format: date-time }
+    AuthResponse:
+      type: object
+      properties:
+        token: { type: string, description: "Jeton de session, à envoyer en « Authorization: Bearer … »" }
+        user: { $ref: "#/components/schemas/User" }
     Pokemon:
       type: object
       properties:

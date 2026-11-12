@@ -22,9 +22,10 @@ class TeamRepository(private val database: Database) {
     private suspend fun <T> dbQuery(block: suspend Transaction.() -> T): T =
         newSuspendedTransaction(Dispatchers.IO, database) { block() }
 
-    suspend fun create(name: String, pokemonIds: List<Int>): Team = dbQuery {
+    suspend fun create(ownerId: Int, name: String, pokemonIds: List<Int>): Team = dbQuery {
         val teamId = TeamTable.insertAndGetId {
             it[TeamTable.name] = name
+            it[TeamTable.ownerId] = ownerId
             it[createdAt] = Instant.now()
         }.value
         TeamMemberTable.batchInsert(pokemonIds.withIndex()) { (index, pokemonId) ->
@@ -35,8 +36,13 @@ class TeamRepository(private val database: Database) {
         load(teamId)!!
     }
 
-    suspend fun findAll(): List<Team> = dbQuery {
-        TeamTable.selectAll().orderBy(TeamTable.id).map { toTeam(it) }
+    suspend fun findAll(ownerId: Int): List<Team> = dbQuery {
+        TeamTable.selectAll().where { TeamTable.ownerId eq ownerId }.orderBy(TeamTable.id).map { toTeam(it) }
+    }
+
+    /** Propriétaire de l'équipe, null si elle n'existe pas (ou n'a pas de propriétaire). */
+    suspend fun ownerOf(id: Int): Int? = dbQuery {
+        TeamTable.select(TeamTable.ownerId).where { TeamTable.id eq id }.singleOrNull()?.get(TeamTable.ownerId)?.value
     }
 
     suspend fun find(id: Int): Team? = dbQuery { load(id) }

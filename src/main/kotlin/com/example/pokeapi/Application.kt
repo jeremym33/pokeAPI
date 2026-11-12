@@ -1,5 +1,6 @@
 package com.example.pokeapi
 
+import com.example.pokeapi.auth.AuthService
 import com.example.pokeapi.client.PokeApiClient
 import com.example.pokeapi.client.createPokeApiHttpClient
 import com.example.pokeapi.db.DatabaseConfig
@@ -15,6 +16,7 @@ import com.example.pokeapi.repository.PokemonRepository
 import com.example.pokeapi.repository.TeamRepository
 import com.example.pokeapi.game.GameService
 import com.example.pokeapi.routes.abilityRoutes
+import com.example.pokeapi.routes.authRoutes
 import com.example.pokeapi.routes.gameRoutes
 import com.example.pokeapi.routes.healthRoutes
 import com.example.pokeapi.routes.locationRoutes
@@ -82,6 +84,7 @@ fun Application.configureApp(
     val abilityService = AbilityService(abilityRepository, pokemonRepository, pokeApiClient)
     val typeService = TypeService(database, pokemonService, abilityRepository, pokeApiClient)
     val moveService = MoveService(pokemonService, pokemonRepository, MoveRepository(database), pokeApiClient, importConcurrency)
+    val authService = AuthService(database)
     val gameService = GameService(
         database, pokemonService, pokemonRepository, moveService, typeService, evolutionService, locationService, pokeApiClient,
     )
@@ -102,7 +105,8 @@ fun Application.configureApp(
         referenceRoutes(pokemonService)
         updateRoutes(updateService)
         locationRoutes(locationService)
-        gameRoutes(gameService)
-        teamRoutes(teamService)
+        authRoutes(authService)
+        gameRoutes(gameService, authService)
+        teamRoutes(teamService, authService)
     }
 }

@@ -1,5 +1,12 @@
 package com.example.pokeapi
 
+import com.example.pokeapi.auth.AuthResponse
+import com.example.pokeapi.auth.UserView
+import com.example.pokeapi.db.UserTable
+import io.ktor.client.HttpClient
+import io.ktor.client.plugins.defaultRequest
+import io.ktor.client.request.HttpRequestBuilder
+import io.ktor.client.request.header
 import com.example.pokeapi.client.PokeApiClient
 import com.example.pokeapi.client.configurePokeApiClient
 import com.example.pokeapi.client.NamedApiResource
@@ -278,7 +285,10 @@ class ApplicationTest {
         return PokeApiClient(HttpClient(engine) { configurePokeApiClient() }, "https://pokeapi.co/api/v2")
     }
 
-    private fun appTest(block: suspend ApplicationTestBuilder.() -> Unit) = testApplication {
+    /** Clients d'un test : [client] est connecté avec un compte (« sacha »), [anonymous] ne l'est pas. */
+    private class AppScope(val client: HttpClient, val anonymous: HttpClient)
+
+    private fun appTest(block: suspend AppScope.() -> Unit) = testApplication {
         environment { config = MapApplicationConfig() }
         val db = Database.connect(
             "jdbc:h2:mem:${UUID.randomUUID()};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1",
@@ -286,7 +296,19 @@ class ApplicationTest {
         )
         application { configureApp(db, mockPokeApi()) }
         database = db
-        block()
+        val anonymous = createClient { }
+        val token = register(anonymous, "sacha").token
+        val authed = createClient { defaultRequest { header(HttpHeaders.Authorization, "Bearer $token") } }
+        AppScope(authed, anonymous).block()
+    }
+
+    private suspend fun register(client: HttpClient, username: String, password: String = "pikachu123"): AuthResponse {
+        val response = client.post("/auth/register") {
+            contentType(ContentType.Application.Json)
+            setBody("""{"username":"$username","password":"$password"}""")
+        }
+        assertEquals(HttpStatusCode.Created, response.status, response.bodyAsText())
+        return json.decodeFromString<AuthResponse>(response.bodyAsText())
     }
 
     /** Base du test en cours (pour préparer une situation de jeu directement dans la sauvegarde). */
@@ -294,9 +316,81 @@ class ApplicationTest {
 
     /** Modifie la sauvegarde du jeu d'aventure. */
     private fun editSave(change: (JsonObject) -> JsonObject) = transaction(database) {
-        val row = GameSaveTable.selectAll().single()
+        val row = GameSaveTable.selectAll().where { GameSaveTable.id eq 1 }.single()
         val edited = change(Json.parseToJsonElement(row[GameSaveTable.data]).jsonObject)
         GameSaveTable.update({ GameSaveTable.id eq 1 }) { it[data] = edited.toString() }
+    }
+
+    @Test
+    fun `comptes - inscription, connexion, deconnexion`() = appTest {
+        // Le compte « sacha » existe (créé pour le test) : même nom, casse différente, refusé
+        val duplicate = anonymous.post("/auth/register") {
+            contentType(ContentType.Application.Json); setBody("""{"username":"Sacha","password":"autremotdepasse"}""")
+        }
+        assertEquals(HttpStatusCode.Conflict, duplicate.status)
+        assertEquals(HttpStatusCode.BadRequest, anonymous.post("/auth/register") {
+            contentType(ContentType.Application.Json); setBody("""{"username":"ondine","password":"court"}""")
+        }.status)
+        assertEquals(HttpStatusCode.BadRequest, anonymous.post("/auth/register") {
+            contentType(ContentType.Application.Json); setBody("""{"username":"a b","password":"assezlongpourtant"}""")
+        }.status)
+
+        val me = json.decodeFromString<UserView>(client.get("/auth/me").bodyAsText())
+        assertEquals("sacha", me.username)
+        assertEquals(HttpStatusCode.Unauthorized, anonymous.get("/auth/me").status)
+        assertEquals(HttpStatusCode.Unauthorized, anonymous.get("/auth/me") { header(HttpHeaders.Authorization, "Bearer faux") }.status)
+
+        // Connexion (nom insensible à la casse), mauvais mot de passe, compte inconnu : même message
+        val login = anonymous.post("/auth/login") {
+            contentType(ContentType.Application.Json); setBody("""{"username":"SACHA","password":"pikachu123"}""")
+        }
+        assertEquals(HttpStatusCode.OK, login.status)
+        val token = json.decodeFromString<AuthResponse>(login.bodyAsText()).token
+        val wrong = anonymous.post("/auth/login") {
+            contentType(ContentType.Application.Json); setBody("""{"username":"sacha","password":"mauvais!!"}""")
+        }
+        val unknown = anonymous.post("/auth/login") {
+            contentType(ContentType.Application.Json); setBody("""{"username":"personne","password":"pikachu123"}""")
+        }
+        assertEquals(HttpStatusCode.Unauthorized, wrong.status)
+        assertEquals(wrong.bodyAsText(), unknown.bodyAsText())
+
+        // Déconnexion : le jeton ne marche plus
+        assertEquals(HttpStatusCode.OK, anonymous.get("/auth/me") { header(HttpHeaders.Authorization, "Bearer $token") }.status)
+        anonymous.post("/auth/logout") { header(HttpHeaders.Authorization, "Bearer $token") }
+        assertEquals(HttpStatusCode.Unauthorized, anonymous.get("/auth/me") { header(HttpHeaders.Authorization, "Bearer $token") }.status)
+
+        // Le mot de passe n'est pas enregistré en clair
+        transaction(database) {
+            val stored = UserTable.selectAll().single()[UserTable.passwordHash]
+            assertTrue(stored.startsWith("pbkdf2-sha256:") && "pikachu123" !in stored)
+        }
+    }
+
+    @Test
+    fun `comptes - chaque compte a sa partie et ses equipes`() = appTest {
+        // Sans compte : aventure et équipes refusées, Pokédex accessible
+        assertEquals(HttpStatusCode.Unauthorized, anonymous.get("/game").status)
+        assertEquals(HttpStatusCode.Unauthorized, anonymous.get("/teams").status)
+        assertEquals(HttpStatusCode.OK, anonymous.get("/pokemon/bulbasaur").status)
+
+        client.post("/game/new") { contentType(ContentType.Application.Json); setBody("""{"starter":"bulbasaur"}""") }
+        val team = client.post("/teams") { contentType(ContentType.Application.Json); setBody("""{"name":"Kanto","pokemon":["bulbasaur"]}""") }
+        val teamId = json.decodeFromString<Team>(team.bodyAsText()).id
+
+        // Un deuxième compte ne voit ni la partie ni les équipes du premier
+        val other = register(anonymous, "ondine").token
+        suspend fun HttpRequestBuilder.asOther() = header(HttpHeaders.Authorization, "Bearer $other")
+        assertEquals(false, json.decodeFromString<GameView>(anonymous.get("/game") { asOther() }.bodyAsText()).started)
+        assertEquals("[]", anonymous.get("/teams") { asOther() }.bodyAsText())
+        assertEquals(HttpStatusCode.NotFound, anonymous.get("/teams/$teamId") { asOther() }.status)
+        assertEquals(HttpStatusCode.NotFound, anonymous.delete("/teams/$teamId") { asOther() }.status)
+
+        val second = anonymous.post("/game/new") { asOther(); contentType(ContentType.Application.Json); setBody("""{"starter":"squirtle"}""") }
+        assertEquals("Carapuce", json.decodeFromString<GameView>(second.bodyAsText()).team.single().name)
+        // La partie du premier compte n'a pas changé
+        assertEquals("Bulbizarre", json.decodeFromString<GameView>(client.get("/game").bodyAsText()).team.single().name)
+        assertEquals(1, json.decodeFromString<List<Team>>(client.get("/teams").bodyAsText()).size)
     }
 
     @Test

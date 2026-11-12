@@ -1,7 +1,7 @@
 # PokéAPI · Ktor + PostgreSQL
 
 API REST en Kotlin/[Ktor](https://ktor.io) qui s'appuie sur [PokéAPI](https://pokeapi.co/) et met les données en cache dans **PostgreSQL**.
-Elle permet aussi de composer des **équipes** de 6 Pokémon maximum.
+Elle permet aussi de composer des **équipes** de 6 Pokémon maximum et de jouer à un **jeu d'aventure**, propres à chaque **compte utilisateur**.
 
 ## Fonctionnement
 
@@ -85,6 +85,19 @@ La spécification OpenAPI se trouve dans `src/main/resources/openapi/documentati
 
 ## Endpoints
 
+### Comptes
+
+L'aventure et les équipes demandent un compte ; le Pokédex, les régions et la mise à jour restent publics.
+
+| Méthode | Route | Description |
+|---|---|---|
+| `POST` | `/auth/register` | Crée un compte : `{"username": "sacha", "password": "pikachu123"}` (nom de 3 à 20 caractères, unique sans tenir compte de la casse ; mot de passe d'au moins 8 caractères). Renvoie un jeton de session |
+| `POST` | `/auth/login` | Se connecte, renvoie un jeton de session (valable 30 jours) |
+| `POST` | `/auth/logout` | Révoque le jeton |
+| `GET` | `/auth/me` | Compte connecté |
+
+Le jeton s'envoie dans l'en-tête `Authorization: Bearer <jeton>` (bouton « Authorize » dans Swagger). Les mots de passe sont hachés (PBKDF2-SHA256, sel aléatoire) et seul le hachage SHA-256 des jetons est enregistré. Le **premier compte créé** reprend la partie et les équipes qui existaient avant l'ajout des comptes.
+
 ### Pokémon
 
 | Méthode | Route | Description |
@@ -95,7 +108,7 @@ La spécification OpenAPI se trouve dans `src/main/resources/openapi/documentati
 | `DELETE` | `/pokedex/update` | Arrête la mise à jour en cours |
 | `GET` | `/regions/{name}/locations` | Lieux d'une région (villes, routes, grottes…) avec leur nom français |
 | `GET` | `/locations/{name}` | Pokémon rencontrés dans un lieu, zone par zone et jeu par jeu (méthode, niveaux, chance) |
-| `GET`, `POST`… | `/game/…` | Jeu d'aventure dans Kanto : nouvelle partie, déplacements, combats, arènes (voir Swagger, section Aventure) |
+| `GET`, `POST`… | `/game/…` | Jeu d'aventure dans Kanto, une partie par compte : nouvelle partie, déplacements, combats, arènes (voir Swagger, section Aventure) |
 | `GET` | `/regions` | Les 9 régions avec le nombre de Pokémon en base |
 | `GET` | `/types` | Types présents en base avec leur effectif |
 | `GET` | `/pokemon/{idOrName}` | Détail d'un Pokémon (récupéré sur PokéAPI si absent), avec ses talents détaillés en français. `?refresh=true` force la mise à jour |
@@ -106,6 +119,8 @@ La spécification OpenAPI se trouve dans `src/main/resources/openapi/documentati
 | `POST` | `/pokemon/import?limit=151&offset=0` | Importe une plage de Pokémon depuis PokéAPI (max 2000 par appel), avec leurs formes régionales (Raichu d'Alola…) |
 
 ### Équipes
+
+Équipes du compte connecté (jeton requis) ; l'équipe d'un autre compte répond 404.
 
 | Méthode | Route | Description |
 |---|---|---|
@@ -121,7 +136,7 @@ La spécification OpenAPI se trouve dans `src/main/resources/openapi/documentati
 
 `GET /health` vérifie que l'application et la base répondent.
 
-Les erreurs sont renvoyées au format `{"error": "..."}` : `400` requête invalide, `404` ressource introuvable, `502` PokéAPI indisponible.
+Les erreurs sont renvoyées au format `{"error": "..."}` : `400` requête invalide, `401` connexion requise ou identifiants incorrects, `404` ressource introuvable, `409` nom d'utilisateur déjà pris, `502` PokéAPI indisponible.
 
 ## Exemples
 
@@ -145,9 +160,10 @@ curl -X POST http://localhost:8080/teams -H 'Content-Type: application/json' -d 
 
 - `pokemon` (id PokéAPI, nom, taille, poids, expérience, sprites, date de récupération)
 - `pokemon_type`, `pokemon_stat`, `pokemon_ability` (liés à `pokemon`, suppression en cascade)
-- `team`, `team_member` (position 1 à 6)
+- `app_user` (comptes, mot de passe haché), `user_session` (hachage des jetons de session, expiration)
+- `team` (avec son compte propriétaire), `team_member` (position 1 à 6)
 - `region_cache`, `location`, `version_info` (lieux des régions, rencontres, noms des jeux)
-- `game_save` (partie du jeu d'aventure, JSON)
+- `game_save` (partie du jeu d'aventure de chaque compte, JSON)
 - `type_relation` (dégâts reçus par type, pour le calcul des faiblesses)
 - `ability` (détail des talents et Pokémon qui les possèdent, partagé)
 - `pokemon_learnset` (attaques apprises dans le jeu le plus récent, JSON), `move` (détail des attaques, partagé)
@@ -166,6 +182,7 @@ Les tests utilisent une base H2 en mémoire (mode PostgreSQL) et un `MockEngine`
 ```
 src/main/kotlin/com/example/pokeapi/
 ├── Application.kt          # module Ktor + injection des dépendances
+├── auth/                   # comptes, mots de passe, sessions
 ├── client/                 # client HTTP PokéAPI + DTOs
 ├── db/                     # connexion Hikari/Exposed + tables
 ├── model/                  # modèles exposés par l'API

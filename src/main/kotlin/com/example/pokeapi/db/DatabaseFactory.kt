@@ -41,6 +41,8 @@ object DatabaseFactory {
                 PokemonTypeTable,
                 PokemonStatTable,
                 PokemonAbilityTable,
+                UserTable,
+                SessionTable,
                 TeamTable,
                 TeamMemberTable,
                 EvolutionChainTable,

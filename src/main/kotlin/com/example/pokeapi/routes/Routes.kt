@@ -1,5 +1,7 @@
 package com.example.pokeapi.routes
 
+import com.example.pokeapi.auth.AuthService
+import com.example.pokeapi.auth.requireUser
 import com.example.pokeapi.model.CreateTeamRequest
 import com.example.pokeapi.model.ErrorResponse
 import com.example.pokeapi.model.HealthResponse
@@ -201,31 +203,33 @@ private fun RoutingCall.pokemonQuery(): PokemonQuery {
     )
 }
 
-fun Route.teamRoutes(service: TeamService) {
+/** Équipes du compte connecté. */
+fun Route.teamRoutes(service: TeamService, auth: AuthService) {
+    suspend fun RoutingCall.user(): Int = requireUser(auth).id
     route("/teams") {
-        get { call.respond(service.findAll()) }
+        get { call.respond(service.findAll(call.user())) }
 
         post {
             val request = call.receive<CreateTeamRequest>()
-            call.respond(HttpStatusCode.Created, service.create(request.name, request.pokemon))
+            call.respond(HttpStatusCode.Created, service.create(call.user(), request.name, request.pokemon))
         }
 
         route("/{teamId}") {
-            get { call.respond(service.find(call.teamId())) }
+            get { call.respond(service.find(call.user(), call.teamId())) }
 
             patch {
                 val request = call.receive<RenameTeamRequest>()
-                call.respond(service.rename(call.teamId(), request.name))
+                call.respond(service.rename(call.user(), call.teamId(), request.name))
             }
 
             delete {
-                service.delete(call.teamId())
+                service.delete(call.user(), call.teamId())
                 call.respond(HttpStatusCode.NoContent)
             }
 
             // POST /teams/{teamId}/pokemon/{idOrName}
             post("/pokemon/{idOrName}") {
-                val team = service.addMember(call.teamId(), call.parameters["idOrName"]!!)
+                val team = service.addMember(call.user(), call.teamId(), call.parameters["idOrName"]!!)
                 call.respond(HttpStatusCode.Created, team)
             }
 
@@ -233,7 +237,7 @@ fun Route.teamRoutes(service: TeamService) {
             delete("/members/{position}") {
                 val position = call.parameters["position"]?.toIntOrNull()
                     ?: throw BadRequestException("position doit être un entier")
-                call.respond(service.removeMember(call.teamId(), position))
+                call.respond(service.removeMember(call.user(), call.teamId(), position))
             }
         }
     }
