@@ -440,21 +440,22 @@ class GameService(
         val active = s.team.firstOrNull { !it.fainted } ?: throw BadRequestException("Votre équipe est K.O. : passez au Centre Pokémon")
         val pool = pool(s.stepIndex, s.badges.size)
         if (pool.isEmpty()) throw BadRequestException("Aucun Pokémon sauvage ici")
-        // Réglage « coup de pouce » : tous les 10 combats sur la route, la rencontre se fait avec une espèce
-        // pas encore vue. Le compteur tourne même réglage coupé ; sans espèce à voir, le coup de pouce attend.
+        // Coup de pouce invisible : tous les 10 combats sur la route, la rencontre se fait avec une espèce pas
+        // encore vue s'il en reste, et le Pokémon a une chance d'être chromatique. Rien ne l'annonce au joueur.
         val unseen = pool.filter { !s.hasSeen(it.pokemonId) && it.pokemonId in routeSpecies(s.stepIndex) }
         val count = (s.boostCounters[s.stepIndex] ?: 0) + 1
-        val boost = s.settings.unseenBoost && count >= GameRules.BOOST_EVERY && unseen.isNotEmpty()
-        val counters = s.boostCounters + (s.stepIndex to if (boost) 0 else count.coerceAtMost(GameRules.BOOST_EVERY))
-        val entry = weightedPick(if (boost) unseen else pool)
+        val boost = count >= GameRules.BOOST_EVERY
+        val counters = s.boostCounters + (s.stepIndex to if (boost) 0 else count)
+        val entry = weightedPick(if (boost && unseen.isNotEmpty()) unseen else pool)
         val level = random.nextInt(entry.minLevel, entry.maxLevel + 1)
-        val enemy = buildFighter(entry.pokemonId.toString(), level, "wild")
+        val shiny = boost && random.nextDouble() < GameRules.BOOST_SHINY_CHANCE
+        val enemy = buildFighter(entry.pokemonId.toString(), level, "wild").copy(shiny = shiny)
         val battle = Battle(
             kind = BattleKind.WILD, step = s.stepIndex, enemies = listOf(enemy), activeUid = active.uid,
             participants = setOf(active.uid),
-            log = listOfNotNull(
-                "Coup de pouce : un Pokémon jamais vu ici approche !".takeIf { boost },
-                "Un ${enemy.displayName} sauvage (niv. $level) apparaît !", "Go, ${active.displayName} !",
+            log = listOf(
+                "Un ${enemy.displayName} sauvage${if (shiny) " chromatique ✨" else ""} (niv. $level) apparaît !",
+                "Go, ${active.displayName} !",
             ),
         )
         return s.copy(battle = battle, seen = s.seen + enemy.speciesId, boostCounters = counters)
@@ -900,6 +901,7 @@ class GameService(
             sleepTurns = f.sleepTurns,
             // Les attaques choisies sont conservées ; celles de la nouvelle forme s'y ajoutent (learnNewMoves).
             moves = f.moves,
+            shiny = f.shiny,
             knownMoves = f.allMoves,
         )
     }
@@ -1125,7 +1127,6 @@ class GameService(
             }
             StepView(
                 speciesSeen = species.count { s.hasSeen(it) },
-                boostIn = (GameRules.BOOST_EVERY - (s.boostCounters[i] ?: 0)).coerceAtLeast(1),
                 speciesTotal = species.size,
                 species = list,
                 index = i, location = step.location, nameFr = names[step.location], city = step.city,
@@ -1189,12 +1190,15 @@ class GameService(
     private fun Fighter.toView(): FighterView {
         val start = GameRules.xpForLevel(level)
         return FighterView(
-            uid, pokemonId, speciesId, displayName, spriteUrl, artworkUrl, types, level, hp, maxHp,
+            uid, pokemonId, speciesId, displayName,
+            if (shiny) GameRules.shinyUrl(spriteUrl) else spriteUrl, if (shiny) GameRules.shinyUrl(artworkUrl) else artworkUrl,
+            types, level, hp, maxHp,
             xpInLevel = xp - start, xpToNext = GameRules.xpForLevel(level + 1) - start, moves = moves,
             knownMoves = allMoves.filter { m -> moves.none { it.name == m.name } }, fainted = fainted,
             status = status,
             stages = stages.filterValues { it != 0 },
             confused = confusedTurns > 0,
+            shiny = shiny,
         )
     }
 

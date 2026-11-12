@@ -83,8 +83,20 @@ object GameRules {
     /** Victoires nécessaires pour franchir une route (en plus d'avoir vu toutes ses espèces). */
     const val ROUTE_WINS = 10
 
-    /** Coup de pouce (réglage) : tous les 10 combats sur une route, une rencontre avec une espèce pas encore vue. */
+    /**
+     * Coup de pouce (invisible, toujours actif) : tous les 10 combats sur une route, la rencontre se fait avec une
+     * espèce pas encore vue s'il en reste, et le Pokémon a une chance d'être chromatique.
+     */
     const val BOOST_EVERY = 10
+
+    /** Chance qu'un Pokémon du coup de pouce soit chromatique (« shiny »). */
+    const val BOOST_SHINY_CHANCE = 0.10
+
+    /** Image chromatique (PokéAPI) : « …/pokemon/25.png » → « …/pokemon/shiny/25.png ». */
+    fun shinyUrl(url: String?): String? = url?.let {
+        val i = it.lastIndexOf('/')
+        if (i < 0) it else it.substring(0, i) + "/shiny" + it.substring(i)
+    }
 
     /** Nombre d'espèces à capturer (Pokédex de Kanto). */
     const val DEX_SIZE = 151

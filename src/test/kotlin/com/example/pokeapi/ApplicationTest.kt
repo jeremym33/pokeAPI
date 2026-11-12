@@ -1024,7 +1024,7 @@ class ApplicationTest {
     }
 
     @Test
-    fun `aventure - coup de pouce tous les 10 combats`() = appTest {
+    fun `aventure - coup de pouce invisible tous les 10 combats, parfois chromatique`() = appTest {
         suspend fun game(response: HttpResponse): GameView {
             assertTrue(response.status.isSuccess(), response.bodyAsText())
             return json.decodeFromString<GameView>(response.bodyAsText())
@@ -1033,22 +1033,35 @@ class ApplicationTest {
             if (body != null) { contentType(ContentType.Application.Json); setBody(body) }
         }
         game(post("/new", """{"starter":"squirtle"}"""))
-        game(client.put("/game/settings") { contentType(ContentType.Application.Json); setBody("""{"unseenBoost":true}""") })
         game(post("/travel", """{"step":1}"""))
-        assertEquals(10, game(client.get("/game")).steps[1].boostIn)
-        // 9 rencontres : le compteur avance (Bulbizarre devient vu dès la première, plus rien à voir ensuite)
-        editSave { save -> JsonObject(save + ("boostCounters" to json.parseToJsonElement("""{"1": 8}"""))) }
-        assertEquals(2, game(client.get("/game")).steps[1].boostIn)
-        // 9e combat : rien de spécial ; 10e : coup de pouce, Bulbizarre (jamais vu) garanti
+        // 10e combat sur la Route 1 : Bulbizarre (jamais vu) garanti, sans aucune annonce
+        editSave { save -> JsonObject(save + ("boostCounters" to json.parseToJsonElement("""{"1": 9}"""))) }
         var v = game(post("/explore"))
-        assertTrue(v.battle!!.log.none { it.startsWith("Coup de pouce") })
-        assertEquals(1, v.steps[1].boostIn)
-        game(post("/battle/flee")); game(post("/battle/close"))
-        editSave { save -> JsonObject(save + ("seen" to json.parseToJsonElement("[7]"))) } // Bulbizarre de nouveau « jamais vu »
-        v = game(post("/explore"))
-        assertEquals("Coup de pouce : un Pokémon jamais vu ici approche !", v.battle!!.log.first())
         assertEquals("Bulbizarre", v.battle!!.enemy.name)
-        assertEquals(10, v.steps[1].boostIn) // rechargé : 10 combats avant le prochain
+        assertTrue(v.battle!!.log.none { "pouce" in it }, v.battle!!.log.toString())
+        game(post("/battle/flee")); game(post("/battle/close"))
+
+        // Sur de nombreux coups de pouce, environ 1 sur 10 est chromatique, avec ses images chromatiques
+        var shiny = 0
+        repeat(80) {
+            editSave { save -> JsonObject(save + ("boostCounters" to json.parseToJsonElement("""{"1": 9}"""))) }
+            v = game(post("/explore"))
+            val enemy = v.battle!!.enemy
+            if (enemy.shiny) {
+                shiny++
+                assertTrue(enemy.spriteUrl!!.contains("/shiny/"), enemy.spriteUrl)
+                assertTrue(v.battle!!.log.first().contains("chromatique ✨"))
+            }
+            game(post("/battle/flee")); game(post("/battle/close"))
+        }
+        assertTrue(shiny in 1..25, "$shiny chromatiques sur 80")
+        // Combats ordinaires : jamais chromatiques
+        repeat(5) {
+            editSave { save -> JsonObject(save + ("boostCounters" to json.parseToJsonElement("""{"1": 0}"""))) }
+            v = game(post("/explore"))
+            assertEquals(false, v.battle!!.enemy.shiny)
+            game(post("/battle/flee")); game(post("/battle/close"))
+        }
     }
 
     @Test
@@ -1113,7 +1126,6 @@ class ApplicationTest {
 
         var v = game(post("/new", """{"starter":"bulbasaur"}"""))
         assertEquals(GameSettings(nextEncounterButton = true, recruitOnlyNew = false), v.settings)
-        assertEquals(false, v.settings.unseenBoost) // coup de pouce désactivé par défaut
         v = settings(next = true, onlyNew = true)
         assertEquals(true, v.settings.recruitOnlyNew)
         v = game(post("/travel", """{"step":1}"""))

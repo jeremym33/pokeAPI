@@ -81,6 +81,8 @@ data class Fighter(
     val flinched: Boolean = false,
     /** Tours passés au combat depuis l'entrée (Bluff ne marche qu'au premier). */
     val battleTurns: Int = 0,
+    /** Pokémon chromatique (« shiny ») : couleurs rares, conservées en évoluant. */
+    val shiny: Boolean = false,
 ) {
     val displayName: String get() = nameFr ?: name.replaceFirstChar(Char::uppercase)
     val maxHp: Int get() = GameRules.stats(this).hp
@@ -143,10 +145,7 @@ data class GameSettings(
     val recruitOnlyNew: Boolean = false,
     /** Avec 4 attaques équipées, une nouvelle attaque remplace la plus ancienne ; sinon elle rejoint les attaques connues. */
     val autoReplaceMoves: Boolean = true,
-    /**
-     * Coup de pouce : tous les [GameRules.BOOST_EVERY] combats sur une route, la rencontre se fait avec une de ses
-     * espèces pas encore vues (désactivé par défaut).
-     */
+    /** Ancien réglage du coup de pouce, qui est désormais invisible et toujours actif (conservé pour les sauvegardes). */
     val unseenBoost: Boolean = false,
 )
 

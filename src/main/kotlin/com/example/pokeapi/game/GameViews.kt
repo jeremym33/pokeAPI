@@ -27,6 +27,8 @@ data class FighterView(
     val stages: Map<String, Int> = emptyMap(),
     /** Confus (en combat). */
     val confused: Boolean = false,
+    /** Chromatique (« shiny ») ; les images sont alors celles de la version chromatique. */
+    val shiny: Boolean = false,
 )
 
 /** Objet d'évolution du sac : quantité et Pokémon sur lesquels il a un effet. */
@@ -75,8 +77,6 @@ data class StepView(
     val speciesTotal: Int = 0,
     /** Espèces de la route (seulement pour l'étape actuelle) : nom et image si déjà vues. */
     val species: List<RouteSpecies> = emptyList(),
-    /** Coup de pouce : combats avant la prochaine rencontre garantie avec une espèce pas encore vue (1 = le prochain). */
-    val boostIn: Int = 0,
     /** Pokémon sauvages disponibles ici (avec les badges actuels). */
     val hasEncounters: Boolean,
     val cleared: Boolean,
