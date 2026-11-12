@@ -42,6 +42,9 @@ private val TYPES_FR = mapOf(
 private val FALLBACK_GYM_TYPES = listOf("rock", "water", "electric", "grass", "poison", "psychic", "fire", "ground", "ice", "fighting", "ghost", "dragon")
 
 /** Version des attaques des parties (2 : drain, soin, coups multiples ; 3 : statistiques ; 4 : peur) ; une partie plus ancienne est mise à jour. */
+/** Version de la règle de passage des routes (voir GameState.routeRules). */
+private const val ROUTE_RULES = 1
+
 private const val GAME_MOVES_VERSION = 4
 
 private val TACKLE = FighterMove("tackle", "Charge", "normal", "physical", 40, 100)
@@ -218,7 +221,7 @@ class GameService(
     suspend fun newGame(userId: Int, starter: String): GameView = lock.withLock {
         if (starter !in GameRules.STARTERS) throw BadRequestException("Starter inconnu : '$starter' (${GameRules.STARTERS.joinToString()})")
         val first = buildFighter(starter, GameRules.STARTER_LEVEL, "p1")
-        val state = GameState(movesVersion = GAME_MOVES_VERSION, starter = starter, team = listOf(first), caught = setOf(first.speciesId), seen = setOf(first.speciesId), uidCounter = 1)
+        val state = GameState(movesVersion = GAME_MOVES_VERSION, routeRules = ROUTE_RULES, starter = starter, team = listOf(first), caught = setOf(first.speciesId), seen = setOf(first.speciesId), uidCounter = 1)
         save(userId, state)
         toView(userId, state)
     }
@@ -313,7 +316,11 @@ class GameService(
         val active = s.team.firstOrNull { !it.fainted } ?: throw BadRequestException("Votre équipe est K.O. : passez au Centre Pokémon")
         val pool = pool(s.stepIndex, s.badges.size)
         if (pool.isEmpty()) throw BadRequestException("Aucun Pokémon sauvage ici")
-        val entry = weightedPick(pool)
+        // Assez de victoires mais des espèces jamais vues : une rencontre sur deux est tirée parmi elles,
+        // pour qu'une espèce rare ne bloque pas la route trop longtemps.
+        val unseen = pool.filter { !s.hasSeen(it.pokemonId) && it.pokemonId in routeSpecies(s.stepIndex) }
+        val boost = (s.wins[s.stepIndex] ?: 0) >= GameRules.ROUTE_WINS && unseen.isNotEmpty() && random.nextDouble() < GameRules.UNSEEN_BOOST
+        val entry = weightedPick(if (boost) unseen else pool)
         val level = random.nextInt(entry.minLevel, entry.maxLevel + 1)
         val enemy = buildFighter(entry.pokemonId.toString(), level, "wild")
         val battle = Battle(
@@ -902,13 +909,46 @@ class GameService(
         return pool.last()
     }
 
+    /**
+     * Espèces d'une route qui comptent pour la franchir : celles des rencontres disponibles dès le départ
+     * (hautes herbes, grottes, vieille canne). Les rencontres débloquées plus tard par les badges (surf…)
+     * n'y entrent pas : elles ne referment pas une route déjà franchie.
+     */
+    private suspend fun routeSpecies(step: Int): Set<Int> = pool(step, 0).map { it.pokemonId }.toSet()
+
+    private fun GameState.hasSeen(species: Int) = species in seen || species in caught
+
+    /**
+     * Étape franchie : ville sans arène ou dont le badge est obtenu ; route sans Pokémon sauvages ; route avec
+     * au moins [GameRules.ROUTE_WINS] victoires et toutes ses espèces vues. Une route franchie le reste.
+     */
     private suspend fun cleared(s: GameState, step: Int): Boolean {
         val def = GameRules.STEPS[step]
-        return when {
-            def.city -> !def.gym || step in s.badges
-            pool(step, s.badges.size).isEmpty() -> true
-            else -> (s.wins[step] ?: 0) >= GameRules.ROUTE_WINS
+        if (def.city) return !def.gym || step in s.badges
+        if (step in s.clearedSteps) return true
+        val species = routeSpecies(step)
+        return species.isEmpty() || ((s.wins[step] ?: 0) >= GameRules.ROUTE_WINS && species.all { s.hasSeen(it) })
+    }
+
+    /** Mémorise les routes qui viennent d'être franchies. */
+    private suspend fun rememberCleared(s: GameState): GameState {
+        val fresh = GameRules.STEPS.indices.filter { i -> !GameRules.STEPS[i].city && i !in s.clearedSteps && cleared(s, i) }
+        return if (fresh.isEmpty()) s else s.copy(clearedSteps = s.clearedSteps + fresh)
+    }
+
+    /**
+     * Parties d'avant la règle actuelle : les routes franchies avec l'ancienne règle (3 victoires) le restent,
+     * pour ne pas bloquer une progression déjà faite.
+     */
+    private suspend fun migrateRoutes(s: GameState): GameState {
+        val passed = mutableSetOf<Int>()
+        for (i in GameRules.STEPS.indices) {
+            val def = GameRules.STEPS[i]
+            val ok = if (def.city) !def.gym || i in s.badges else pool(i, s.badges.size).isEmpty() || (s.wins[i] ?: 0) >= 3
+            if (!ok) break
+            if (!def.city) passed += i
         }
+        return s.copy(clearedSteps = s.clearedSteps + passed, routeRules = ROUTE_RULES)
     }
 
     /** Étape la plus lointaine accessible : la première qui n'est pas encore franchie. */
@@ -944,11 +984,23 @@ class GameService(
         val names = locationService.regionLocations("kanto")?.locations?.associate { it.name to it.nameFr }.orEmpty()
         val steps = GameRules.STEPS.mapIndexed { i, step ->
             val hasEncounters = pool(i, s.badges.size).isNotEmpty()
+            val species = if (step.city) emptySet() else routeSpecies(i)
+            // Espèces de l'étape actuelle, pour savoir lesquelles il reste à voir
+            val list = if (i != s.stepIndex || species.isEmpty()) emptyList() else {
+                val info = pokemonRepository.summaries(species.sorted()).associateBy { it.id }
+                species.sorted().map { n ->
+                    val p = info[n]
+                    if (s.hasSeen(n)) RouteSpecies(n, true, p?.nameFr ?: p?.name, p?.spriteUrl) else RouteSpecies(n, false)
+                }
+            }
             StepView(
+                speciesSeen = species.count { s.hasSeen(it) },
+                speciesTotal = species.size,
+                species = list,
                 index = i, location = step.location, nameFr = names[step.location], city = step.city,
                 gym = if (step.gym) GymView(GameRules.gymNumber(i) + 1, s.gymTypes[i], i in s.badges) else null,
                 wins = s.wins[i] ?: 0,
-                winsNeeded = if (step.city || !hasEncounters) 0 else GameRules.ROUTE_WINS,
+                winsNeeded = if (step.city || species.isEmpty()) 0 else GameRules.ROUTE_WINS,
                 hasEncounters = hasEncounters,
                 cleared = cleared(s, i),
                 unlocked = i <= unlocked,
@@ -1015,7 +1067,7 @@ class GameService(
     private suspend fun act(userId: Int, change: suspend (GameState) -> GameState): GameView = lock.withLock {
         val state = loadMigrated(userId) ?: throw NotFoundException("Aucune partie en cours")
         // Le message d'évènement ne vaut que pour l'action qui l'a produit.
-        val updated = unlockAchievements(change(state.copy(lastEvent = null)))
+        val updated = rememberCleared(unlockAchievements(change(state.copy(lastEvent = null))))
         save(userId, updated)
         // Succès débloqués par cette action : seule sa réponse les signale (notification affichée une fois).
         val unlocked = Achievements.ALL.filter { it.id in updated.achievements && it.id !in state.achievements }
@@ -1050,7 +1102,12 @@ class GameService(
      * reçoivent celles de leur niveau (les attaques équipées ne changent pas).
      */
     private suspend fun loadMigrated(userId: Int): GameState? {
-        val s = load(userId) ?: return null
+        var loaded = load(userId) ?: return null
+        if (loaded.routeRules < ROUTE_RULES) loaded = migrateRoutes(loaded).also { save(userId, it) }
+        return migrateMoves(userId, loaded)
+    }
+
+    private suspend fun migrateMoves(userId: Int, s: GameState): GameState {
         if (s.movesVersion >= GAME_MOVES_VERSION && (s.team + s.box).all { it.knownMoves.isNotEmpty() }) return s
         // Attaques complétées avec leurs effets (drain, soin, coups multiples) ; les attaques de soin
         // désormais utilisables rejoignent les attaques connues.

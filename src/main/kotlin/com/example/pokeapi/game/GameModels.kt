@@ -157,6 +157,10 @@ data class GameState(
     val victories: Int = 0,
     /** Succès débloqués (identifiants de [Achievements.ALL]). */
     val achievements: Set<String> = emptySet(),
+    /** Routes franchies : acquises une fois pour toutes (la règle peut évoluer, la progression reste). */
+    val clearedSteps: Set<Int> = emptySet(),
+    /** Version de la règle de passage des routes (1 : 10 victoires et toutes les espèces vues). */
+    val routeRules: Int = 0,
     /** Version des attaques enregistrées dans la partie (2 : drain, soin, coups multiples ; 3 : statistiques ; 4 : peur). */
     val movesVersion: Int = 0,
 )

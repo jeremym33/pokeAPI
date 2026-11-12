@@ -1,5 +1,6 @@
 package com.example.pokeapi
 
+import com.example.pokeapi.game.RouteSpecies
 import com.example.pokeapi.game.UnlockedAchievement
 import com.example.pokeapi.game.Achievements
 import com.example.pokeapi.game.AchievementsView
@@ -615,11 +616,15 @@ class ApplicationTest {
         v = game(post("/travel", """{"step":1}"""))
         assertEquals(1, v.currentStep)
         assertTrue(v.steps[1].hasEncounters)
-        assertEquals(3, v.steps[1].winsNeeded)
+        assertEquals(10, v.steps[1].winsNeeded)
+        // Route 1 simulée : seulement des Bulbizarre, déjà vus avec le starter
+        assertEquals(1 to 1, v.steps[1].speciesSeen to v.steps[1].speciesTotal)
+        assertEquals(listOf(RouteSpecies(1, true, "Bulbizarre", v.team.single().spriteUrl)), v.steps[1].species)
 
         // Combats sur la Route 1 jusqu'à la franchir (retour au Centre Pokémon en cas de défaite)
         var battles = 0
-        while (!v.steps[1].cleared && battles < 30) {
+        while (!v.steps[1].cleared && battles < 80) {
+            assertTrue(v.steps[1].wins < 10, "franchie seulement à 10 victoires")
             if (v.currentStep != 1) v = game(post("/travel", """{"step":1}"""))
             if (v.team.all { it.fainted }) { v = game(post("/travel", """{"step":0}""")); v = game(post("/heal")); continue }
             v = game(post("/explore"))
@@ -635,6 +640,7 @@ class ApplicationTest {
             battles++
         }
         assertTrue(v.steps[1].cleared, "Route 1 non franchie après $battles combats")
+        assertEquals(10, v.steps[1].wins)
         assertTrue(v.unlockedStep > 1)
 
         // Les lieux absents de PokéAPI simulé sont franchis d'office : on arrive à la première arène (Argenta)
@@ -649,6 +655,34 @@ class ApplicationTest {
 
         assertEquals(HttpStatusCode.NoContent, client.delete("/game").status)
         assertEquals(false, game(client.get("/game")).started)
+    }
+
+    @Test
+    fun `aventure - route franchie avec 10 victoires et toutes ses especes vues`() = appTest {
+        suspend fun view() = json.decodeFromString<GameView>(client.get("/game").bodyAsText())
+        client.post("/game/new") { contentType(ContentType.Application.Json); setBody("""{"starter":"squirtle"}""") }
+        // 10 victoires sur la Route 1, mais Bulbizarre (seule espèce de la route simulée) jamais vu
+        editSave { save -> JsonObject(save + mapOf("wins" to json.parseToJsonElement("""{"1": 10}"""), "seen" to json.parseToJsonElement("[7]"), "caught" to json.parseToJsonElement("[7]"))) }
+        var v = view()
+        assertEquals(false, v.steps[1].cleared)
+        assertEquals(0 to 1, v.steps[1].speciesSeen to v.steps[1].speciesTotal)
+        assertEquals(1, v.unlockedStep)
+        // Une rencontre : Bulbizarre est vu, la route est franchie
+        client.post("/game/travel") { contentType(ContentType.Application.Json); setBody("""{"step":1}""") }
+        v = json.decodeFromString<GameView>(client.post("/game/explore").bodyAsText())
+        assertEquals(true, v.steps[1].cleared)
+        assertTrue(v.unlockedStep > 1)
+
+        // Partie d'avant la règle : une route franchie avec 3 victoires le reste
+        client.post("/game/battle/flee")
+        editSave { save ->
+            JsonObject(save + mapOf(
+                "wins" to json.parseToJsonElement("""{"1": 3}"""), "seen" to json.parseToJsonElement("[7]"),
+                "clearedSteps" to json.parseToJsonElement("[]"), "routeRules" to JsonPrimitive(0),
+            ))
+        }
+        v = view()
+        assertEquals(true, v.steps[1].cleared)
     }
 
     @Test

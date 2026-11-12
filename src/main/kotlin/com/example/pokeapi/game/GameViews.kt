@@ -70,11 +70,19 @@ data class StepView(
     val wins: Int,
     /** Victoires nécessaires pour franchir l'étape (0 pour une ville). */
     val winsNeeded: Int,
+    /** Espèces de la route déjà vues / à voir pour la franchir (0 / 0 pour une ville). */
+    val speciesSeen: Int = 0,
+    val speciesTotal: Int = 0,
+    /** Espèces de la route (seulement pour l'étape actuelle) : nom et image si déjà vues. */
+    val species: List<RouteSpecies> = emptyList(),
     /** Pokémon sauvages disponibles ici (avec les badges actuels). */
     val hasEncounters: Boolean,
     val cleared: Boolean,
     val unlocked: Boolean,
 )
+
+@Serializable
+data class RouteSpecies(val number: Int, val seen: Boolean, val name: String? = null, val spriteUrl: String? = null)
 
 @Serializable
 data class BattleView(

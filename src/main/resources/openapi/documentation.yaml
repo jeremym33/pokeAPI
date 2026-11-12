@@ -17,7 +17,9 @@ tags:
   - name: Aventure
     description: |
       Jeu d'aventure dans Kanto (rencontres de Vert Feuille). Chaque action renvoie l'état complet de la partie (GameView).
-      Les routes se franchissent après 3 victoires ; un Pokémon sauvage vaincu peut rejoindre l'équipe selon son taux
+      Une route se franchit avec au moins 10 victoires et toutes ses espèces vues (rencontres disponibles dès le départ ;
+      une fois les 10 victoires atteintes, une rencontre sur deux est tirée parmi les espèces pas encore vues).
+      Un Pokémon sauvage vaincu peut rejoindre l'équipe selon son taux
       de capture ; les arènes (type et équipe générés d'après les données) donnent des badges qui relèvent le niveau maximum.
   - name: Régions
     description: Lieux des régions et Pokémon qu'on y rencontre
