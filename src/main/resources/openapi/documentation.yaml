@@ -310,6 +310,40 @@ paths:
               schema: { $ref: "#/components/schemas/GameView" }
         "400": { $ref: "#/components/responses/BadRequest" }
 
+  /game/achievements:
+    get:
+      tags: [Aventure]
+      security: [{ bearerAuth: [] }]
+      summary: Succès de la partie (seule façon d'obtenir pierres d'évolution et Câble Link)
+      description: |
+        Objectifs (victoires, badges, Pokémon rejoints ou vus, Pokémon de certains types) avec leur progression.
+        Un succès atteint est débloqué à l'action suivante : ses objets vont dans le sac et un message l'annonce.
+      responses:
+        "200":
+          description: Succès
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  done: { type: integer }
+                  total: { type: integer }
+                  achievements:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, example: type-fire }
+                        name: { type: string, example: Dresseur Feu }
+                        description: { type: string, example: Faire rejoindre 2 espèces de type Feu. }
+                        category: { type: string, example: Types }
+                        progress: { type: integer }
+                        target: { type: integer }
+                        done: { type: boolean }
+                        rewards: { type: array, items: { type: string }, example: [Pierre Feu] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Aucune partie en cours }
+
   /game/dex:
     get:
       tags: [Aventure]

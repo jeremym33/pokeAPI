@@ -1,6 +1,8 @@
 package com.example.pokeapi
 
 import com.example.pokeapi.game.Fighter
+import com.example.pokeapi.game.AchievementContext
+import com.example.pokeapi.game.Achievements
 import com.example.pokeapi.game.FighterMove
 import com.example.pokeapi.game.GameRules
 import kotlin.random.Random
@@ -127,14 +129,21 @@ class GameRulesTest {
     }
 
     @Test
-    fun `butin - objet selon le type, toujours un objet en arene`() {
-        // Sur de nombreux tirages : environ 10 % de butin, objet lié au type
-        val drops = (0 until 2000).mapNotNull { GameRules.drop(listOf("fire"), gym = false, Random(it)) }
-        assertTrue(drops.size in 120..280, "butin : ${drops.size} sur 2000")
-        assertTrue(drops.all { it.item == "fire-stone" })
-        assertTrue((0 until 200).mapNotNull { GameRules.drop(listOf("psychic"), gym = false, Random(it)) }.all { it.item == "link-cable" })
-        // Arène : un objet à chaque fois
-        assertTrue((0 until 50).all { GameRules.drop(emptyList(), gym = true, Random(it)) != null })
+    fun `succes - progression et deblocage`() {
+        val start = AchievementContext(victories = 0, badges = 0, caught = 1, seen = 1, caughtByType = mapOf("grass" to 1, "poison" to 1))
+        assertEquals(emptyList(), Achievements.newlyCompleted(start, emptySet()).map { it.id })
+        val ctx = start.copy(victories = 12, caughtByType = mapOf("fire" to 2, "poison" to 2, "fairy" to 1))
+        val done = Achievements.newlyCompleted(ctx, setOf("wins-1"))
+        // « Premier combat » est déjà débloqué ; 10 victoires, 2 Pokémon Feu, 3 Poison ou Fée
+        assertEquals(listOf("wins-10", "type-fire", "type-moon"), done.map { it.id })
+        assertEquals(listOf("Pierre Feu"), Achievements.rewardNames(done[1]))
+        // Chaque objet d'évolution peut s'obtenir, et chaque succès en donne au moins un
+        assertEquals(GameRules.ITEMS.map { it.item }.toSet(), Achievements.ALL.flatMap { it.rewards }.toSet())
+        assertTrue(Achievements.ALL.all { it.rewards.isNotEmpty() })
+        assertEquals(Achievements.ALL.size, Achievements.ALL.map { it.id }.toSet().size)
+        val view = Achievements.view(ctx, setOf("wins-1"))
+        assertEquals(1, view.done)
+        assertEquals(10, view.achievements.single { it.id == "wins-10" }.progress) // borné à l'objectif
     }
 
     @Test

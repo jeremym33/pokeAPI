@@ -108,7 +108,7 @@ Le jeton s'envoie dans l'en-tête `Authorization: Bearer <jeton>` (bouton « Aut
 | `DELETE` | `/pokedex/update` | Arrête la mise à jour en cours |
 | `GET` | `/regions/{name}/locations` | Lieux d'une région (villes, routes, grottes…) avec leur nom français |
 | `GET` | `/locations/{name}` | Pokémon rencontrés dans un lieu, zone par zone et jeu par jeu (méthode, niveaux, chance) |
-| `GET`, `POST`… | `/game/…` | Jeu d'aventure dans Kanto, une partie par compte : nouvelle partie, déplacements, combats, arènes (voir Swagger, section Aventure) |
+| `GET`, `POST`… | `/game/…` | Jeu d'aventure dans Kanto, une partie par compte : nouvelle partie, déplacements, combats, arènes, Motisdex (`/game/dex`) et succès (`/game/achievements`), qui sont la seule source de pierres d'évolution et de Câble Link (voir Swagger, section Aventure) |
 | `GET` | `/regions` | Les 9 régions avec le nombre de Pokémon en base |
 | `GET` | `/types` | Types présents en base avec leur effectif |
 | `GET` | `/pokemon/{idOrName}` | Détail d'un Pokémon (récupéré sur PokéAPI si absent), avec ses talents détaillés en français. `?refresh=true` force la mise à jour |

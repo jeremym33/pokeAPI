@@ -148,11 +148,15 @@ data class GameState(
     val lastCenter: Int = 0,
     val battle: Battle? = null,
     val uidCounter: Int = 0,
-    /** Sac : objet -> quantité (pierres d'évolution, Câble Link), trouvés sur les Pokémon vaincus. */
+    /** Sac : objet -> quantité (pierres d'évolution, Câble Link), reçus en récompense des succès. */
     val items: Map<String, Int> = emptyMap(),
     /** Message de la dernière action hors combat (évolution par pierre…). */
     val lastEvent: String? = null,
     val settings: GameSettings = GameSettings(),
+    /** Combats gagnés (sauvages et arènes). Pour une partie plus ancienne, voir GameService.victoryCount. */
+    val victories: Int = 0,
+    /** Succès débloqués (identifiants de [Achievements.ALL]). */
+    val achievements: Set<String> = emptySet(),
     /** Version des attaques enregistrées dans la partie (2 : drain, soin, coups multiples ; 3 : statistiques ; 4 : peur). */
     val movesVersion: Int = 0,
 )

@@ -1,5 +1,7 @@
 package com.example.pokeapi
 
+import com.example.pokeapi.game.Achievements
+import com.example.pokeapi.game.AchievementsView
 import com.example.pokeapi.game.DexEntry
 import com.example.pokeapi.game.DexStatus
 import com.example.pokeapi.game.DexView
@@ -877,6 +879,44 @@ class ApplicationTest {
         assertEquals(0, dex.entries[1].owned)
         assertEquals(2, dex.seen)
         assertEquals(1, dex.caught)
+    }
+
+    @Test
+    fun `aventure - les succes donnent les objets d'evolution`() = appTest {
+        suspend fun game(response: HttpResponse): GameView {
+            assertTrue(response.status.isSuccess(), response.bodyAsText())
+            return json.decodeFromString<GameView>(response.bodyAsText())
+        }
+        suspend fun post(path: String, body: String? = null) = client.post("/game$path") {
+            if (body != null) { contentType(ContentType.Application.Json); setBody(body) }
+        }
+        game(post("/new", """{"starter":"bulbasaur"}"""))
+        var list = json.decodeFromString<AchievementsView>(client.get("/game/achievements").bodyAsText())
+        assertEquals(0, list.done)
+        assertEquals(Achievements.ALL.size, list.total)
+
+        // Bulbizarre très fort : première victoire assurée
+        editSave { save ->
+            val team = save["team"]!!.jsonArray
+            val strong = JsonObject(team[0].jsonObject + mapOf("level" to JsonPrimitive(40), "xp" to JsonPrimitive(64000), "hp" to JsonPrimitive(200)))
+            JsonObject(save + ("team" to JsonArray(listOf(strong))))
+        }
+        game(post("/travel", """{"step":1}"""))
+        var v = game(post("/explore"))
+        while (v.battle!!.outcome == null) v = game(post("/battle/attack", """{"move":0}"""))
+        assertEquals(BattleOutcome.WON, v.battle!!.outcome)
+        // Annoncé dans le journal du combat ; aucun objet lâché par le Pokémon vaincu
+        assertTrue(v.battle!!.log.contains("Succès débloqué : Premier combat ! Vous recevez : Pierre Plante."), v.battle!!.log.toString())
+        assertTrue(v.battle!!.log.none { "laisse tomber" in it })
+        assertEquals(listOf("leaf-stone" to 1), v.items.map { it.item to it.count })
+        list = json.decodeFromString<AchievementsView>(client.get("/game/achievements").bodyAsText())
+        assertEquals(listOf("wins-1"), list.achievements.filter { it.done }.map { it.id })
+        assertEquals(1, list.achievements.single { it.id == "wins-10" }.progress)
+
+        // Débloqué une seule fois
+        if (v.battle!!.recruit != null) v = game(post("/battle/recruit", """{"accept":false}"""))
+        v = game(post("/battle/close"))
+        assertEquals(1, v.items.single { it.item == "leaf-stone" }.count)
     }
 
     @Test

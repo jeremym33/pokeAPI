@@ -49,6 +49,8 @@ fun Route.gameRoutes(service: GameService, auth: AuthService) {
             call.respond(HttpStatusCode.NoContent)
         }
 
+        // Succès : objectifs qui donnent les objets d'évolution
+        get("/achievements") { call.respond(service.achievements(call.user())) }
         // Motisdex : espèces de Kanto vues et rejointes
         get("/dex") { call.respond(service.dex(call.user())) }
         // Vérifie (et corrige) les Pokémon de la partie d'après les données en base : à l'ouverture de la page

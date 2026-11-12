@@ -114,23 +114,6 @@ object GameRules {
         EvolutionItem("link-cable", "Câble Link", trade = true),
     )
 
-    /** Chance qu'un Pokémon sauvage vaincu laisse tomber un objet d'évolution. */
-    const val DROP_CHANCE = 0.10
-
-    /** Objet lâché selon le type du Pokémon (Pierre Feu pour un Pokémon Feu…). */
-    private val DROP_BY_TYPE = mapOf(
-        "fire" to "fire-stone", "water" to "water-stone", "ice" to "water-stone", "electric" to "thunder-stone",
-        "grass" to "leaf-stone", "bug" to "leaf-stone", "fairy" to "moon-stone", "normal" to "moon-stone",
-        "psychic" to "link-cable", "fighting" to "link-cable", "rock" to "link-cable", "ghost" to "link-cable",
-    )
-
-    /** Objet lâché par un Pokémon vaincu (null s'il n'en lâche pas) ; une arène en donne toujours un. */
-    fun drop(types: List<String>, gym: Boolean, random: Random): EvolutionItem? {
-        if (!gym && random.nextDouble() >= DROP_CHANCE) return null
-        val item = types.firstNotNullOfOrNull { DROP_BY_TYPE[it] }?.takeIf { !gym } ?: ITEMS.random(random).item
-        return ITEMS.single { it.item == item }
-    }
-
     /** Statuts gérés. */
     val STATUSES = setOf("burn", "poison", "paralysis", "sleep", "freeze")
 

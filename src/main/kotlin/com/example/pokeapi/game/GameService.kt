@@ -179,6 +179,42 @@ class GameService(
         )
     }
 
+    /** Succès de la partie, avec leur progression et leurs récompenses. */
+    suspend fun achievements(userId: Int): AchievementsView = lock.withLock {
+        val s = loadMigrated(userId) ?: throw NotFoundException("Aucune partie en cours")
+        Achievements.view(achievementContext(s), s.achievements)
+    }
+
+    /** Combats gagnés ; une partie d'avant le compteur part de ses victoires sur les routes et de ses badges. */
+    private fun victoryCount(s: GameState): Int = maxOf(s.victories, s.wins.values.sum() + s.badges.size)
+
+    private suspend fun achievementContext(s: GameState): AchievementContext {
+        val caught = s.caught.filter { it <= GameRules.DEX_SIZE }
+        val byType = pokemonRepository.summaries(caught).filter { it.regionalForm == null }
+            .flatMap { it.types }.groupingBy { it }.eachCount()
+        return AchievementContext(
+            victories = victoryCount(s), badges = s.badges.size, caught = caught.size,
+            seen = (s.seen + s.caught).count { it <= GameRules.DEX_SIZE }, caughtByType = byType,
+        )
+    }
+
+    /**
+     * Débloque les succès atteints : leurs objets vont dans le sac (seule façon d'en obtenir) et un message
+     * l'annonce, dans le journal du combat ou sur la page de l'aventure. Une partie plus ancienne reçoit
+     * d'un coup les succès déjà mérités.
+     */
+    private suspend fun unlockAchievements(s: GameState): GameState {
+        val fresh = Achievements.newlyCompleted(achievementContext(s), s.achievements)
+        if (fresh.isEmpty()) return s
+        var state = s.copy(achievements = s.achievements + fresh.map { it.id })
+        val lines = fresh.map { a ->
+            a.rewards.forEach { r -> state = state.withItem(GameRules.ITEMS.single { it.item == r }) }
+            "Succès débloqué : ${a.name} ! Vous recevez : ${Achievements.rewardNames(a).joinToString(", ")}."
+        }
+        return if (state.battle != null) state.withLog(lines)
+        else state.copy(lastEvent = (listOfNotNull(state.lastEvent) + lines).joinToString(" "))
+    }
+
     suspend fun newGame(userId: Int, starter: String): GameView = lock.withLock {
         if (starter !in GameRules.STARTERS) throw BadRequestException("Starter inconnu : '$starter' (${GameRules.STARTERS.joinToString()})")
         val first = buildFighter(starter, GameRules.STARTER_LEVEL, "p1")
@@ -626,14 +662,10 @@ class GameService(
 
     private suspend fun victory(s: GameState, log: MutableList<String>): GameState {
         val b = s.battle!!
-        var state = s
+        var state = s.copy(victories = victoryCount(s) + 1)
         if (b.kind == BattleKind.WILD) {
             val enemy = b.enemy
             state = state.copy(wins = state.wins + (b.step to (state.wins[b.step] ?: 0) + 1))
-            GameRules.drop(enemy.types, gym = false, random)?.let { item ->
-                log += "${enemy.displayName} laisse tomber : ${item.nameFr} ! Vous la ramassez."
-                state = state.withItem(item)
-            }
             val alreadyCaught = enemy.speciesId in state.caught
             if (alreadyCaught && state.settings.recruitOnlyNew) {
                 // Réglage « seulement les nouveaux Pokémon » : pas de proposition pour une espèce déjà obtenue.
@@ -648,10 +680,8 @@ class GameService(
         } else {
             val type = state.gymTypes[b.step]
             val newCap = GameRules.levelCap(state.badges.size + 1)
-            val reward = GameRules.drop(emptyList(), gym = true, random)!!
             log += "Vous avez gagné ! Vous obtenez le Badge ${TYPES_FR[type] ?: "d'arène"}. Niveau maximum : $newCap."
-            log += "Le champion vous remet : ${reward.nameFr} !"
-            state = state.copy(badges = state.badges + b.step).withItem(reward)
+            state = state.copy(badges = state.badges + b.step)
         }
         state = evolveTeam(state, log)
         return state.copy(team = state.team.map { it.leftBattle() }, battle = state.battle!!.copy(outcome = BattleOutcome.WON))
@@ -985,7 +1015,7 @@ class GameService(
     private suspend fun act(userId: Int, change: suspend (GameState) -> GameState): GameView = lock.withLock {
         val state = loadMigrated(userId) ?: throw NotFoundException("Aucune partie en cours")
         // Le message d'évènement ne vaut que pour l'action qui l'a produit.
-        val updated = change(state.copy(lastEvent = null))
+        val updated = unlockAchievements(change(state.copy(lastEvent = null)))
         save(userId, updated)
         toView(userId, updated)
     }
