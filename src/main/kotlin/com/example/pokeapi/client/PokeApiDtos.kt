@@ -93,6 +93,8 @@ data class PokeApiSpecies(
     @SerialName("evolution_chain") val evolutionChain: ApiResource? = null,
     /** Pokémon de l'espèce : forme par défaut, formes régionales, méga-évolutions… */
     val varieties: List<PokeApiVariety> = emptyList(),
+    /** Facilité de capture, de 3 (légendaires) à 255 (Chenipan…). */
+    @SerialName("capture_rate") val captureRate: Int? = null,
 )
 
 @Serializable

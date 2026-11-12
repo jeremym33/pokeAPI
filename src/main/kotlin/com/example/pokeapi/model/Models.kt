@@ -23,6 +23,8 @@ data class Pokemon(
     val statTotal: Int,
     val stats: Map<String, Int>,
     val abilities: List<Ability>,
+    /** Facilité de capture de l'espèce (3 à 255), null si inconnue. */
+    val captureRate: Int? = null,
 )
 
 @Serializable

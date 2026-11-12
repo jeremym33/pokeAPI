@@ -9,6 +9,11 @@ info:
 servers:
   - url: /
 tags:
+  - name: Aventure
+    description: |
+      Jeu d'aventure dans Kanto (rencontres de Vert Feuille). Chaque action renvoie l'état complet de la partie (GameView).
+      Les routes se franchissent après 3 victoires ; un Pokémon sauvage vaincu peut rejoindre l'équipe selon son taux
+      de capture ; les arènes (type et équipe générés d'après les données) donnent des badges qui relèvent le niveau maximum.
   - name: Régions
     description: Lieux des régions et Pokémon qu'on y rencontre
   - name: Pokémon
@@ -144,6 +149,168 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/PokedexUpdateStatus" }
         "404": { $ref: "#/components/responses/NotFound" }
+
+  /game:
+    get:
+      tags: [Aventure]
+      summary: État de la partie (started = false s'il n'y en a pas)
+      responses:
+        "200":
+          description: État de la partie
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+    delete:
+      tags: [Aventure]
+      summary: Supprime la partie
+      responses:
+        "204": { description: Partie supprimée }
+
+  /game/new:
+    post:
+      tags: [Aventure]
+      summary: Nouvelle partie avec un starter (bulbasaur, charmander ou squirtle)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { starter: { type: string, example: charmander } } }
+      responses:
+        "200":
+          description: État de la partie
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /game/travel:
+    post:
+      tags: [Aventure]
+      summary: Se rendre à une étape déjà accessible
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { step: { type: integer, example: 1 } } }
+      responses:
+        "200":
+          description: État de la partie
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /game/heal:
+    post:
+      tags: [Aventure]
+      summary: Soigner l'équipe au Centre Pokémon (dans une ville)
+      responses:
+        "200":
+          description: État de la partie
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /game/explore:
+    post:
+      tags: [Aventure]
+      summary: Chercher un Pokémon sauvage à l'étape actuelle (lance un combat)
+      responses:
+        "200":
+          description: État de la partie
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /game/gym:
+    post:
+      tags: [Aventure]
+      summary: Défier l'arène de la ville actuelle
+      responses:
+        "200":
+          description: État de la partie
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /game/team:
+    put:
+      tags: [Aventure]
+      summary: Composer l'équipe (1 à 6 Pokémon de l'équipe ou de la boîte, dans l'ordre)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { uids: { type: array, items: { type: string } } } }
+      responses:
+        "200":
+          description: État de la partie
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /game/battle/attack:
+    post:
+      tags: [Aventure]
+      summary: Attaquer avec l'attaque n° move du Pokémon actif
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { move: { type: integer, example: 0 } } }
+      responses:
+        "200":
+          description: État de la partie
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /game/battle/switch:
+    post:
+      tags: [Aventure]
+      summary: Envoyer un autre Pokémon de l'équipe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { uid: { type: string, example: p2 } } }
+      responses:
+        "200":
+          description: État de la partie
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /game/battle/flee:
+    post:
+      tags: [Aventure]
+      summary: Fuir (combat contre un Pokémon sauvage uniquement)
+      responses:
+        "200":
+          description: État de la partie
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /game/battle/close:
+    post:
+      tags: [Aventure]
+      summary: Fermer un combat terminé
+      responses:
+        "200":
+          description: État de la partie
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
 
   /regions/{name}/locations:
     get:
@@ -649,6 +816,21 @@ components:
         startedAt: { type: string, format: date-time, nullable: true }
         finishedAt: { type: string, format: date-time, nullable: true }
         error: { type: string, nullable: true }
+    GameView:
+      type: object
+      description: État de la partie (voir les modèles du dépôt pour le détail des champs)
+      properties:
+        started: { type: boolean }
+        currentStep: { type: integer }
+        unlockedStep: { type: integer, description: Étape la plus lointaine accessible }
+        badges: { type: integer }
+        levelCap: { type: integer, description: Niveau maximum selon les badges }
+        caught: { type: integer, description: Espèces de Kanto obtenues }
+        dexSize: { type: integer, example: 151 }
+        steps: { type: array, items: { type: object } }
+        team: { type: array, items: { type: object } }
+        box: { type: array, items: { type: object } }
+        battle: { type: object, nullable: true }
     RegionLocations:
       type: object
       properties:

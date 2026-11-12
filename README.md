@@ -95,6 +95,7 @@ La spécification OpenAPI se trouve dans `src/main/resources/openapi/documentati
 | `DELETE` | `/pokedex/update` | Arrête la mise à jour en cours |
 | `GET` | `/regions/{name}/locations` | Lieux d'une région (villes, routes, grottes…) avec leur nom français |
 | `GET` | `/locations/{name}` | Pokémon rencontrés dans un lieu, zone par zone et jeu par jeu (méthode, niveaux, chance) |
+| `GET`, `POST`… | `/game/…` | Jeu d'aventure dans Kanto : nouvelle partie, déplacements, combats, arènes (voir Swagger, section Aventure) |
 | `GET` | `/regions` | Les 9 régions avec le nombre de Pokémon en base |
 | `GET` | `/types` | Types présents en base avec leur effectif |
 | `GET` | `/pokemon/{idOrName}` | Détail d'un Pokémon (récupéré sur PokéAPI si absent), avec ses talents détaillés en français. `?refresh=true` force la mise à jour |
@@ -146,6 +147,7 @@ curl -X POST http://localhost:8080/teams -H 'Content-Type: application/json' -d 
 - `pokemon_type`, `pokemon_stat`, `pokemon_ability` (liés à `pokemon`, suppression en cascade)
 - `team`, `team_member` (position 1 à 6)
 - `region_cache`, `location`, `version_info` (lieux des régions, rencontres, noms des jeux)
+- `game_save` (partie du jeu d'aventure, JSON)
 - `type_relation` (dégâts reçus par type, pour le calcul des faiblesses)
 - `ability` (détail des talents et Pokémon qui les possèdent, partagé)
 - `pokemon_learnset` (attaques apprises dans le jeu le plus récent, JSON), `move` (détail des attaques, partagé)

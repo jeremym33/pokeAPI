@@ -52,6 +52,7 @@ object DatabaseFactory {
                 RegionCacheTable,
                 LocationTable,
                 VersionTable,
+                GameSaveTable,
             )
         }
     }

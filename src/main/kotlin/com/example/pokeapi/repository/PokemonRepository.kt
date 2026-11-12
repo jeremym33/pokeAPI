@@ -71,6 +71,7 @@ class PokemonRepository(private val database: Database) {
             it[spriteUrl] = dto.sprites.frontDefault
             it[artworkUrl] = dto.sprites.other?.officialArtwork?.frontDefault
             it[evolutionChainId] = species?.evolutionChain?.url?.let { url -> resourceId(url) }
+            it[captureRate] = species?.captureRate
             it[statTotal] = dto.stats.distinctBy { s -> s.stat.name }.sumOf { s -> s.baseStat }
             it[fetchedAt] = Instant.now()
         }
@@ -142,6 +143,10 @@ class PokemonRepository(private val database: Database) {
             .map { it[PokemonTable.id] }
 
         Page(total = total, limit = query.limit, offset = query.offset, items = summariesFor(ids))
+    }
+
+    suspend fun setCaptureRate(pokemonId: Int, rate: Int): Unit = dbQuery {
+        PokemonTable.update({ PokemonTable.id eq pokemonId }) { it[captureRate] = rate }
     }
 
     suspend fun markFormsChecked(pokemonId: Int): Unit = dbQuery {
@@ -231,6 +236,7 @@ class PokemonRepository(private val database: Database) {
             statTotal = row[PokemonTable.statTotal],
             stats = stats,
             abilities = abilities,
+            captureRate = row[PokemonTable.captureRate],
         )
     }
 }

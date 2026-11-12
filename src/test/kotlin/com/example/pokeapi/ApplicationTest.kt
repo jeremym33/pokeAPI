@@ -7,6 +7,8 @@ import com.example.pokeapi.client.PokeApiMoveSlot
 import com.example.pokeapi.client.PokeApiMoveVersionDetail
 import com.example.pokeapi.model.AbilityDetail
 import com.example.pokeapi.model.learnsetOf
+import com.example.pokeapi.game.BattleKind
+import com.example.pokeapi.game.GameView
 import com.example.pokeapi.model.EncounterMethod
 import com.example.pokeapi.model.EvolutionChain
 import com.example.pokeapi.model.LocationCategory
@@ -120,9 +122,11 @@ class ApplicationTest {
             {"pokemon": {"name": "bulbasaur", "url": "https://pokeapi.co/api/v2/pokemon/1/"}, "version_details": [
               {"version": ${res("red")}, "max_chance": 50, "encounter_details": [${walk(2, 3, 20)}, ${walk(3, 4, 30)}]},
               {"version": ${res("lets-go-pikachu")}, "max_chance": 100, "encounter_details": [${walk(3, 5, 100)}]},
-              {"version": ${res("red-japan")}, "max_chance": 50, "encounter_details": [${walk(2, 3, 20)}]}
+              {"version": ${res("red-japan")}, "max_chance": 50, "encounter_details": [${walk(2, 3, 20)}]},
+              {"version": ${res("leafgreen")}, "max_chance": 100, "encounter_details": [${walk(2, 3, 100)}]}
             ]}]}""",
         "version/red-japan" to """{"name": "red-japan", "names": ${fr("Rouge")}, "version_group": ${res("red-green-japan")}}""",
+        "version/leafgreen" to """{"name": "leafgreen", "names": ${fr("Vert Feuille")}, "version_group": ${res("firered-leafgreen")}}""",
         "version/red" to """{"name": "red", "names": ${fr("Rouge")}, "version_group": ${res("red-blue")}}""",
         "version/lets-go-pikachu" to """{"name": "lets-go-pikachu", "names": ${fr("Let's Go, Pikachu")}, "version_group": ${res("lets-go-pikachu-lets-go-eevee")}}""",
         "encounter-method/walk" to """{"name": "walk", "names": ${fr("Herbes hautes")}}""",
@@ -436,7 +440,7 @@ class ApplicationTest {
         assertEquals("Route 1", route1.nameFr)
         // Jeux du plus récent au plus ancien
         // Jeux du plus récent au plus ancien ; la version japonaise d'origine est distinguée
-        assertEquals(listOf("Let's Go, Pikachu", "Rouge", "Rouge (Japon)"), route1.versions.map { it.label })
+        assertEquals(listOf("Let's Go, Pikachu", "Vert Feuille", "Rouge", "Rouge (Japon)"), route1.versions.map { it.label })
         val area = route1.areas.single()
         assertEquals(null, area.label) // zone principale
         val red = area.encounters.single { it.version == "red" }
@@ -453,6 +457,67 @@ class ApplicationTest {
 
         assertEquals(HttpStatusCode.NotFound, client.get("/regions/orre/locations").status)
         assertEquals(HttpStatusCode.NotFound, client.get("/locations/nowhere").status)
+    }
+
+    @Test
+    fun `jeu d'aventure - starter, route, combats, progression et arene`() = appTest {
+        suspend fun game(response: HttpResponse): GameView {
+            assertTrue(response.status.isSuccess(), response.bodyAsText())
+            return json.decodeFromString<GameView>(response.bodyAsText())
+        }
+        suspend fun post(path: String, body: String? = null) = client.post("/game$path") {
+            if (body != null) { contentType(ContentType.Application.Json); setBody(body) }
+        }
+
+        assertEquals(false, game(client.get("/game")).started)
+        assertEquals(HttpStatusCode.BadRequest, post("/new", """{"starter":"pikachu"}""").status)
+
+        var v = game(post("/new", """{"starter":"bulbasaur"}"""))
+        assertEquals("Bulbizarre", v.team.single().name)
+        assertEquals(5, v.team.single().level)
+        assertEquals(1, v.caught)
+        assertEquals(15, v.levelCap)
+        assertEquals("Bourg Palette", v.steps[0].nameFr)
+        assertEquals(1, v.unlockedStep) // la Route 1 est la prochaine étape
+        assertEquals(HttpStatusCode.BadRequest, post("/travel", """{"step":3}""").status)
+        assertEquals(HttpStatusCode.BadRequest, post("/explore").status) // pas de Pokémon sauvage à Bourg Palette
+
+        v = game(post("/travel", """{"step":1}"""))
+        assertEquals(1, v.currentStep)
+        assertTrue(v.steps[1].hasEncounters)
+        assertEquals(3, v.steps[1].winsNeeded)
+
+        // Combats sur la Route 1 jusqu'à la franchir (retour au Centre Pokémon en cas de défaite)
+        var battles = 0
+        while (!v.steps[1].cleared && battles < 30) {
+            if (v.currentStep != 1) v = game(post("/travel", """{"step":1}"""))
+            if (v.team.all { it.fainted }) { v = game(post("/travel", """{"step":0}""")); v = game(post("/heal")); continue }
+            v = game(post("/explore"))
+            assertEquals(BattleKind.WILD, v.battle!!.kind)
+            while (v.battle!!.outcome == null) {
+                val b = v.battle!!
+                v = if (b.mustSwitch) game(post("/battle/switch", """{"uid":"${v.team.first { !it.fainted }.uid}"}"""))
+                else game(post("/battle/attack", """{"move":0}"""))
+            }
+            assertTrue(v.battle!!.log.isNotEmpty())
+            v = game(post("/battle/close"))
+            battles++
+        }
+        assertTrue(v.steps[1].cleared, "Route 1 non franchie après $battles combats")
+        assertTrue(v.unlockedStep > 1)
+
+        // Les lieux absents de PokéAPI simulé sont franchis d'office : on arrive à la première arène (Argenta)
+        val gymStep = v.steps.first { it.gym != null }
+        assertEquals(gymStep.index, v.unlockedStep)
+        assertEquals("grass", gymStep.gym!!.type) // type le plus fréquent avant l'arène (Bulbizarre sur la Route 1)
+        v = game(post("/travel", """{"step":${gymStep.index}}"""))
+        v = game(post("/heal"))
+        v = game(post("/gym"))
+        assertEquals(BattleKind.GYM, v.battle!!.kind)
+        assertEquals(HttpStatusCode.BadRequest, post("/battle/flee").status) // pas de fuite en arène
+
+        assertEquals(HttpStatusCode.NoContent, client.delete("/game").status)
+        assertEquals(false, game(client.get("/game")).started)
     }
 
     @Test

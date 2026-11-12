@@ -28,6 +28,8 @@ object PokemonTable : Table("pokemon") {
     val formsChecked = bool("forms_checked").default(false)
     /** Chaîne d'évolution PokéAPI de l'espèce (null tant que l'espèce n'a pas été récupérée). */
     val evolutionChainId = integer("evolution_chain_id").nullable()
+    /** Facilité de capture de l'espèce (3 à 255) ; null pour les lignes importées avant le jeu d'aventure. */
+    val captureRate = integer("capture_rate").nullable()
     /** Somme des statistiques de base, stockée pour pouvoir trier dessus. */
     val statTotal = integer("stat_total").default(0)
     val fetchedAt = timestamp("fetched_at")
@@ -181,4 +183,13 @@ object VersionTable : Table("version_info") {
     val versionGroup = varchar("version_group", 50).nullable()
 
     override val primaryKey = PrimaryKey(name)
+}
+
+/** Sauvegarde du jeu d'aventure (une seule partie, id = 1). */
+object GameSaveTable : Table("game_save") {
+    val id = integer("id")
+    val data = text("data")
+    val updatedAt = timestamp("updated_at")
+
+    override val primaryKey = PrimaryKey(id)
 }
