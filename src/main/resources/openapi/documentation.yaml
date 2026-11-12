@@ -446,6 +446,8 @@ paths:
                   total: { type: integer, example: 151 }
                   seen: { type: integer, description: Espèces vues (rejointes comprises) }
                   caught: { type: integer, description: Espèces qui ont rejoint l'équipe }
+                  shinySeen: { type: integer, description: Espèces dont la version chromatique a été vue }
+                  shinyCaught: { type: integer, description: Espèces dont la version chromatique a rejoint l'équipe }
                   entries:
                     type: array
                     items:
@@ -458,6 +460,10 @@ paths:
                         spriteUrl: { type: string, nullable: true }
                         artworkUrl: { type: string, nullable: true }
                         owned: { type: integer, description: Nombre dans l'équipe et la boîte }
+                        shinySeen: { type: boolean, description: Version chromatique vue }
+                        shinyCaught: { type: boolean, description: Version chromatique rejointe }
+                        shinySpriteUrl: { type: string, nullable: true }
+                        shinyArtworkUrl: { type: string, nullable: true }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Aucune partie en cours }
 

@@ -92,6 +92,9 @@ object GameRules {
     /** Chance qu'un Pokémon du coup de pouce soit chromatique (« shiny »). */
     const val BOOST_SHINY_CHANCE = 0.10
 
+    /** Chance qu'un Pokémon sauvage soit chromatique, comme dans les jeux : 1 sur 4 096. */
+    const val SHINY_CHANCE = 1.0 / 4096
+
     /** Image chromatique (PokéAPI) : « …/pokemon/25.png » → « …/pokemon/shiny/25.png ». */
     fun shinyUrl(url: String?): String? = url?.let {
         val i = it.lastIndexOf('/')

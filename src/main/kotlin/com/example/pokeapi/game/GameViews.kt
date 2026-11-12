@@ -54,10 +54,24 @@ data class DexEntry(
     val artworkUrl: String? = null,
     /** Nombre de Pokémon de cette espèce dans l'équipe et la boîte. */
     val owned: Int = 0,
+    /** Version chromatique vue en combat / rejointe. */
+    val shinySeen: Boolean = false,
+    val shinyCaught: Boolean = false,
+    /** Images de la version chromatique (seulement si elle a été vue). */
+    val shinySpriteUrl: String? = null,
+    val shinyArtworkUrl: String? = null,
 )
 
 @Serializable
-data class DexView(val total: Int, val seen: Int, val caught: Int, val entries: List<DexEntry>)
+data class DexView(
+    val total: Int,
+    val seen: Int,
+    val caught: Int,
+    val entries: List<DexEntry>,
+    /** Espèces dont la version chromatique a été vue (rejointes comprises) / a rejoint l'équipe. */
+    val shinySeen: Int = 0,
+    val shinyCaught: Int = 0,
+)
 
 @Serializable
 data class GymView(val number: Int, val type: String?, val badge: Boolean)

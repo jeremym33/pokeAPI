@@ -174,10 +174,14 @@ class GameService(
                 else -> DexStatus.UNKNOWN
             }
             val p = info[n]
+            val shinySeen = n in s.shinySeen || n in s.shinyCaught
             if (status == DexStatus.UNKNOWN || p == null) DexEntry(n, status)
             else DexEntry(
                 number = n, status = status, name = p.nameFr ?: p.name.replaceFirstChar(Char::uppercase), types = p.types,
                 spriteUrl = p.spriteUrl, artworkUrl = p.artworkUrl, owned = owned[n] ?: 0,
+                shinySeen = shinySeen, shinyCaught = n in s.shinyCaught,
+                shinySpriteUrl = if (shinySeen) GameRules.shinyUrl(p.spriteUrl) else null,
+                shinyArtworkUrl = if (shinySeen) GameRules.shinyUrl(p.artworkUrl) else null,
             )
         }
         DexView(
@@ -185,6 +189,8 @@ class GameService(
             seen = entries.count { it.status != DexStatus.UNKNOWN },
             caught = entries.count { it.status == DexStatus.CAUGHT },
             entries = entries,
+            shinySeen = entries.count { it.shinySeen },
+            shinyCaught = entries.count { it.shinyCaught },
         )
     }
 
@@ -448,7 +454,8 @@ class GameService(
         val counters = s.boostCounters + (s.stepIndex to if (boost) 0 else count)
         val entry = weightedPick(if (boost && unseen.isNotEmpty()) unseen else pool)
         val level = random.nextInt(entry.minLevel, entry.maxLevel + 1)
-        val shiny = boost && random.nextDouble() < GameRules.BOOST_SHINY_CHANCE
+        // Chromatique : 1 chance sur 4 096 comme dans les jeux, 1 sur 10 pour le Pokémon du coup de pouce
+        val shiny = random.nextDouble() < if (boost) GameRules.BOOST_SHINY_CHANCE else GameRules.SHINY_CHANCE
         val enemy = buildFighter(entry.pokemonId.toString(), level, "wild").copy(shiny = shiny)
         val battle = Battle(
             kind = BattleKind.WILD, step = s.stepIndex, enemies = listOf(enemy), activeUid = active.uid,
@@ -458,7 +465,10 @@ class GameService(
                 "Go, ${active.displayName} !",
             ),
         )
-        return s.copy(battle = battle, seen = s.seen + enemy.speciesId, boostCounters = counters)
+        return s.copy(
+            battle = battle, seen = s.seen + enemy.speciesId, boostCounters = counters,
+            shinySeen = if (shiny) s.shinySeen + enemy.speciesId else s.shinySeen,
+        )
     }
 
     /** Défie l'arène de la ville actuelle. */
@@ -1062,6 +1072,13 @@ class GameService(
         return species.isEmpty() || ((s.wins[step] ?: 0) >= GameRules.ROUTE_WINS && species.all { s.hasSeen(it) })
     }
 
+    /** Chromatiques possédés (équipe, boîte, entraînement) : leur espèce est rejointe en chromatique, donc vue. */
+    private fun rememberShiny(s: GameState): GameState {
+        val owned = (s.team + s.box + s.training.values.map { it.fighter }).filter { it.shiny }.map { it.speciesId }.toSet()
+        if (owned.isEmpty() || (s.shinyCaught.containsAll(owned) && s.shinySeen.containsAll(owned) && s.caught.containsAll(owned))) return s
+        return s.copy(shinyCaught = s.shinyCaught + owned, shinySeen = s.shinySeen + owned, caught = s.caught + owned)
+    }
+
     /** Mémorise les routes qui viennent d'être franchies. */
     private suspend fun rememberCleared(s: GameState): GameState {
         val fresh = GameRules.STEPS.indices.filter { i -> !GameRules.STEPS[i].city && i !in s.clearedSteps && cleared(s, i) }
@@ -1205,7 +1222,7 @@ class GameService(
     private suspend fun act(userId: Int, change: suspend (GameState) -> GameState): GameView = lock.withLock {
         val state = syncTraining(loadMigrated(userId) ?: throw NotFoundException("Aucune partie en cours"))
         // Le message d'évènement ne vaut que pour l'action qui l'a produit.
-        val updated = rememberCleared(unlockAchievements(change(state.copy(lastEvent = null))))
+        val updated = rememberShiny(rememberCleared(unlockAchievements(change(state.copy(lastEvent = null)))))
         save(userId, updated)
         // Succès débloqués par cette action : seule sa réponse les signale (notification affichée une fois).
         val unlocked = Achievements.ALL.filter { it.id in updated.achievements && it.id !in state.achievements }

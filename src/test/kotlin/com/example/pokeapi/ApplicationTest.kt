@@ -1055,6 +1055,24 @@ class ApplicationTest {
             game(post("/battle/flee")); game(post("/battle/close"))
         }
         assertTrue(shiny in 1..25, "$shiny chromatiques sur 80")
+        // Motisdex : Bulbizarre chromatique vu, avec son image chromatique
+        var dex = json.decodeFromString<DexView>(client.get("/game/dex").bodyAsText())
+        assertEquals(1, dex.shinySeen)
+        assertEquals(0, dex.shinyCaught)
+        assertTrue(dex.entries.first().shinySeen && !dex.entries.first().shinyCaught)
+        assertTrue(dex.entries.first().shinyArtworkUrl!!.contains("/shiny/"))
+        assertEquals(null, dex.entries[6].shinyArtworkUrl) // Carapuce : chromatique jamais vu
+        // Un chromatique dans l'équipe (recrue, évolution…) : rejoint en chromatique
+        editSave { save ->
+            val team = save["team"]!!.jsonArray
+            JsonObject(save + ("team" to JsonArray(listOf(JsonObject(team[0].jsonObject + ("shiny" to JsonPrimitive(true)))))))
+        }
+        game(post("/travel", """{"step":0}"""))
+        dex = json.decodeFromString<DexView>(client.get("/game/dex").bodyAsText())
+        assertEquals(2, dex.shinySeen)
+        assertEquals(1, dex.shinyCaught)
+        assertTrue(dex.entries[6].shinyCaught)
+        game(post("/travel", """{"step":1}"""))
         // Combats ordinaires : jamais chromatiques
         repeat(5) {
             editSave { save -> JsonObject(save + ("boostCounters" to json.parseToJsonElement("""{"1": 0}"""))) }

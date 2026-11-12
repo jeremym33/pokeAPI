@@ -186,6 +186,9 @@ data class GameState(
     val training: Map<Int, Trainee> = emptyMap(),
     /** Combats sauvages par étape depuis le dernier coup de pouce (il revient à [GameRules.BOOST_EVERY]). */
     val boostCounters: Map<Int, Int> = emptyMap(),
+    /** Espèces dont la version chromatique a été vue en combat / a rejoint l'équipe (Motisdex). */
+    val shinySeen: Set<Int> = emptySet(),
+    val shinyCaught: Set<Int> = emptySet(),
     /** Version des attaques enregistrées dans la partie (2 : drain, soin, coups multiples ; 3 : statistiques ; 4 : peur). */
     val movesVersion: Int = 0,
 )
