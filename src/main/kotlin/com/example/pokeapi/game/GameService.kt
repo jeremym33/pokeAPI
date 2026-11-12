@@ -440,19 +440,24 @@ class GameService(
         val active = s.team.firstOrNull { !it.fainted } ?: throw BadRequestException("Votre équipe est K.O. : passez au Centre Pokémon")
         val pool = pool(s.stepIndex, s.badges.size)
         if (pool.isEmpty()) throw BadRequestException("Aucun Pokémon sauvage ici")
-        // Réglage « coup de pouce » : une fois les victoires faites, une rencontre sur deux parmi les espèces
-        // de la route pas encore vues, pour qu'une espèce rare ne bloque pas la route trop longtemps.
+        // Réglage « coup de pouce » : tous les 10 combats sur la route, la rencontre se fait avec une espèce
+        // pas encore vue. Le compteur tourne même réglage coupé ; sans espèce à voir, le coup de pouce attend.
         val unseen = pool.filter { !s.hasSeen(it.pokemonId) && it.pokemonId in routeSpecies(s.stepIndex) }
-        val boost = s.settings.unseenBoost && (s.wins[s.stepIndex] ?: 0) >= GameRules.ROUTE_WINS &&
-            unseen.isNotEmpty() && random.nextDouble() < GameRules.UNSEEN_BOOST
+        val count = (s.boostCounters[s.stepIndex] ?: 0) + 1
+        val boost = s.settings.unseenBoost && count >= GameRules.BOOST_EVERY && unseen.isNotEmpty()
+        val counters = s.boostCounters + (s.stepIndex to if (boost) 0 else count.coerceAtMost(GameRules.BOOST_EVERY))
         val entry = weightedPick(if (boost) unseen else pool)
         val level = random.nextInt(entry.minLevel, entry.maxLevel + 1)
         val enemy = buildFighter(entry.pokemonId.toString(), level, "wild")
         val battle = Battle(
             kind = BattleKind.WILD, step = s.stepIndex, enemies = listOf(enemy), activeUid = active.uid,
-            participants = setOf(active.uid), log = listOf("Un ${enemy.displayName} sauvage (niv. $level) apparaît !", "Go, ${active.displayName} !"),
+            participants = setOf(active.uid),
+            log = listOfNotNull(
+                "Coup de pouce : un Pokémon jamais vu ici approche !".takeIf { boost },
+                "Un ${enemy.displayName} sauvage (niv. $level) apparaît !", "Go, ${active.displayName} !",
+            ),
         )
-        return s.copy(battle = battle, seen = s.seen + enemy.speciesId)
+        return s.copy(battle = battle, seen = s.seen + enemy.speciesId, boostCounters = counters)
     }
 
     /** Défie l'arène de la ville actuelle. */
@@ -1120,6 +1125,7 @@ class GameService(
             }
             StepView(
                 speciesSeen = species.count { s.hasSeen(it) },
+                boostIn = (GameRules.BOOST_EVERY - (s.boostCounters[i] ?: 0)).coerceAtLeast(1),
                 speciesTotal = species.size,
                 species = list,
                 index = i, location = step.location, nameFr = names[step.location], city = step.city,

@@ -144,8 +144,8 @@ data class GameSettings(
     /** Avec 4 attaques équipées, une nouvelle attaque remplace la plus ancienne ; sinon elle rejoint les attaques connues. */
     val autoReplaceMoves: Boolean = true,
     /**
-     * Coup de pouce : après [GameRules.ROUTE_WINS] victoires sur une route, une rencontre sur deux est tirée
-     * parmi ses espèces pas encore vues (désactivé par défaut).
+     * Coup de pouce : tous les [GameRules.BOOST_EVERY] combats sur une route, la rencontre se fait avec une de ses
+     * espèces pas encore vues (désactivé par défaut).
      */
     val unseenBoost: Boolean = false,
 )
@@ -185,6 +185,8 @@ data class GameState(
     val routeRules: Int = 0,
     /** Pokémon à l'entraînement, par étape (un au plus par lieu). */
     val training: Map<Int, Trainee> = emptyMap(),
+    /** Combats sauvages par étape depuis le dernier coup de pouce (il revient à [GameRules.BOOST_EVERY]). */
+    val boostCounters: Map<Int, Int> = emptyMap(),
     /** Version des attaques enregistrées dans la partie (2 : drain, soin, coups multiples ; 3 : statistiques ; 4 : peur). */
     val movesVersion: Int = 0,
 )

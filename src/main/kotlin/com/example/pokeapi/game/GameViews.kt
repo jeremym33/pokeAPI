@@ -75,6 +75,8 @@ data class StepView(
     val speciesTotal: Int = 0,
     /** Espèces de la route (seulement pour l'étape actuelle) : nom et image si déjà vues. */
     val species: List<RouteSpecies> = emptyList(),
+    /** Coup de pouce : combats avant la prochaine rencontre garantie avec une espèce pas encore vue (1 = le prochain). */
+    val boostIn: Int = 0,
     /** Pokémon sauvages disponibles ici (avec les badges actuels). */
     val hasEncounters: Boolean,
     val cleared: Boolean,

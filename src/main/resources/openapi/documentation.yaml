@@ -18,8 +18,8 @@ tags:
     description: |
       Jeu d'aventure dans Kanto (rencontres de Vert Feuille). Chaque action renvoie l'état complet de la partie (GameView).
       Une route se franchit avec au moins 10 victoires et toutes ses espèces vues (rencontres disponibles dès le départ),
-      rencontrées selon leurs chances habituelles (réglage « coup de pouce » : après 10 victoires, une rencontre sur deux
-      parmi les espèces pas encore vues).
+      rencontrées selon leurs chances habituelles (réglage « coup de pouce » : tous les 10 combats sur la route, une
+      rencontre avec une espèce pas encore vue).
       Un Pokémon sauvage vaincu peut rejoindre l'équipe selon son taux
       de capture ; les arènes (type et équipe générés d'après les données) donnent des badges qui relèvent le niveau maximum.
   - name: Régions
@@ -632,7 +632,7 @@ paths:
               properties:
                 nextEncounterButton: { type: boolean, description: "Proposer « Pokémon suivant » en fin de combat sur une route", default: true }
                 recruitOnlyNew: { type: boolean, description: Ne proposer de rejoindre l'équipe qu'aux espèces pas encore obtenues, default: false }
-                unseenBoost: { type: boolean, description: "Coup de pouce : après 10 victoires sur une route, une rencontre sur deux parmi ses espèces pas encore vues", default: false }
+                unseenBoost: { type: boolean, description: "Coup de pouce : tous les 10 combats sur une route, une rencontre avec une de ses espèces pas encore vues", default: false }
                 autoReplaceMoves: { type: boolean, description: "Avec 4 attaques équipées, une nouvelle attaque remplace la plus ancienne (sinon elle rejoint les attaques connues)", default: true }
       responses:
         "200":

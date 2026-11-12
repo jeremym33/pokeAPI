@@ -1024,6 +1024,34 @@ class ApplicationTest {
     }
 
     @Test
+    fun `aventure - coup de pouce tous les 10 combats`() = appTest {
+        suspend fun game(response: HttpResponse): GameView {
+            assertTrue(response.status.isSuccess(), response.bodyAsText())
+            return json.decodeFromString<GameView>(response.bodyAsText())
+        }
+        suspend fun post(path: String, body: String? = null) = client.post("/game$path") {
+            if (body != null) { contentType(ContentType.Application.Json); setBody(body) }
+        }
+        game(post("/new", """{"starter":"squirtle"}"""))
+        game(client.put("/game/settings") { contentType(ContentType.Application.Json); setBody("""{"unseenBoost":true}""") })
+        game(post("/travel", """{"step":1}"""))
+        assertEquals(10, game(client.get("/game")).steps[1].boostIn)
+        // 9 rencontres : le compteur avance (Bulbizarre devient vu dès la première, plus rien à voir ensuite)
+        editSave { save -> JsonObject(save + ("boostCounters" to json.parseToJsonElement("""{"1": 8}"""))) }
+        assertEquals(2, game(client.get("/game")).steps[1].boostIn)
+        // 9e combat : rien de spécial ; 10e : coup de pouce, Bulbizarre (jamais vu) garanti
+        var v = game(post("/explore"))
+        assertTrue(v.battle!!.log.none { it.startsWith("Coup de pouce") })
+        assertEquals(1, v.steps[1].boostIn)
+        game(post("/battle/flee")); game(post("/battle/close"))
+        editSave { save -> JsonObject(save + ("seen" to json.parseToJsonElement("[7]"))) } // Bulbizarre de nouveau « jamais vu »
+        v = game(post("/explore"))
+        assertEquals("Coup de pouce : un Pokémon jamais vu ici approche !", v.battle!!.log.first())
+        assertEquals("Bulbizarre", v.battle!!.enemy.name)
+        assertEquals(10, v.steps[1].boostIn) // rechargé : 10 combats avant le prochain
+    }
+
+    @Test
     fun `aventure - attaques equipees et connues`() = appTest {
         suspend fun game(response: HttpResponse): GameView {
             assertTrue(response.status.isSuccess(), response.bodyAsText())
