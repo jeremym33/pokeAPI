@@ -1089,6 +1089,38 @@ class ApplicationTest {
     }
 
     @Test
+    fun `aventure - pas d'evolution hors de Kanto`() = appTest {
+        suspend fun game(response: HttpResponse): GameView {
+            assertTrue(response.status.isSuccess(), response.bodyAsText())
+            return json.decodeFromString<GameView>(response.bodyAsText())
+        }
+        suspend fun post(path: String, body: String? = null) = client.post("/game$path") {
+            if (body != null) { contentType(ContentType.Application.Json); setBody(body) }
+        }
+        game(post("/new", """{"starter":"bulbasaur"}"""))
+        // Bulbizarre très fort, et un Germignon (Johto) niveau 20 : il évoluerait en Macronium au niveau 16
+        client.get("/pokemon/chikorita")
+        editSave { save ->
+            val first = save["team"]!!.jsonArray[0].jsonObject
+            val strong = JsonObject(first + mapOf("level" to JsonPrimitive(40), "xp" to JsonPrimitive(64000), "hp" to JsonPrimitive(200)))
+            val chikorita = JsonObject(first + mapOf(
+                "uid" to JsonPrimitive("p2"), "pokemonId" to JsonPrimitive(152), "speciesId" to JsonPrimitive(152),
+                "level" to JsonPrimitive(20), "xp" to JsonPrimitive(8000),
+            ))
+            JsonObject(save + ("team" to JsonArray(listOf(strong, chikorita))))
+        }
+        game(post("/travel", """{"step":1}"""))
+        var v = game(post("/explore"))
+        while (v.battle!!.outcome == null) v = game(post("/battle/attack", """{"move":0}"""))
+        // Fin du combat : Bulbizarre (Kanto) évolue, pas Germignon
+        assertTrue(v.battle!!.log.any { it == "Quoi ? Bulbizarre évolue en Herbizarre !" }, v.battle!!.log.toString())
+        assertTrue(v.battle!!.log.none { "Germignon évolue" in it }, v.battle!!.log.toString())
+        assertEquals(152, v.team.single { it.uid == "p2" }.pokemonId)
+        // Ni par objet : Macronium (hors Kanto) n'est jamais proposé
+        assertTrue(v.items.none { "p2" in it.usableOn })
+    }
+
+    @Test
     fun `aventure - attaques equipees et connues`() = appTest {
         suspend fun game(response: HttpResponse): GameView {
             assertTrue(response.status.isSuccess(), response.bodyAsText())

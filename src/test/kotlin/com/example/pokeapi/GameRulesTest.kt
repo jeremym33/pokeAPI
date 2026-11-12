@@ -221,4 +221,12 @@ class GameRulesTest {
         assertEquals(3, GameRules.badgeEffects(5).size) // niveau, Surf, Méga Canne
         assertEquals("Niveau maximum : 57 → 100", GameRules.badgeEffects(8).single())
     }
+
+    @Test
+    fun `evolutions limitees a Kanto`() {
+        assertTrue(GameRules.inKanto(26)) // Raichu
+        assertTrue(!GameRules.inKanto(10100)) // Raichu d'Alola
+        assertTrue(!GameRules.inKanto(470)) // Phyllali
+        assertTrue(!GameRules.inKanto(0))
+    }
 }

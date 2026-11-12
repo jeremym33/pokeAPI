@@ -922,6 +922,7 @@ class GameService(
         fun find(nodes: List<EvolutionNode>): EvolutionNode? =
             nodes.firstNotNullOfOrNull { n -> if (n.pokemon?.id == f.pokemonId) n else find(n.evolvesTo) }
         val children = find(chain.roots)?.evolvesTo.orEmpty().map { (it.pokemon?.id ?: it.speciesId) to it.conditions }
+            .filter { (id, _) -> GameRules.inKanto(id) }
         return GameRules.ITEMS.mapNotNull { item -> GameRules.itemEvolution(children, item)?.let { item.item to it } }.toMap()
     }
 
@@ -941,6 +942,8 @@ class GameService(
         )
     }
 
+    // Les évolutions hors de Kanto (espèces d'autres régions, formes régionales) sont ignorées : voir GameRules.inKanto.
+
     /** Évolution par niveau atteinte (« Niveau 16 » sans autre condition), id du Pokémon obtenu. */
     private suspend fun levelEvolution(f: Fighter): Int? {
         val chain = evolutionService.evolutions(f.pokemonId.toString()) ?: return null
@@ -948,7 +951,7 @@ class GameService(
             nodes.firstNotNullOfOrNull { n -> if (n.pokemon?.id == f.pokemonId) n else find(n.evolvesTo) }
         val node = find(chain.roots) ?: return null
         return node.evolvesTo.firstOrNull { child ->
-            child.conditions.any { c -> LEVEL_EVOLUTION.matchEntire(c)?.groupValues?.get(1)?.toInt()?.let { it <= f.level } == true }
+            GameRules.inKanto(child.pokemon?.id ?: child.speciesId) && child.conditions.any { c -> LEVEL_EVOLUTION.matchEntire(c)?.groupValues?.get(1)?.toInt()?.let { it <= f.level } == true }
         }?.let { it.pokemon?.id ?: it.speciesId }
     }
 

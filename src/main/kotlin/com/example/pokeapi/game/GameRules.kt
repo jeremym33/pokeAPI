@@ -104,6 +104,13 @@ object GameRules {
     /** Nombre d'espèces à capturer (Pokédex de Kanto). */
     const val DEX_SIZE = 151
 
+    /**
+     * Pokémon de Kanto (n° 1 à 151, forme normale) : l'aventure n'évolue que vers eux. Pas d'évolution vers une
+     * espèce d'une autre région (Évoli → Phyllali, Magnéton → Magnézone…) ni vers une forme régionale
+     * (Pikachu → Raichu d'Alola, dont l'id PokéAPI dépasse 10000).
+     */
+    fun inKanto(pokemonId: Int): Boolean = pokemonId in 1..DEX_SIZE
+
     val STARTERS = listOf("bulbasaur", "charmander", "squirtle")
     const val STARTER_LEVEL = 5
 
