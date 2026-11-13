@@ -217,6 +217,8 @@ data class GameState(
     val leagueTypes: List<String> = emptyList(),
     /** Victoires contre le Maître : dès la première, les Pokémon rares apparaissent (coup de pouce). */
     val championWins: Int = 0,
+    /** Johto ouvert (les 151 Pokémon de Kanto obtenus) : acquis une fois pour toutes. */
+    val johtoUnlocked: Boolean = false,
     val eggs: List<Egg> = emptyList(),
     /** Version des attaques enregistrées dans la partie (2 : drain, soin, coups multiples ; 3 : statistiques ; 4 : peur). */
     val movesVersion: Int = 0,

@@ -8,7 +8,18 @@ import kotlin.random.Random
 
 /** Étape de l'aventure : un lieu de Kanto, dans l'ordre de Vert Feuille. */
 /** Étape du parcours ; [league] : le Plateau Indigo, avec le défi du Conseil et du Maître. */
-data class Step(val location: String, val city: Boolean = false, val gym: Boolean = false, val league: Boolean = false)
+data class Step(
+    val location: String,
+    val city: Boolean = false,
+    val gym: Boolean = false,
+    val league: Boolean = false,
+    /** Région de l'étape : Kanto (Vert Feuille), puis Johto (Cristal), ouvert une fois les 151 Pokémon de Kanto obtenus. */
+    val region: String = KANTO,
+)
+
+const val KANTO = "kanto"
+const val JOHTO = "johto"
+
 
 data class Stats(val hp: Int, val attack: Int, val defense: Int, val spAttack: Int, val spDefense: Int, val speed: Int)
 
@@ -76,10 +87,68 @@ object GameRules {
         Step("kanto-victory-road-2"),
         Step("indigo-plateau", city = true, league = true),
         Step("cerulean-cave"),
+        // Johto (ordre de Cristal), ouvert une fois les 151 Pokémon de Kanto obtenus
+        Step("new-bark-town", city = true, region = JOHTO),
+        Step("johto-route-29", region = JOHTO),
+        Step("cherrygrove-city", city = true, region = JOHTO),
+        Step("johto-route-30", region = JOHTO),
+        Step("johto-route-31", region = JOHTO),
+        Step("violet-city", city = true, gym = true, region = JOHTO),
+        Step("sprout-tower", region = JOHTO),
+        Step("johto-route-32", region = JOHTO),
+        Step("ruins-of-alph", region = JOHTO),
+        Step("union-cave", region = JOHTO),
+        Step("johto-route-33", region = JOHTO),
+        Step("azalea-town", city = true, gym = true, region = JOHTO),
+        Step("slowpoke-well", region = JOHTO),
+        Step("ilex-forest", region = JOHTO),
+        Step("johto-route-34", region = JOHTO),
+        Step("goldenrod-city", city = true, gym = true, region = JOHTO),
+        Step("national-park", region = JOHTO),
+        Step("johto-route-35", region = JOHTO),
+        Step("johto-route-36", region = JOHTO),
+        Step("johto-route-37", region = JOHTO),
+        Step("ecruteak-city", city = true, gym = true, region = JOHTO),
+        Step("burned-tower", region = JOHTO),
+        Step("johto-route-38", region = JOHTO),
+        Step("johto-route-39", region = JOHTO),
+        Step("olivine-city", city = true, gym = true, region = JOHTO),
+        Step("johto-sea-route-40", region = JOHTO),
+        Step("johto-sea-route-41", region = JOHTO),
+        Step("cianwood-city", city = true, gym = true, region = JOHTO),
+        Step("johto-route-42", region = JOHTO),
+        Step("mt-mortar", region = JOHTO),
+        Step("mahogany-town", city = true, gym = true, region = JOHTO),
+        Step("johto-route-43", region = JOHTO),
+        Step("lake-of-rage", region = JOHTO),
+        Step("johto-route-44", region = JOHTO),
+        Step("ice-path", region = JOHTO),
+        Step("blackthorn-city", city = true, gym = true, region = JOHTO),
+        Step("dragons-den", region = JOHTO),
+        Step("johto-route-45", region = JOHTO),
+        Step("johto-route-46", region = JOHTO),
     )
 
-    /** Version de jeu dont viennent les rencontres. */
+    /** Version de jeu dont viennent les rencontres de Kanto. */
     const val VERSION = "leafgreen"
+
+    /** Version de jeu des rencontres de chaque région. */
+    val REGION_VERSIONS = mapOf(KANTO to VERSION, JOHTO to "crystal")
+
+    /**
+     * Niveaux des Pokémon sauvages de Johto relevés : Cristal commence au niveau 2, alors que l'équipe arrive de
+     * Kanto bien plus forte (2 → 47 … 40 → 85).
+     */
+    val REGION_LEVEL_OFFSET = mapOf(JOHTO to 45)
+
+    /** Dernier numéro du Pokédex de chaque région. */
+    val REGION_DEX = mapOf(KANTO to 151, JOHTO to 251)
+
+    /** Starters de Johto : l'un d'eux, en œuf, est offert à l'ouverture de Johto. */
+    val JOHTO_STARTERS = listOf(152, 155, 158)
+
+    /** Pokémon des régions débloquées (n° 1 à [maxDex]). */
+    fun inDex(pokemonId: Int, maxDex: Int): Boolean = pokemonId in 1..maxDex
 
     /** Victoires nécessaires pour franchir une route (en plus d'avoir vu toutes ses espèces). */
     const val ROUTE_WINS = 10
@@ -164,12 +233,13 @@ object GameRules {
 
     /** Effets du n-ième badge (1 à 8) : niveau maximum relevé, nouvelles façons de rencontrer des Pokémon. */
     fun badgeEffects(n: Int): List<String> = buildList {
-        add("Niveau maximum : ${levelCap(n - 1)} → ${levelCap(n)}")
+        if (levelCap(n - 1) != levelCap(n)) add("Niveau maximum : ${levelCap(n - 1)} → ${levelCap(n)}")
+        else add("Badge de prestige : votre équipe n'a plus de niveau maximum à franchir")
         (allowedMethods(n) - allowedMethods(n - 1)).sortedBy { METHOD_EFFECTS.keys.indexOf(it) }.forEach { m -> METHOD_EFFECTS[m]?.let { add(it) } }
     }
 
-    /** Numéro (0 à 7) de l'arène d'une étape. */
-    fun gymNumber(step: Int): Int = STEPS.take(step).count { it.gym }
+    /** Numéro (0 à 7) de l'arène d'une étape, dans sa région. */
+    fun gymNumber(step: Int): Int = STEPS.take(step).count { it.gym && it.region == STEPS[step].region }
 
     /** Méthodes de rencontre autorisées selon les badges (surf et cannes plus tard dans l'aventure). */
     fun allowedMethods(badges: Int): Set<String> = buildSet {

@@ -16,7 +16,8 @@ tags:
       sont propres à chaque compte ; le Pokédex et les régions restent publics.
   - name: Aventure
     description: |
-      Jeu d'aventure dans Kanto (rencontres de Vert Feuille). Chaque action renvoie l'état complet de la partie (GameView).
+      Jeu d'aventure dans Kanto (rencontres de Vert Feuille), puis Johto (rencontres de Cristal, niveaux relevés de 45),
+      ouvert une fois les 151 Pokémon de Kanto obtenus. Chaque action renvoie l'état complet de la partie (GameView).
       Une route se franchit avec au moins 10 victoires et toutes ses espèces vues (rencontres disponibles dès le départ),
       rencontrées selon leurs chances habituelles.
       Un Pokémon sauvage vaincu peut rejoindre l'équipe selon son taux

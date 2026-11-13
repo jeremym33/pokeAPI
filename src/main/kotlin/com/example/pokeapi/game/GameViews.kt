@@ -79,6 +79,8 @@ data class GymView(val number: Int, val type: String?, val badge: Boolean)
 @Serializable
 data class StepView(
     val index: Int,
+    /** kanto ou johto */
+    val region: String = KANTO,
     val location: String,
     val nameFr: String?,
     val city: Boolean,
@@ -191,6 +193,8 @@ data class GameView(
     val caught: Int = 0,
     val seen: Int = 0,
     val dexSize: Int = GameRules.DEX_SIZE,
+    /** Johto ouvert (les 151 Pokémon de Kanto obtenus). */
+    val johtoUnlocked: Boolean = false,
     val steps: List<StepView> = emptyList(),
     val team: List<FighterView> = emptyList(),
     val box: List<FighterView> = emptyList(),

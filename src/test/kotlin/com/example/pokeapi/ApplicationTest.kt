@@ -683,7 +683,7 @@ class ApplicationTest {
 
         // Profil : badges (aucun obtenu), premier badge : type connu car l'arène est accessible
         val badges = json.decodeFromString<BadgesView>(client.get("/game/badges").bodyAsText())
-        assertEquals(8, badges.total)
+        assertEquals(16, badges.total) // 8 arènes de Kanto, 8 de Johto
         assertEquals(0, badges.obtained)
         assertEquals("Badge Plante", badges.badges.first().name)
         assertEquals(false, badges.badges.first().obtained)
@@ -1375,6 +1375,43 @@ class ApplicationTest {
         assertEquals(null, moved.league)
         val back = json.decodeFromString<GameView>(client.post("/game/travel") { contentType(ContentType.Application.Json); setBody("""{"step":$league}""") }.bodyAsText())
         assertEquals(0, back.league!!.stage)
+    }
+
+    @Test
+    fun `aventure - johto s'ouvre avec les 151 pokemon de Kanto`() = appTest {
+        suspend fun game(response: HttpResponse): GameView {
+            assertTrue(response.status.isSuccess(), response.bodyAsText())
+            return json.decodeFromString<GameView>(response.bodyAsText())
+        }
+        var v = game(client.post("/game/new") { contentType(ContentType.Application.Json); setBody("""{"starter":"bulbasaur"}""") })
+        val newBark = v.steps.indexOfFirst { it.location == "new-bark-town" }
+        assertEquals("johto", v.steps[newBark].region)
+        assertEquals(false, v.johtoUnlocked)
+        assertEquals(151, v.dexSize)
+        // Tout Kanto franchi (lieux, arènes, Ligue), mais 150 Pokémon seulement : Johto reste fermé
+        val gyms = v.steps.filter { it.gym != null && it.region == "kanto" }.map { it.index }
+        editSave { save ->
+            JsonObject(save + mapOf(
+                "badges" to json.parseToJsonElement(gyms.toString()), "championWins" to JsonPrimitive(1),
+                "clearedSteps" to json.parseToJsonElement("[1]"), "caught" to json.parseToJsonElement((1..150).toList().toString()),
+            ))
+        }
+        v = game(client.get("/game"))
+        assertEquals(newBark - 1, v.unlockedStep)
+        // Le 151e : Johto s'ouvre à l'action suivante, avec un œuf de starter de Johto
+        editSave { save -> JsonObject(save + ("caught" to json.parseToJsonElement((1..151).toList().toString()))) }
+        v = game(client.post("/game/travel") { contentType(ContentType.Application.Json); setBody("""{"step":0}""") })
+        assertEquals(true, v.johtoUnlocked)
+        assertEquals(251, v.dexSize)
+        assertTrue(v.lastEvent!!.contains("Johto est ouverte"), v.lastEvent)
+        assertEquals(1, v.eggs.size)
+        // Bourg Geon accessible (et, dans les données simulées sans rencontres, jusqu'à la première arène de Johto)
+        assertEquals(v.steps.first { it.region == "johto" && it.gym != null }.index, v.unlockedStep)
+        assertEquals(251, json.decodeFromString<DexView>(client.get("/game/dex").bodyAsText()).total)
+        // Une seule fois
+        v = game(client.post("/game/travel") { contentType(ContentType.Application.Json); setBody("""{"step":$newBark}""") })
+        assertEquals(1, v.eggs.size)
+        assertEquals(newBark, v.currentStep)
     }
 
     @Test

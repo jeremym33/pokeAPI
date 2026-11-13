@@ -149,7 +149,13 @@ class GameRulesTest {
     @Test
     fun `progression de Kanto`() {
         assertEquals("pallet-town", GameRules.STEPS.first().location)
-        assertEquals(8, GameRules.STEPS.count { it.gym })
+        assertEquals(8, GameRules.STEPS.count { it.gym && it.region == "kanto" })
+        // Johto à la suite : Bourg Geon, 8 arènes, rencontres de Cristal
+        val johto = GameRules.STEPS.filter { it.region == "johto" }
+        assertEquals("new-bark-town", johto.first().location)
+        assertEquals(8, johto.count { it.gym })
+        assertEquals("crystal", GameRules.REGION_VERSIONS["johto"])
+        assertTrue(GameRules.inDex(251, 251) && !GameRules.inDex(252, 251))
         assertEquals(listOf(0, 1, 2), GameRules.STEPS.withIndex().filter { it.value.gym }.take(3).map { GameRules.gymNumber(it.index) })
         // Arène : 3 niveaux au-dessus des sauvages, sans atteindre la limite
         assertEquals(9, GameRules.gymTopLevel(6, 15))
