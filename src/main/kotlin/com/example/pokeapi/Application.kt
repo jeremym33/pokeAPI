@@ -30,6 +30,7 @@ import com.example.pokeapi.service.MoveService
 import com.example.pokeapi.service.LocationService
 import com.example.pokeapi.service.PokedexUpdateService
 import com.example.pokeapi.service.PokemonService
+import kotlinx.coroutines.launch
 import com.example.pokeapi.service.TypeService
 import com.example.pokeapi.service.TeamService
 import io.ktor.server.application.*
@@ -88,6 +89,13 @@ fun Application.configureApp(
     val gameService = GameService(
         database, pokemonService, pokemonRepository, moveService, typeService, evolutionService, locationService, pokeApiClient,
     )
+
+    // Parties existantes mises à jour au démarrage (nouvelles règles, Ligues par région…), en arrière-plan
+    launch {
+        runCatching { gameService.upgradeAll() }
+            .onSuccess { report -> report.forEach { log.info("Mise à jour des parties : $it") } }
+            .onFailure { log.warn("Mise à jour des parties impossible", it) }
+    }
 
     configureSerialization()
     configureMonitoring()

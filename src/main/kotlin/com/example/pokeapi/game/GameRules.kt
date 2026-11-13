@@ -127,6 +127,12 @@ object GameRules {
         Step("dragons-den", region = JOHTO),
         Step("johto-route-45", region = JOHTO),
         Step("johto-route-46", region = JOHTO),
+        // Vers la Ligue de Johto : Route 27, Chutes Tohjo, Route 26, Route Victoire, puis le Plateau Indigo
+        Step("kanto-route-27", region = JOHTO),
+        Step("tohjo-falls", region = JOHTO),
+        Step("kanto-route-26", region = JOHTO),
+        Step("kanto-victory-road-1", region = JOHTO),
+        Step("indigo-plateau", city = true, league = true, region = JOHTO),
     )
 
     /** Version de jeu dont viennent les rencontres de Kanto. */
@@ -168,8 +174,14 @@ object GameRules {
     /** Ligue : 4 membres du Conseil puis le Maître, à battre à la suite. */
     const val LEAGUE_MEMBERS = 4
 
-    /** Niveau du meilleur Pokémon de chaque adversaire de la Ligue (4 membres, puis le Maître). */
+    /** Niveau du meilleur Pokémon de chaque adversaire de la Ligue de Kanto (4 membres, puis le Maître). */
     val LEAGUE_TOP_LEVELS = listOf(52, 55, 58, 61, 65)
+
+    /** Niveaux de la Ligue de chaque région : celle de Johto suit la Route Victoire de Cristal (niv. 85 avec le décalage). */
+    val REGION_LEAGUE_TOP_LEVELS = mapOf(KANTO to LEAGUE_TOP_LEVELS, JOHTO to listOf(88, 91, 94, 97, 100))
+
+    /** Légendaires et fabuleux de Kanto et Johto : jamais dans les équipes des arènes ni de la Ligue. */
+    val LEGENDARIES = setOf(144, 145, 146, 150, 151, 243, 244, 245, 249, 250, 251)
 
     /** Niveau des Pokémon rares (coup de pouce, après la Ligue) ; Mewtwo, dans la Grotte Azurée, est plus fort. */
     fun rareLevel(routeMaxLevel: Int, pokemonId: Int): Int = if (pokemonId == MEWTWO) 70 else maxOf(routeMaxLevel + 5, 50)

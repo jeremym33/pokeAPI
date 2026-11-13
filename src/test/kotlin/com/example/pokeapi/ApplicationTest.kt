@@ -1306,8 +1306,9 @@ class ApplicationTest {
                 "team" to JsonArray(listOf(strong)), "badges" to json.parseToJsonElement(gyms.toString()),
                 "stepIndex" to JsonPrimitive(league), "lastCenter" to JsonPrimitive(league),
                 "clearedSteps" to json.parseToJsonElement("[1]"),
-                // Types dont les données simulées ont des Pokémon (hors Pokémon rares)
-                "leagueTypes" to json.parseToJsonElement("""["grass", "poison", "grass", "poison"]"""),
+                // Types dont les données simulées ont des Pokémon (hors Pokémon rares) ; ancien format de
+                // sauvegarde (une seule Ligue), mis à jour au chargement
+                "leagueTypes" to json.parseToJsonElement("""["grass", "poison", "grass", "poison"]"""), "saveVersion" to JsonPrimitive(0),
             ))
         }
         v = game(client.get("/game"))
@@ -1368,7 +1369,7 @@ class ApplicationTest {
         val gyms = v0.steps.filter { it.gym != null }.map { it.index }
         editSave { save ->
             JsonObject(save + mapOf(
-                "badges" to json.parseToJsonElement(gyms.toString()), "leagueStage" to JsonPrimitive(2),
+                "badges" to json.parseToJsonElement(gyms.toString()), "leagueStage" to JsonPrimitive(2), "saveVersion" to JsonPrimitive(0),
                 "clearedSteps" to json.parseToJsonElement("[1]"), // Route 1 franchie : le retour au plateau est possible
             ))
         }
@@ -1376,6 +1377,66 @@ class ApplicationTest {
         assertEquals(null, moved.league)
         val back = json.decodeFromString<GameView>(client.post("/game/travel") { contentType(ContentType.Application.Json); setBody("""{"step":$league}""") }.bodyAsText())
         assertEquals(0, back.league!!.stage)
+    }
+
+    @Test
+    fun `aventure - ligue de johto, distincte de celle de kanto`() = appTest {
+        suspend fun game(response: HttpResponse): GameView {
+            assertTrue(response.status.isSuccess(), response.bodyAsText())
+            return json.decodeFromString<GameView>(response.bodyAsText())
+        }
+        suspend fun post(path: String, body: String? = null) = client.post("/game$path") {
+            if (body != null) { contentType(ContentType.Application.Json); setBody(body) }
+        }
+        client.post("/pokemon/import?limit=4")
+        listOf("ivysaur", "venusaur", "eevee", "vaporeon").forEach { client.get("/pokemon/$it") }
+        var v = game(post("/new", """{"starter":"bulbasaur"}"""))
+        val kantoLeague = v.steps.indexOfFirst { it.location == "indigo-plateau" }
+        val johtoLeague = v.steps.indexOfLast { it.location == "indigo-plateau" }
+        assertEquals("johto", v.steps[johtoLeague].region)
+        assertEquals(v.steps.lastIndex, johtoLeague)
+        assertTrue(johtoLeague > kantoLeague)
+        val kantoGyms = v.steps.filter { it.gym != null && it.region == "kanto" }.map { it.index }
+        val johtoGyms = v.steps.filter { it.gym != null && it.region == "johto" }.map { it.index }
+        // Kanto conquis, Johto ouvert ; au Plateau Indigo de Johto avec un Pokémon de Johto très fort
+        editSave { save ->
+            val first = save["team"]!!.jsonArray[0].jsonObject
+            val strong = JsonObject(first + mapOf(
+                "pokemonId" to JsonPrimitive(3), "speciesId" to JsonPrimitive(3), "origin" to JsonPrimitive("johto"),
+                "level" to JsonPrimitive(100), "xp" to JsonPrimitive(1_000_000), "hp" to JsonPrimitive(999),
+                "base" to json.parseToJsonElement("""{"hp":255,"attack":255,"defense":255,"special-attack":255,"special-defense":255,"speed":255}"""),
+            ))
+            JsonObject(save + mapOf(
+                "team" to JsonArray(listOf(strong)), "badges" to json.parseToJsonElement(kantoGyms.toString()),
+                "stepIndex" to JsonPrimitive(johtoLeague), "lastCenter" to JsonPrimitive(johtoLeague),
+                "johtoUnlocked" to JsonPrimitive(true), "clearedSteps" to json.parseToJsonElement("[1]"),
+                "leagues" to json.parseToJsonElement(
+                    """{"kanto":{"wins":2,"types":["grass","poison","grass","poison"]},"johto":{"types":["grass","poison","grass","poison"]}}""",
+                ),
+            ))
+        }
+        v = game(client.get("/game"))
+        assertEquals("johto", v.league!!.region)
+        assertEquals(0, v.league!!.championWins) // la Ligue de Kanto ne compte pas pour Johto
+        assertEquals(false, v.league!!.open) // les badges de Kanto ne suffisent pas
+        assertEquals(HttpStatusCode.BadRequest, post("/league").status)
+        editSave { save -> JsonObject(save + ("badges" to json.parseToJsonElement((kantoGyms + johtoGyms).toString()))) }
+
+        for (stage in 0..4) {
+            v = game(post("/league"))
+            assertEquals(BattleKind.LEAGUE, v.battle!!.kind)
+            assertTrue(v.battle!!.enemy.level >= 80, "Ligue de Johto au niveau de la fin de Cristal")
+            while (v.battle!!.outcome == null) v = game(post("/battle/attack", """{"move":0}"""))
+            assertEquals(BattleOutcome.WON, v.battle!!.outcome)
+            v = game(post("/battle/close"))
+        }
+        assertEquals(1, v.league!!.championWins)
+        assertTrue(v.lastEvent == null || "Grotte Azurée" !in v.lastEvent!!)
+        // La Ligue de Kanto garde ses propres victoires
+        editSave { save -> JsonObject(save + mapOf("stepIndex" to JsonPrimitive(kantoLeague), "lastCenter" to JsonPrimitive(kantoLeague))) }
+        val kanto = game(client.get("/game")).league!!
+        assertEquals("kanto", kanto.region)
+        assertEquals(2, kanto.championWins)
     }
 
     @Test
@@ -1393,7 +1454,7 @@ class ApplicationTest {
         val gyms = v.steps.filter { it.gym != null && it.region == "kanto" }.map { it.index }
         editSave { save ->
             JsonObject(save + mapOf(
-                "badges" to json.parseToJsonElement(gyms.toString()), "championWins" to JsonPrimitive(1),
+                "badges" to json.parseToJsonElement(gyms.toString()), "championWins" to JsonPrimitive(1), "saveVersion" to JsonPrimitive(0),
                 "clearedSteps" to json.parseToJsonElement("[1]"), "caught" to json.parseToJsonElement((1..150).toList().toString()),
             ))
         }
@@ -1438,7 +1499,7 @@ class ApplicationTest {
             JsonObject(save + mapOf(
                 "team" to JsonArray(listOf(first, JsonObject(first + ("uid" to JsonPrimitive("p2"))))),
                 "box" to JsonArray(listOf(JsonObject(first + mapOf("uid" to JsonPrimitive("p3"), "origin" to JsonPrimitive("johto"))))),
-                "badges" to json.parseToJsonElement(gyms.toString()), "championWins" to JsonPrimitive(1), "johtoUnlocked" to JsonPrimitive(true),
+                "badges" to json.parseToJsonElement(gyms.toString()), "championWins" to JsonPrimitive(1), "saveVersion" to JsonPrimitive(0), "johtoUnlocked" to JsonPrimitive(true),
                 "clearedSteps" to json.parseToJsonElement("[1]"), "caught" to json.parseToJsonElement((1..151).toList().toString()),
             ))
         }

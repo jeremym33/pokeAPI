@@ -5,6 +5,11 @@ import com.example.pokeapi.game.AchievementContext
 import com.example.pokeapi.game.Achievements
 import com.example.pokeapi.game.FighterMove
 import com.example.pokeapi.game.GameRules
+import com.example.pokeapi.game.GameState
+import com.example.pokeapi.game.DayCare
+import com.example.pokeapi.game.LeagueProgress
+import com.example.pokeapi.game.SAVE_VERSION
+import com.example.pokeapi.game.upgradeSave
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -246,5 +251,29 @@ class GameRulesTest {
         assertEquals(10, GameRules.hatchFights(20))
         assertEquals(5, GameRules.hatchFights(5))
         assertEquals(40, GameRules.hatchFights(120))
+    }
+
+    @Test
+    fun `mise a jour d'une ancienne sauvegarde sans perte`() {
+        val bulbasaur = fighter(5).copy(uid = "p1")
+        val chikorita = bulbasaur.copy(uid = "p2", pokemonId = 152, speciesId = 152, name = "chikorita")
+        val old = GameState(
+            starter = "bulbasaur", team = listOf(bulbasaur), box = listOf(chikorita), leagueStage = 2, leagueTypes = listOf("ice", "ghost", "fighting", "dragon"),
+            championWins = 3, dayCare = DayCare(pokemon = listOf(bulbasaur.copy(uid = "p3"))),
+        )
+        val u = upgradeSave(old)
+        assertEquals(SAVE_VERSION, u.saveVersion)
+        assertEquals(LeagueProgress(2, listOf("ice", "ghost", "fighting", "dragon"), 3), u.leagues["kanto"])
+        assertEquals(0, u.championWins)
+        assertEquals(listOf("p3"), u.dayCares["kanto"]!!.pokemon.map { it.uid })
+        assertEquals("kanto", u.dayCares["kanto"]!!.pokemon.single().origin)
+        assertEquals(DayCare(), u.dayCare)
+        assertEquals("kanto", u.team.single().origin)
+        assertEquals("johto", u.box.single().origin)
+        // Déjà à jour : rien ne change ; une origine déjà connue est gardée
+        assertEquals(u, upgradeSave(u))
+        assertEquals("johto", upgradeSave(old.copy(team = listOf(bulbasaur.copy(origin = "johto")))).team.single().origin)
+        // Nouvelle partie sans Ligue : rien à reprendre
+        assertEquals(emptyMap(), upgradeSave(GameState(starter = "bulbasaur", team = listOf(bulbasaur))).leagues)
     }
 }

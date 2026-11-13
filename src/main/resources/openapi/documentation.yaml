@@ -460,12 +460,19 @@ paths:
     post:
       tags: [Aventure]
       security: [{ bearerAuth: [] }]
-      summary: Défier le prochain adversaire de la Ligue (Plateau Indigo)
+      summary: Défier le prochain adversaire de la Ligue de la région (Plateau Indigo)
       description: |
-        Avec les 8 badges : 4 membres du Conseil (un type chacun, différent des arènes) puis le Maître (équipe mixte),
-        à battre à la suite, sans Centre Pokémon entre les combats. Une défaite, ou quitter le plateau, fait reprendre
-        le défi depuis le début. Battre le Maître ouvre la Grotte Azurée et fait apparaître, par le coup de pouce, les
-        Pokémon de Kanto introuvables à l'état sauvage (StepView.rare) ; Mewtwo seulement dans la Grotte Azurée.
+        Une Ligue par région, au Plateau Indigo : celui de Kanto (après la Route Victoire de Kanto), puis celui de
+        Johto (dernière étape, après la Route 27, les Chutes Tohjo, la Route 26 et la Route Victoire). Avec les 8 badges
+        de la région : 4 membres du Conseil (un type chacun, différent des arènes de la région) puis le Maître (équipe
+        mixte, sans légendaires), à battre à la suite, sans Centre Pokémon entre les combats. Une défaite, ou quitter le
+        plateau, fait reprendre le défi depuis le début. Chaque Ligue a ses propres victoires (league.region,
+        league.championWins). Battre le Maître de Kanto ouvre la Grotte Azurée et fait apparaître, par le coup de
+        pouce, les Pokémon de Kanto introuvables à l'état sauvage (StepView.rare) ; Mewtwo seulement dans la Grotte
+        Azurée. La Ligue de Johto (6 Pokémon par adversaire, niveaux 78 à 100) est un défi de fin de partie.
+
+        Les parties enregistrées avant les Ligues par région sont mises à jour au démarrage du serveur et à leur
+        chargement : l'ancienne Ligue devient celle de Kanto, sans perte de progression.
       responses:
         "200":
           description: État de la partie (battle de type LEAGUE, league)

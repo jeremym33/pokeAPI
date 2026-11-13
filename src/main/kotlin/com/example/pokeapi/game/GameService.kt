@@ -20,6 +20,7 @@ import kotlinx.coroutines.sync.withLock
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.deleteWhere
+import org.jetbrains.exposed.sql.select
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
 import org.jetbrains.exposed.sql.upsert
@@ -228,6 +229,30 @@ class GameService(
         BadgesView(s.badges.size, badges.size, GameRules.levelCap(s.badges.size), badges)
     }
 
+    /**
+     * Met à jour toutes les parties enregistrées (au démarrage du serveur) : chaque sauvegarde passe par les
+     * mêmes mises à jour qu'à son chargement, puis est réenregistrée. Renvoie un compte rendu par partie ; une
+     * sauvegarde illisible est signalée et laissée telle quelle.
+     */
+    suspend fun upgradeAll(): List<String> {
+        val ids = newSuspendedTransaction(Dispatchers.IO, database) {
+            GameSaveTable.select(GameSaveTable.id).map { it[GameSaveTable.id] }.sorted()
+        }
+        return ids.map { id ->
+            lock.withLock {
+                runCatching {
+                    val before = load(id) ?: return@runCatching "Partie $id : supprimée entre-temps"
+                    val after = loadMigrated(id)!!
+                    when {
+                        before.saveVersion < SAVE_VERSION -> "Partie $id : mise à jour (version ${before.saveVersion} → $SAVE_VERSION)"
+                        before != after -> "Partie $id : complétée"
+                        else -> "Partie $id : déjà à jour"
+                    }
+                }.getOrElse { "Partie $id : illisible, laissée telle quelle (${it.message?.take(200)})" }
+            }
+        }
+    }
+
     /** Succès de la partie, avec leur progression et leurs récompenses. */
     suspend fun achievements(userId: Int): AchievementsView = lock.withLock {
         val s = loadMigrated(userId) ?: throw NotFoundException("Aucune partie en cours")
@@ -244,7 +269,7 @@ class GameService(
         return AchievementContext(
             victories = victoryCount(s), badges = s.badges.size, caught = caught.size,
             seen = (s.seen + s.caught).count { it <= s.dexMax() }, caughtByType = byType,
-            championWins = s.championWins,
+            championWins = s.leagues.values.sumOf { it.wins },
         )
     }
 
@@ -268,7 +293,7 @@ class GameService(
     suspend fun newGame(userId: Int, starter: String): GameView = lock.withLock {
         if (starter !in GameRules.STARTERS) throw BadRequestException("Starter inconnu : '$starter' (${GameRules.STARTERS.joinToString()})")
         val first = buildFighter(starter, GameRules.STARTER_LEVEL, "p1").copy(origin = KANTO)
-        val state = GameState(movesVersion = GAME_MOVES_VERSION, routeRules = ROUTE_RULES, starter = starter, team = listOf(first), caught = setOf(first.speciesId), seen = setOf(first.speciesId), uidCounter = 1)
+        val state = GameState(saveVersion = SAVE_VERSION, movesVersion = GAME_MOVES_VERSION, routeRules = ROUTE_RULES, starter = starter, team = listOf(first), caught = setOf(first.speciesId), seen = setOf(first.speciesId), uidCounter = 1)
         save(userId, state)
         toView(userId, state)
     }
@@ -283,8 +308,8 @@ class GameService(
         if (step > unlockedStep(s)) throw BadRequestException("Cette étape n'est pas encore accessible")
         val city = GameRules.STEPS[step].city
         // Quitter le Plateau Indigo en plein défi : il reprendra depuis le début
-        val leagueStage = if (step != s.stepIndex) 0 else s.leagueStage
-        val moved = s.copy(stepIndex = step, lastCenter = if (city) step else s.lastCenter, leagueStage = leagueStage)
+        val left = if (step != s.stepIndex) s.leaguesRestarted() else s
+        val moved = left.copy(stepIndex = step, lastCenter = if (city) step else s.lastCenter)
         val target = GameRules.STEPS[step].region
         if (target == s.region()) return@act moved
         // Passage d'une région à l'autre : un seul Pokémon venu d'ailleurs peut accompagner le joueur
@@ -309,7 +334,7 @@ class GameService(
     suspend fun heal(userId: Int): GameView = act(userId) { s ->
         noBattle(s)
         if (!GameRules.STEPS[s.stepIndex].city) throw BadRequestException("Le Centre Pokémon se trouve dans les villes")
-        if (s.leagueStage > 0) throw BadRequestException("Pas de soin pendant le défi de la Ligue : continuez, ou quittez le plateau pour recommencer plus tard")
+        if (s.leagueIn(s.region()).stage > 0) throw BadRequestException("Pas de soin pendant le défi de la Ligue : continuez, ou quittez le plateau pour recommencer plus tard")
         s.copy(team = s.team.map { it.healed() }, box = s.box.map { it.healed() })
     }
 
@@ -618,7 +643,7 @@ class GameService(
         val boost = count >= GameRules.BOOST_EVERY
         val counters = s.boostCounters + (s.stepIndex to if (boost) 0 else count)
         // Après la victoire contre le Maître, le coup de pouce peut aussi amener un Pokémon rare du lieu
-        val rare = if (s.championWins > 0) rareSpecies().filterValues { it == s.stepIndex }.keys.toList() else emptyList()
+        val rare = if (s.leagueIn(KANTO).wins > 0) rareSpecies().filterValues { it == s.stepIndex }.keys.toList() else emptyList()
         val rarePick = boost && rare.isNotEmpty() && (unseen.isEmpty() || random.nextBoolean())
         val entry = if (rarePick) {
             val id = rare.random(random)
@@ -643,34 +668,60 @@ class GameService(
         )
     }
 
-    // ---------- Ligue (Plateau Indigo) ----------
+    // ---------- Ligues (Plateau Indigo, pour Kanto puis pour Johto) ----------
 
     private fun leagueOpponentName(stage: Int, type: String?) =
         if (stage >= GameRules.LEAGUE_MEMBERS) "Maître de la Ligue" else "Membre ${stage + 1} du Conseil${type?.let { " (${TYPES_FR[it] ?: it})" } ?: ""}"
 
-    /** Types du Conseil : 4 types différents de ceux des arènes, tirés au premier défi. */
-    private suspend fun withLeagueTypes(s: GameState): GameState {
-        if (s.leagueTypes.size == GameRules.LEAGUE_MEMBERS) return s
-        val rare = rareSpecies().keys
-        // Types assez fournis : au moins 4 Pokémon de Kanto (hors Pokémon rares) pour une équipe complète
-        val candidates = TYPES_FR.keys.filter { it !in s.gymTypes.values }.filter { type ->
-            pokemonService.list(PokemonQuery(limit = 100, types = listOf(type), region = "kanto")).items
-                .count { it.regionalForm == null && GameRules.inKanto(it.id) && it.id !in rare } >= 4
-        }
-        return s.copy(leagueTypes = candidates.shuffled(random).take(GameRules.LEAGUE_MEMBERS))
+    private fun GameState.leagueIn(region: String): LeagueProgress = leagues[region] ?: LeagueProgress()
+
+    private fun GameState.withLeague(region: String, l: LeagueProgress): GameState = copy(leagues = leagues + (region to l))
+
+    /** Défis en cours abandonnés : ils reprendront au premier membre du Conseil. */
+    private fun GameState.leaguesRestarted(): GameState = copy(leagues = leagues.mapValues { it.value.copy(stage = 0) })
+
+    /** Badges obtenus dans une région. */
+    private fun GameState.regionBadges(region: String): Int = badges.count { GameRules.STEPS[it].region == region }
+
+    /** Pokémon que la Ligue d'une région peut aligner : ceux de la région (Kanto, ou Kanto et Johto), sans légendaires. */
+    private suspend fun leagueCandidates(region: String, type: String? = null): List<com.example.pokeapi.model.PokemonSummary> {
+        val maxDex = GameRules.REGION_DEX.getValue(region)
+        val rare = if (region == KANTO) rareSpecies().keys else emptySet()
+        val regions = if (region == KANTO) listOf(KANTO) else listOf(KANTO, JOHTO)
+        return regions.flatMap { r -> pokemonService.list(PokemonQuery(limit = 200, types = listOfNotNull(type), region = r)).items }
+            .filter { it.regionalForm == null && GameRules.inDex(it.id, maxDex) && it.id !in rare && it.id !in GameRules.LEGENDARIES }
     }
 
-    /** Défie le prochain adversaire de la Ligue : les 4 membres du Conseil, puis le Maître, à la suite. */
+    /** Types du Conseil : 4 types différents de ceux des arènes de la région, tirés au premier défi. */
+    private suspend fun withLeagueTypes(s: GameState, region: String): GameState {
+        val league = s.leagueIn(region)
+        if (league.types.size == GameRules.LEAGUE_MEMBERS) return s
+        val gymTypes = s.gymTypes.filterKeys { GameRules.STEPS[it].region == region }.values
+        // Types assez fournis pour une équipe complète
+        val size = if (region == KANTO) 4 else 6
+        val candidates = TYPES_FR.keys.filter { it !in gymTypes }.filter { type -> leagueCandidates(region, type).size >= size }
+        return s.withLeague(region, league.copy(types = candidates.shuffled(random).take(GameRules.LEAGUE_MEMBERS)))
+    }
+
+    /** Défie le prochain adversaire de la Ligue de la région : les 4 membres du Conseil, puis le Maître, à la suite. */
     suspend fun challengeLeague(userId: Int): GameView = act(userId) { s0 ->
         noBattle(s0)
-        if (!GameRules.STEPS[s0.stepIndex].league) throw BadRequestException("La Ligue se trouve au Plateau Indigo")
-        if (s0.badges.size < 8) throw BadRequestException("Il faut les 8 badges pour défier la Ligue")
+        val step = GameRules.STEPS[s0.stepIndex]
+        if (!step.league) throw BadRequestException("La Ligue se trouve au Plateau Indigo")
+        val region = step.region
+        if (s0.regionBadges(region) < 8) throw BadRequestException("Il faut les 8 badges de ${regionName(region)} pour défier la Ligue")
         val active = s0.firstFighter()
-        val s = withLeagueTypes(s0)
-        val stage = s.leagueStage
-        val type = s.leagueTypes.getOrNull(stage)
-        val top = GameRules.LEAGUE_TOP_LEVELS[stage]
-        val enemies = if (type != null) gymTeam(type, top, size = 5, targetStat = 470) else championTeam(top)
+        val s = withLeagueTypes(s0, region)
+        val league = s.leagueIn(region)
+        val stage = league.stage
+        val type = league.types.getOrNull(stage)
+        val top = GameRules.REGION_LEAGUE_TOP_LEVELS.getValue(region)[stage]
+        val enemies = when {
+            type == null -> championTeam(top, region)
+            region == KANTO -> gymTeam(type, top, size = 5, targetStat = 470)
+            // Johto : équipes complètes, du niveau de fin de Cristal
+            else -> gymTeam(type, top, size = 6, targetStat = 500, maxDex = GameRules.REGION_DEX.getValue(region))
+        }
         val name = leagueOpponentName(stage, type)
         val battle = Battle(
             kind = BattleKind.LEAGUE, step = s.stepIndex, enemies = enemies, activeUid = active.uid, participants = setOf(active.uid), title = name,
@@ -683,17 +734,15 @@ class GameService(
         s.copy(battle = battle, seen = s.seen + enemies.map { it.speciesId })
     }
 
-    /** Équipe du Maître : 6 Pokémon puissants de Kanto, de types différents (hors Pokémon rares). */
-    private suspend fun championTeam(topLevel: Int): List<Fighter> {
-        val rare = rareSpecies().keys
+    /** Équipe du Maître : 6 Pokémon puissants de la région, de types différents (hors légendaires et Pokémon rares). */
+    private suspend fun championTeam(topLevel: Int, region: String): List<Fighter> {
         val picked = mutableListOf<com.example.pokeapi.model.PokemonSummary>()
-        pokemonService.list(PokemonQuery(limit = 200, region = "kanto")).items
-            .filter { it.regionalForm == null && GameRules.inKanto(it.id) && it.id !in rare }
+        leagueCandidates(region)
             .sortedByDescending { it.statTotal }
             .forEach { p -> if (picked.size < 6 && picked.none { q -> q.types.first() == p.types.first() }) picked += p }
-        if (picked.isEmpty()) throw BadRequestException("Importez le Pokédex de Kanto pour défier la Ligue")
+        if (picked.isEmpty()) throw BadRequestException("Importez le Pokédex de ${regionName(region)} pour défier la Ligue")
         return picked.sortedBy { it.statTotal }.mapIndexed { i, p ->
-            buildFighter(p.id.toString(), topLevel - (picked.size - 1 - i), "league$i")
+            buildFighter(p.id.toString(), (topLevel - (picked.size - 1 - i)).coerceAtMost(100), "league$i")
         }
     }
 
@@ -1099,20 +1148,22 @@ class GameService(
                 log += "${enemy.displayName} s'éloigne."
             }
         } else if (b.kind == BattleKind.LEAGUE) {
-            val stage = state.leagueStage
-            if (stage + 1 < GameRules.LEAGUE_MEMBERS + 1) {
+            val region = GameRules.STEPS[b.step].region
+            val league = state.leagueIn(region)
+            val stage = league.stage
+            if (stage < GameRules.LEAGUE_MEMBERS) {
                 val next = stage + 1
-                log += "Vous avez battu ${leagueOpponentName(stage, state.leagueTypes.getOrNull(stage)).replaceFirstChar(Char::lowercase)} !"
-                log += "Prochain défi : ${leagueOpponentName(next, state.leagueTypes.getOrNull(next)).replaceFirstChar(Char::lowercase)}. Pas de Centre Pokémon d'ici là !"
-                state = state.copy(leagueStage = next)
+                log += "Vous avez battu ${leagueOpponentName(stage, league.types.getOrNull(stage)).replaceFirstChar(Char::lowercase)} !"
+                log += "Prochain défi : ${leagueOpponentName(next, league.types.getOrNull(next)).replaceFirstChar(Char::lowercase)}. Pas de Centre Pokémon d'ici là !"
+                state = state.withLeague(region, league.copy(stage = next))
             } else {
-                val first = state.championWins == 0
-                log += "Vous avez battu le Maître de la Ligue : vous êtes le nouveau Maître de Kanto !"
-                if (first) {
+                val first = league.wins == 0
+                log += "Vous avez battu le Maître de la Ligue : vous êtes le nouveau Maître de ${regionName(region)} !"
+                if (first && region == KANTO) {
                     log += "Des Pokémon rares, introuvables jusqu'ici, se cachent désormais dans Kanto : ils n'apparaissent que par chance, de temps en temps."
                     log += "La Grotte Azurée est maintenant accessible."
                 }
-                state = state.copy(leagueStage = 0, championWins = state.championWins + 1)
+                state = state.withLeague(region, league.copy(stage = 0, wins = league.wins + 1))
             }
         } else {
             val type = state.gymTypes[b.step]
@@ -1127,8 +1178,7 @@ class GameService(
     private fun defeat(s: GameState, log: MutableList<String>): GameState {
         log += "Votre équipe est K.O. ! Vous retournez au dernier Centre Pokémon visité et vos Pokémon sont soignés."
         if (s.battle?.kind == BattleKind.LEAGUE) log += "Le défi de la Ligue reprendra depuis le premier membre du Conseil."
-        return s.copy(
-            leagueStage = 0,
+        return s.leaguesRestarted().copy(
             team = s.team.map { it.healed().leftBattle() },
             stepIndex = s.lastCenter,
             battle = s.battle!!.copy(outcome = BattleOutcome.LOST),
@@ -1344,7 +1394,7 @@ class GameService(
         // Kanto, ou Kanto et Johto pour les arènes de Johto
         val regions = if (maxDex > GameRules.DEX_SIZE) listOf("kanto", "johto") else listOf("kanto")
         val candidates = regions.flatMap { r -> pokemonService.list(PokemonQuery(limit = 100, types = listOf(type), region = r)).items }
-            .filter { it.regionalForm == null && GameRules.inDex(it.id, maxDex) && it.id !in rare }
+            .filter { it.regionalForm == null && GameRules.inDex(it.id, maxDex) && it.id !in rare && it.id !in GameRules.LEGENDARIES }
             .sortedBy { abs(it.statTotal - target) }
             .take(size)
             .sortedBy { it.statTotal }
@@ -1360,7 +1410,7 @@ class GameService(
     private suspend fun pool(step: Int, badges: Int): List<PoolEntry> {
         val def = GameRules.STEPS[step]
         val location = def.location
-        val all = pools.getOrPut(location) {
+        val all = pools.getOrPut("${def.region}:$location") {
             val detail = locationService.location(location) ?: return@getOrPut emptyList()
             // Version de la région (Vert Feuille pour Kanto, Cristal pour Johto) et seulement ses Pokémon :
             // pas de Qulbutoké dans la Grotte Azurée, des Pokémon n° 1 à 251 dans Johto.
@@ -1450,7 +1500,7 @@ class GameService(
     private suspend fun cleared(s: GameState, step: Int): Boolean {
         val def = GameRules.STEPS[step]
         // Plateau Indigo : franchi en battant le Maître (une partie déjà plus loin le garde franchi)
-        if (def.league) return s.championWins > 0 || s.stepIndex > step || (s.wins[step + 1] ?: 0) > 0
+        if (def.league) return s.leagueIn(def.region).wins > 0 || s.stepIndex > step || (s.wins[step + 1] ?: 0) > 0
         if (def.city) return !def.gym || step in s.badges
         if (step in s.clearedSteps) return true
         val species = routeSpecies(step)
@@ -1506,7 +1556,7 @@ class GameService(
         }
         val used = s.gymTypes.values.toSet() + "normal"
         val type = counts.entries.filter { it.key !in used }.sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
-            .firstOrNull()?.key ?: FALLBACK_GYM_TYPES.first { it !in used }
+            .firstOrNull()?.key ?: (FALLBACK_GYM_TYPES + TYPES_FR.keys).firstOrNull { it !in used } ?: FALLBACK_GYM_TYPES.first()
         return s.copy(gymTypes = s.gymTypes + (step to type))
     }
 
@@ -1531,7 +1581,7 @@ class GameService(
                     if (s.hasSeen(n)) RouteSpecies(n, true, p?.nameFr ?: p?.name, p?.spriteUrl) else RouteSpecies(n, false)
                 }
             }
-            val rare = if (s.championWins == 0 || step.city) emptyList() else {
+            val rare = if (s.leagueIn(KANTO).wins == 0 || step.city) emptyList() else {
                 val ids = rareSpecies().filterValues { it == i }.keys.sorted()
                 val info = pokemonRepository.summaries(ids).associateBy { it.id }
                 ids.map { n -> val p = info[n]; if (s.hasSeen(n)) RouteSpecies(n, true, p?.nameFr ?: p?.name, p?.spriteUrl) else RouteSpecies(n, false) }
@@ -1602,15 +1652,18 @@ class GameService(
             lastEvent = s.lastEvent,
             settings = s.settings,
             dayCare = dayCareView(s),
-            league = if (!GameRules.STEPS[s.stepIndex].league) null else LeagueView(
-                open = s.badges.size >= 8,
-                stage = s.leagueStage,
-                opponents = (0..GameRules.LEAGUE_MEMBERS).map { k ->
-                    val type = s.leagueTypes.getOrNull(k)
-                    LeagueOpponentView(leagueOpponentName(k, type), type, defeated = k < s.leagueStage)
-                },
-                championWins = s.championWins,
-            ),
+            league = if (!GameRules.STEPS[s.stepIndex].league) null else s.leagueIn(s.region()).let { l ->
+                LeagueView(
+                    region = s.region(),
+                    open = s.regionBadges(s.region()) >= 8,
+                    stage = l.stage,
+                    opponents = (0..GameRules.LEAGUE_MEMBERS).map { k ->
+                        val type = l.types.getOrNull(k)
+                        LeagueOpponentView(leagueOpponentName(k, type), type, defeated = k < l.stage)
+                    },
+                    championWins = l.wins,
+                )
+            },
             eggs = s.eggs.map { EggView(it.uid, it.fightsLeft.coerceAtLeast(0), it.fightsTotal) },
             training = s.training.entries.sortedBy { it.key }.map { (step, t) ->
                 TraineeView(step, names[GameRules.STEPS[step].location], t.fighter.toView(), t.since, t.fights, t.xpGained, t.log)
@@ -1688,6 +1741,7 @@ class GameService(
      */
     private suspend fun loadMigrated(userId: Int): GameState? {
         var loaded = load(userId) ?: return null
+        if (loaded.saveVersion < SAVE_VERSION) loaded = upgradeSave(loaded).also { save(userId, it) }
         if (loaded.routeRules < ROUTE_RULES) loaded = migrateRoutes(loaded).also { save(userId, it) }
         return migrateMoves(userId, loaded)
     }

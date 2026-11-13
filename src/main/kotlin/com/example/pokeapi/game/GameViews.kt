@@ -127,7 +127,9 @@ data class BadgesView(val obtained: Int, val total: Int, val levelCap: Int, val 
 /** Défi de la Ligue (Plateau Indigo). */
 @Serializable
 data class LeagueView(
-    /** 8 badges obtenus : le défi est ouvert. */
+    /** Région de la Ligue (Kanto, Johto). */
+    val region: String = KANTO,
+    /** 8 badges de la région obtenus : le défi est ouvert. */
     val open: Boolean,
     /** Prochain adversaire du défi en cours (0 à 3 : Conseil, 4 : Maître). */
     val stage: Int,

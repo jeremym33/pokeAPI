@@ -141,6 +141,14 @@ data class Trainee(
 )
 
 /** Pension (dans les villes) : jusqu'à 2 Pokémon ; un couple compatible produit des œufs. */
+/**
+ * Ligue d'une région : [stage] prochain adversaire (0 à 3 : Conseil, 4 : Maître) pendant un défi en cours, [types]
+ * ceux des 4 membres du Conseil (choisis au premier défi), [wins] victoires contre le Maître (pour Kanto, dès la
+ * première, les Pokémon rares apparaissent).
+ */
+@Serializable
+data class LeagueProgress(val stage: Int = 0, val types: List<String> = emptyList(), val wins: Int = 0)
+
 @Serializable
 data class DayCare(
     val pokemon: List<Fighter> = emptyList(),
@@ -220,12 +228,14 @@ data class GameState(
     val dayCares: Map<String, DayCare> = emptyMap(),
     /** Compagnon de voyage de chaque région : le seul Pokémon venu d'ailleurs qui peut y combattre. */
     val companions: Map<String, String> = emptyMap(),
-    /** Ligue : prochain adversaire (0 à 3 : Conseil, 4 : Maître) pendant un défi en cours, 0 sinon. */
+    /** Ancienne Ligue unique (celle de Kanto) : remplacée par [leagues]. */
     val leagueStage: Int = 0,
-    /** Types des 4 membres du Conseil, choisis au premier défi. */
     val leagueTypes: List<String> = emptyList(),
-    /** Victoires contre le Maître : dès la première, les Pokémon rares apparaissent (coup de pouce). */
     val championWins: Int = 0,
+    /** Une Ligue par région (Kanto, Johto). */
+    val leagues: Map<String, LeagueProgress> = emptyMap(),
+    /** Version de la sauvegarde : les plus anciennes sont mises à jour au chargement ([upgradeSave]). */
+    val saveVersion: Int = 0,
     /** Johto ouvert (les 151 Pokémon de Kanto obtenus) : acquis une fois pour toutes. */
     val johtoUnlocked: Boolean = false,
     val eggs: List<Egg> = emptyList(),
