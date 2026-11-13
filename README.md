@@ -60,6 +60,11 @@ docker compose up --build
 
 Si l'application est lancée avec `./gradlew run`, vérifier qu'elle pointe bien sur le PostgreSQL du compose (`localhost:5433`) et non sur un PostgreSQL local.
 
+## Déploiement sur Raspberry Pi
+
+Base, API, application web et Caddy (HTTPS automatique) sur un Raspberry Pi 64 bits, avec un script d'installation,
+de mise à jour, de sauvegarde et de restauration : voir [deploy/raspberry/README.md](deploy/raspberry/README.md).
+
 ## Configuration
 
 Variables d'environnement (valeurs par défaut dans `src/main/resources/application.yaml`) :

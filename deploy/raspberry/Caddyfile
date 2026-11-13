@@ -1,0 +1,16 @@
+# SITE_ADDRESS : « :80 » sur le réseau local, ou un nom de domaine (HTTPS automatique, ports 80 et 443 ouverts).
+{$SITE_ADDRESS::80} {
+	encode gzip
+
+	# API Ktor : /api/game → app:8080/game
+	handle_path /api/* {
+		reverse_proxy app:8080
+	}
+
+	# Application web (une seule page : toutes les adresses renvoient index.html)
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}

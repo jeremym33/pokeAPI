@@ -1,0 +1,68 @@
+# Déploiement sur Raspberry Pi (ou tout serveur Linux) : base, API, application web et Caddy.
+# Tout passe par une seule adresse : l'application web sur « / », l'API sur « /api ».
+# Voir README.md ; les réglages sont lus depuis .env (voir .env.example).
+name: pokeapi
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: pokeapi
+      POSTGRES_USER: pokeapi
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Renseignez POSTGRES_PASSWORD dans .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Pas de port publié : seule l'API parle à la base
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pokeapi -d pokeapi"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: ../..
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: jdbc:postgresql://db:5432/pokeapi
+      DATABASE_USER: pokeapi
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
+      # L'application web est servie à la même adresse que l'API (par Caddy) : pas besoin de CORS ouvert
+      CORS_ALLOWED_HOSTS: ${CORS_ALLOWED_HOSTS:-*}
+      # Mémoire de Java limitée (Raspberry de 2 Go et plus)
+      JAVA_TOOL_OPTIONS: ${JAVA_OPTIONS:--XX:MaxRAMPercentage=40}
+    ports:
+      # Accessible seulement depuis le Raspberry lui-même (vérifications, Swagger via un tunnel SSH)
+      - "127.0.0.1:${API_PORT:-8080}:8080"
+
+  web:
+    build:
+      context: .
+      dockerfile: web.Dockerfile
+      additional_contexts:
+        # Le dépôt de l'application (pokeApp), cloné à côté de celui-ci par installer.sh
+        pokeapp: ${POKEAPP_DIR:-../../../pokeApp}
+    restart: unless-stopped
+    depends_on:
+      - app
+    environment:
+      # « :80 » sur le réseau local ; un nom de domaine (pokedex.exemple.fr) pour le HTTPS automatique
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pgdata:
+    name: pokeapi-pi-pgdata
+  caddy_data:
+    name: pokeapi-pi-caddy-data
+  caddy_config:
+    name: pokeapi-pi-caddy-config

@@ -5,3 +5,4 @@ build/
 .kotlin/
 out/
 .env
+deploy/raspberry/sauvegardes.log
