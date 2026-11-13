@@ -12,6 +12,8 @@ data class AchievementContext(
     val seen: Int,
     /** Espèces de Kanto rejointes, par type. */
     val caughtByType: Map<String, Int>,
+    /** Victoires contre le Maître de la Ligue. */
+    val championWins: Int = 0,
 )
 
 /**
@@ -91,6 +93,8 @@ object Achievements {
         caught("caught-100", "Expert du Motisdex", 100, LINK, FIRE, THUNDER),
         seen("seen-25", "Observateur", 25, THUNDER),
         seen("seen-75", "Explorateur", 75, LEAF, MOON),
+
+        Achievement("league", "Maître de la Ligue", "Battre le Conseil de la Ligue puis son Maître.", "Ligue", 1, listOf(LINK, MOON, LEAF)) { it.championWins },
 
         types("type-fire", "Dresseur Feu", "Feu", setOf("fire"), 2, FIRE),
         types("type-water", "Dresseur Eau", "Eau", setOf("water"), 3, WATER),

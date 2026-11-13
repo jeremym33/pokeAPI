@@ -72,6 +72,8 @@ fun Route.gameRoutes(service: GameService, auth: AuthService) {
         post("/travel") { call.respond(service.travel(call.user(), call.receive<TravelRequest>().step)) }
         post("/heal") { call.respond(service.heal(call.user())) }
         post("/explore") { call.respond(service.explore(call.user())) }
+        // Ligue (Plateau Indigo) : prochain membre du Conseil, puis le Maître
+        post("/league") { call.respond(service.challengeLeague(call.user())) }
         post("/gym") { call.respond(service.challengeGym(call.user())) }
         put("/settings") { call.respond(service.updateSettings(call.user(), call.receive<GameSettings>())) }
         put("/pokemon/{uid}/moves") {

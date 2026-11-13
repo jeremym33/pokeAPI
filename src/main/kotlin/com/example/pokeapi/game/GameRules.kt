@@ -7,7 +7,8 @@ import kotlin.math.roundToInt
 import kotlin.random.Random
 
 /** Étape de l'aventure : un lieu de Kanto, dans l'ordre de Vert Feuille. */
-data class Step(val location: String, val city: Boolean = false, val gym: Boolean = false)
+/** Étape du parcours ; [league] : le Plateau Indigo, avec le défi du Conseil et du Maître. */
+data class Step(val location: String, val city: Boolean = false, val gym: Boolean = false, val league: Boolean = false)
 
 data class Stats(val hp: Int, val attack: Int, val defense: Int, val spAttack: Int, val spDefense: Int, val speed: Int)
 
@@ -73,7 +74,7 @@ object GameRules {
         Step("viridian-city", city = true, gym = true),
         Step("kanto-route-23"),
         Step("kanto-victory-road-2"),
-        Step("indigo-plateau", city = true),
+        Step("indigo-plateau", city = true, league = true),
         Step("cerulean-cave"),
     )
 
@@ -91,6 +92,22 @@ object GameRules {
 
     /** Chance qu'un Pokémon du coup de pouce soit chromatique (« shiny »). */
     const val BOOST_SHINY_CHANCE = 0.10
+
+    /** Ligue : 4 membres du Conseil puis le Maître, à battre à la suite. */
+    const val LEAGUE_MEMBERS = 4
+
+    /** Niveau du meilleur Pokémon de chaque adversaire de la Ligue (4 membres, puis le Maître). */
+    val LEAGUE_TOP_LEVELS = listOf(52, 55, 58, 61, 65)
+
+    /** Niveau des Pokémon rares (coup de pouce, après la Ligue) ; Mewtwo, dans la Grotte Azurée, est plus fort. */
+    fun rareLevel(routeMaxLevel: Int, pokemonId: Int): Int = if (pokemonId == MEWTWO) 70 else maxOf(routeMaxLevel + 5, 50)
+
+    const val MEWTWO = 150
+
+    /** Lieux fixes des Pokémon rares légendaires : Artikodin, Électhor, Sulfura et Mewtwo. */
+    val RARE_HOMES = mapOf(
+        144 to "seafoam-islands", 145 to "kanto-power-plant", 146 to "kanto-victory-road-2", MEWTWO to "cerulean-cave",
+    )
 
     /** Pension : un couple compatible produit un œuf toutes les 5 minutes (un seul attend à la pension). */
     const val EGG_INTERVAL_MS = 5 * 60_000L

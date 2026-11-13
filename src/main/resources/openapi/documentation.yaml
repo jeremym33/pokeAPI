@@ -447,6 +447,24 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Aucune partie en cours }
 
+  /game/league:
+    post:
+      tags: [Aventure]
+      security: [{ bearerAuth: [] }]
+      summary: Défier le prochain adversaire de la Ligue (Plateau Indigo)
+      description: |
+        Avec les 8 badges : 4 membres du Conseil (un type chacun, différent des arènes) puis le Maître (équipe mixte),
+        à battre à la suite, sans Centre Pokémon entre les combats. Une défaite, ou quitter le plateau, fait reprendre
+        le défi depuis le début. Battre le Maître ouvre la Grotte Azurée et fait apparaître, par le coup de pouce, les
+        Pokémon de Kanto introuvables à l'état sauvage (StepView.rare) ; Mewtwo seulement dans la Grotte Azurée.
+      responses:
+        "200":
+          description: État de la partie (battle de type LEAGUE, league)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
   /game/achievements:
     get:
       tags: [Aventure]

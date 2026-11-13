@@ -95,7 +95,7 @@ data class Fighter(
 }
 
 @Serializable
-enum class BattleKind { WILD, GYM }
+enum class BattleKind { WILD, GYM, LEAGUE }
 
 @Serializable
 enum class BattleOutcome { WON, LOST, FLED }
@@ -115,6 +115,8 @@ data class Battle(
     val outcome: BattleOutcome? = null,
     /** Pokémon sauvage vaincu qui veut rejoindre l'équipe : le joueur accepte ou non. */
     val recruit: Fighter? = null,
+    /** Nom de l'adversaire (Ligue). */
+    val title: String? = null,
 ) {
     val enemy: Fighter get() = enemies[enemyIndex]
 }
@@ -209,6 +211,12 @@ data class GameState(
     val shinySeen: Set<Int> = emptySet(),
     val shinyCaught: Set<Int> = emptySet(),
     val dayCare: DayCare = DayCare(),
+    /** Ligue : prochain adversaire (0 à 3 : Conseil, 4 : Maître) pendant un défi en cours, 0 sinon. */
+    val leagueStage: Int = 0,
+    /** Types des 4 membres du Conseil, choisis au premier défi. */
+    val leagueTypes: List<String> = emptyList(),
+    /** Victoires contre le Maître : dès la première, les Pokémon rares apparaissent (coup de pouce). */
+    val championWins: Int = 0,
     val eggs: List<Egg> = emptyList(),
     /** Version des attaques enregistrées dans la partie (2 : drain, soin, coups multiples ; 3 : statistiques ; 4 : peur). */
     val movesVersion: Int = 0,

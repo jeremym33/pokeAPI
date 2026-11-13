@@ -91,6 +91,8 @@ data class StepView(
     val speciesTotal: Int = 0,
     /** Espèces de la route (seulement pour l'étape actuelle) : nom et image si déjà vues. */
     val species: List<RouteSpecies> = emptyList(),
+    /** Pokémon rares du lieu, après la victoire contre le Maître (coup de pouce seulement). */
+    val rare: List<RouteSpecies> = emptyList(),
     /** Pokémon sauvages disponibles ici (avec les badges actuels). */
     val hasEncounters: Boolean,
     val cleared: Boolean,
@@ -113,6 +115,20 @@ data class BadgeView(
 
 @Serializable
 data class BadgesView(val obtained: Int, val total: Int, val levelCap: Int, val badges: List<BadgeView>)
+
+/** Défi de la Ligue (Plateau Indigo). */
+@Serializable
+data class LeagueView(
+    /** 8 badges obtenus : le défi est ouvert. */
+    val open: Boolean,
+    /** Prochain adversaire du défi en cours (0 à 3 : Conseil, 4 : Maître). */
+    val stage: Int,
+    val opponents: List<LeagueOpponentView>,
+    val championWins: Int,
+)
+
+@Serializable
+data class LeagueOpponentView(val name: String, val type: String?, val defeated: Boolean)
 
 @Serializable
 data class DayCareView(
@@ -192,6 +208,8 @@ data class GameView(
     /** Secondes entre deux combats d'entraînement. */
     val trainingSeconds: Int = (GameRules.TRAINING_FIGHT_MS / 1000).toInt(),
     val dayCare: DayCareView? = null,
+    /** Défi de la Ligue, quand on est au Plateau Indigo. */
+    val league: LeagueView? = null,
     val eggs: List<EggView> = emptyList(),
 )
 

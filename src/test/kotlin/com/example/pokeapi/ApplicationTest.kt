@@ -1278,6 +1278,106 @@ class ApplicationTest {
     }
 
     @Test
+    fun `aventure - ligue au plateau indigo puis pokemon rares`() = appTest {
+        suspend fun game(response: HttpResponse): GameView {
+            assertTrue(response.status.isSuccess(), response.bodyAsText())
+            return json.decodeFromString<GameView>(response.bodyAsText())
+        }
+        suspend fun post(path: String, body: String? = null) = client.post("/game$path") {
+            if (body != null) { contentType(ContentType.Application.Json); setBody(body) }
+        }
+        client.post("/pokemon/import?limit=4")
+        listOf("ivysaur", "venusaur", "eevee", "vaporeon").forEach { client.get("/pokemon/$it") }
+        var v = game(post("/new", """{"starter":"bulbasaur"}"""))
+        val league = v.steps.indexOfFirst { it.location == "indigo-plateau" }
+        val cave = v.steps.indexOfFirst { it.location == "cerulean-cave" }
+        val gyms = v.steps.filter { it.gym != null }.map { it.index }
+        // 8 badges, Bulbizarre très fort, au Plateau Indigo ; types du Conseil connus des données simulées
+        editSave { save ->
+            val first = save["team"]!!.jsonArray[0].jsonObject
+            // Florizarre (n'évolue plus) niveau 100, très fort
+            val strong = JsonObject(first + mapOf(
+                "pokemonId" to JsonPrimitive(3), "speciesId" to JsonPrimitive(3),
+                "level" to JsonPrimitive(100), "xp" to JsonPrimitive(1_000_000), "hp" to JsonPrimitive(999),
+                "base" to json.parseToJsonElement("""{"hp":255,"attack":255,"defense":255,"special-attack":255,"special-defense":255,"speed":255}"""),
+            ))
+            JsonObject(save + mapOf(
+                "team" to JsonArray(listOf(strong)), "badges" to json.parseToJsonElement(gyms.toString()),
+                "stepIndex" to JsonPrimitive(league), "lastCenter" to JsonPrimitive(league),
+                "clearedSteps" to json.parseToJsonElement("[1]"),
+                // Types dont les données simulées ont des Pokémon (hors Pokémon rares)
+                "leagueTypes" to json.parseToJsonElement("""["grass", "poison", "grass", "poison"]"""),
+            ))
+        }
+        v = game(client.get("/game"))
+        assertEquals(false, v.steps[league].cleared) // la Grotte Azurée attend la victoire contre le Maître
+        assertEquals(league, v.unlockedStep)
+        assertEquals(5, v.league!!.opponents.size)
+        assertEquals("Maître de la Ligue", v.league!!.opponents.last().name)
+
+        // Les 4 membres puis le Maître, sans soin entre les combats
+        for (stage in 0..4) {
+            v = game(post("/league"))
+            assertEquals(BattleKind.LEAGUE, v.battle!!.kind)
+            assertEquals(v.league!!.opponents[stage].name, v.battle!!.title)
+            assertEquals(false, v.battle!!.canFlee)
+            while (v.battle!!.outcome == null) v = game(post("/battle/attack", """{"move":0}"""))
+            assertEquals(BattleOutcome.WON, v.battle!!.outcome)
+            v = game(post("/battle/close"))
+            if (stage < 4) {
+                assertEquals(stage + 1, v.league!!.stage)
+                assertEquals(HttpStatusCode.BadRequest, post("/heal").status) // pas de répit
+            }
+        }
+        assertEquals(1, v.league!!.championWins)
+        assertEquals(0, v.league!!.stage)
+        assertTrue(v.unlocked.any { it.id == "league" } || json.decodeFromString<AchievementsView>(client.get("/game/achievements").bodyAsText()).achievements.single { it.id == "league" }.done)
+        assertTrue(v.steps[league].cleared)
+        assertTrue(v.unlockedStep >= cave)
+
+        // Pokémon rares sur la Route 1 (seul lieu simulé) : Salamèche, Carapuce, Évoli ; pas leurs évolutions
+        val rare = v.steps[1].rare.map { it.number }.toSet()
+        assertEquals(setOf(4, 7, 133), rare)
+        // Ils n'apparaissent que par le coup de pouce
+        game(post("/travel", """{"step":1}"""))
+        repeat(10) {
+            editSave { save -> JsonObject(save + ("boostCounters" to json.parseToJsonElement("""{"1": 9}"""))) }
+            v = game(post("/explore"))
+            assertTrue(v.battle!!.enemy.speciesId in rare, v.battle!!.enemy.name)
+            assertTrue(v.battle!!.enemy.level >= 50)
+            game(post("/battle/flee")); game(post("/battle/close"))
+        }
+        repeat(5) {
+            editSave { save -> JsonObject(save + ("boostCounters" to json.parseToJsonElement("""{"1": 0}"""))) }
+            v = game(post("/explore"))
+            assertEquals("Bulbizarre", v.battle!!.enemy.name)
+            game(post("/battle/flee")); game(post("/battle/close"))
+        }
+    }
+
+    @Test
+    fun `aventure - ligue fermee sans les 8 badges, defi repris du debut apres une defaite`() = appTest {
+        client.post("/pokemon/import?limit=4")
+        val v0 = json.decodeFromString<GameView>(client.post("/game/new") { contentType(ContentType.Application.Json); setBody("""{"starter":"bulbasaur"}""") }.bodyAsText())
+        val league = v0.steps.indexOfFirst { it.location == "indigo-plateau" }
+        editSave { save -> JsonObject(save + mapOf("stepIndex" to JsonPrimitive(league), "lastCenter" to JsonPrimitive(league))) }
+        assertEquals(false, json.decodeFromString<GameView>(client.get("/game").bodyAsText()).league!!.open)
+        assertEquals(HttpStatusCode.BadRequest, client.post("/game/league").status)
+        // Badges, Conseil au 3e membre ; quitter le plateau remet le défi à zéro
+        val gyms = v0.steps.filter { it.gym != null }.map { it.index }
+        editSave { save ->
+            JsonObject(save + mapOf(
+                "badges" to json.parseToJsonElement(gyms.toString()), "leagueStage" to JsonPrimitive(2),
+                "clearedSteps" to json.parseToJsonElement("[1]"), // Route 1 franchie : le retour au plateau est possible
+            ))
+        }
+        val moved = json.decodeFromString<GameView>(client.post("/game/travel") { contentType(ContentType.Application.Json); setBody("""{"step":0}""") }.bodyAsText())
+        assertEquals(null, moved.league)
+        val back = json.decodeFromString<GameView>(client.post("/game/travel") { contentType(ContentType.Application.Json); setBody("""{"step":$league}""") }.bodyAsText())
+        assertEquals(0, back.league!!.stage)
+    }
+
+    @Test
     fun `aventure - attaques equipees et connues`() = appTest {
         suspend fun game(response: HttpResponse): GameView {
             assertTrue(response.status.isSuccess(), response.bodyAsText())
