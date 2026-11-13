@@ -522,6 +522,20 @@ class GameService(
         return state
     }
 
+    /**
+     * Relâche un Pokémon de l'équipe ou de la boîte : il quitte la partie (l'équipe garde au moins un Pokémon).
+     * Le Motisdex le garde comme rejoint, comme dans les jeux.
+     */
+    suspend fun release(userId: Int, uid: String): GameView = act(userId) { s ->
+        noBattle(s)
+        val f = (s.team + s.box).firstOrNull { it.uid == uid } ?: throw BadRequestException("Pokémon introuvable")
+        if (s.team.size == 1 && s.team.single().uid == uid) throw BadRequestException("Gardez au moins un Pokémon dans l'équipe")
+        s.copy(
+            team = s.team.filter { it.uid != uid }, box = s.box.filter { it.uid != uid },
+            lastEvent = "${f.displayName} a été relâché. Au revoir, ${f.displayName} !",
+        )
+    }
+
     /** Cherche un Pokémon sauvage à l'étape actuelle. */
     suspend fun explore(userId: Int): GameView = act(userId) { s ->
         noBattle(s)

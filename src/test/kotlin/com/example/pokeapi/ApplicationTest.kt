@@ -1255,6 +1255,29 @@ class ApplicationTest {
     }
 
     @Test
+    fun `aventure - relacher un pokemon`() = appTest {
+        suspend fun game(response: HttpResponse): GameView {
+            assertTrue(response.status.isSuccess(), response.bodyAsText())
+            return json.decodeFromString<GameView>(response.bodyAsText())
+        }
+        suspend fun release(uid: String) = client.post("/game/release") { contentType(ContentType.Application.Json); setBody("""{"uid":"$uid"}""") }
+        client.post("/game/new") { contentType(ContentType.Application.Json); setBody("""{"starter":"bulbasaur"}""") }
+        // Un Germignon (hors Kanto) dans l'équipe, un autre dans la boîte
+        editSave { save ->
+            val first = save["team"]!!.jsonArray[0].jsonObject
+            fun chikorita(uid: String) = JsonObject(first + mapOf("uid" to JsonPrimitive(uid), "pokemonId" to JsonPrimitive(152), "speciesId" to JsonPrimitive(152)))
+            JsonObject(save + mapOf("team" to JsonArray(listOf(first, chikorita("p2"))), "box" to JsonArray(listOf(chikorita("p3")))))
+        }
+        var v = game(release("p2"))
+        assertEquals(listOf("p1"), v.team.map { it.uid })
+        assertTrue(v.lastEvent!!.contains("a été relâché"), v.lastEvent)
+        v = game(release("p3"))
+        assertEquals(emptyList(), v.box)
+        assertEquals(HttpStatusCode.BadRequest, release("p1").status) // dernier Pokémon de l'équipe
+        assertEquals(HttpStatusCode.BadRequest, release("inconnu").status)
+    }
+
+    @Test
     fun `aventure - attaques equipees et connues`() = appTest {
         suspend fun game(response: HttpResponse): GameView {
             assertTrue(response.status.isSuccess(), response.bodyAsText())

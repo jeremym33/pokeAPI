@@ -535,6 +535,25 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/GameView" }
 
+  /game/release:
+    post:
+      tags: [Aventure]
+      security: [{ bearerAuth: [] }]
+      summary: Relâcher un Pokémon de l'équipe ou de la boîte (il quitte la partie)
+      description: Hors combat ; l'équipe garde au moins un Pokémon. Le Motisdex le garde comme rejoint.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { uid: { type: string, example: p2 } } }
+      responses:
+        "200":
+          description: État de la partie
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
   /game/team:
     put:
       tags: [Aventure]

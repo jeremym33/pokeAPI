@@ -77,6 +77,8 @@ fun Route.gameRoutes(service: GameService, auth: AuthService) {
         put("/pokemon/{uid}/moves") {
             call.respond(service.setMoves(call.user(), call.parameters["uid"]!!, call.receive<MovesRequest>().moves))
         }
+        // Relâcher un Pokémon (il quitte la partie)
+        post("/release") { call.respond(service.release(call.user(), call.receive<SwitchRequest>().uid)) }
         put("/team") { call.respond(service.setTeam(call.user(), call.receive<TeamRequest>().uids)) }
         post("/items/use") {
             val request = call.receive<UseItemRequest>()
