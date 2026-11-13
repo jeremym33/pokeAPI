@@ -156,6 +156,8 @@ data class DayCare(
     val nextEggAt: Long? = null,
     /** Un œuf attend d'être pris. */
     val eggWaiting: Boolean = false,
+    /** Espèce de l'œuf qui attend, fixée quand il apparaît : il reste à prendre même si ses parents quittent la pension. */
+    val eggSpecies: Int? = null,
 )
 
 /** Œuf transporté : il éclot après quelques combats. L'espèce reste cachée jusqu'à l'éclosion. */

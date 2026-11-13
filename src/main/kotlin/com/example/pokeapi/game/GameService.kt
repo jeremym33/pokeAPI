@@ -411,8 +411,17 @@ class GameService(
         val here = s.dayCareIn(s.region())
         val f = here.pokemon.firstOrNull { it.uid == uid }
             ?: throw BadRequestException("Ce Pokémon n'est pas à la pension de ${regionName(s.region())}")
-        val back = s.copy(lastEvent = "${f.displayName} revient de la pension.").withDayCare(s.region(), here.copy(pokemon = here.pokemon - f, nextEggAt = null))
+        // Un œuf qui attend reste à prendre : son espèce est fixée avant le départ du parent
+        val species = if (here.eggWaiting) here.eggSpecies ?: eggSpecies(here, s.dexMax()) else null
+        val back = s.copy(lastEvent = "${f.displayName} revient de la pension.")
+            .withDayCare(s.region(), here.copy(pokemon = here.pokemon - f, nextEggAt = null, eggSpecies = species))
         if (back.team.size < 6) back.copy(team = back.team + f) else back.copy(box = back.box + f)
+    }
+
+    /** Espèce d'un œuf : la première forme de la lignée d'un des parents (pas Métamorph) ; null sans parent possible. */
+    private suspend fun eggSpecies(d: DayCare, maxDex: Int): Int? {
+        val parent = d.pokemon.filter { "ditto" !in breedingInfo(it.speciesId).first }.randomOrNull(random) ?: return null
+        return kantoBase(parent.pokemonId, maxDex) ?: parent.speciesId
     }
 
     /** Prend l'œuf qui attend à la pension : il éclora après quelques combats. */
@@ -422,17 +431,23 @@ class GameService(
         val here = s.dayCareIn(s.region())
         if (!here.eggWaiting) throw BadRequestException("Aucun œuf n'attend à la pension")
         if (s.eggs.size >= GameRules.MAX_EGGS) throw BadRequestException("Vous portez déjà ${GameRules.MAX_EGGS} œufs")
-        // Espèce : la forme de base de Kanto d'un des parents (pas Métamorph)
-        val parents = here.pokemon.filter { "ditto" !in breedingInfo(it.speciesId).first }
-        val parent = parents.random(random)
-        val species = kantoBase(parent.pokemonId, s.dexMax()) ?: parent.speciesId
+        // Espèce fixée à l'apparition de l'œuf (sauvegardes plus anciennes : d'après les parents encore présents)
+        val species = here.eggSpecies ?: eggSpecies(here, s.dexMax())
+        if (species == null) {
+            // Œuf d'avant ce suivi, dont les parents sont partis : il ne peut plus être retrouvé
+            return@act s.copy(lastEvent = "Les parents ont quitté la pension : l'œuf n'a pas pu être retrouvé.")
+                .withDayCare(s.region(), here.copy(eggWaiting = false, eggSpecies = null))
+        }
         val fights = GameRules.hatchFights(breedingInfo(species).second)
         // Le Pokémon qui en sortira sera « né » dans la région de la pension
         val egg = Egg(uid = "egg${s.uidCounter + 1}", speciesId = species, fightsLeft = fights, fightsTotal = fights, origin = s.region())
         s.copy(
             eggs = s.eggs + egg, uidCounter = s.uidCounter + 1,
             lastEvent = "Vous prenez l'œuf. Il éclora après environ $fights combats.",
-        ).withDayCare(s.region(), here.copy(eggWaiting = false, nextEggAt = System.currentTimeMillis() + GameRules.EGG_INTERVAL_MS))
+        ).withDayCare(
+            s.region(),
+            here.copy(eggWaiting = false, eggSpecies = null, nextEggAt = if (compatiblePair(here)) System.currentTimeMillis() + GameRules.EGG_INTERVAL_MS else null),
+        )
     }
 
     /** Première forme de la lignée dans les régions débloquées (Raichu → Pikachu ; → Pichu une fois Johto ouvert). */
@@ -451,7 +466,7 @@ class GameService(
         for (region in listOf(KANTO, JOHTO)) {
             val d = state.dayCareIn(region)
             if (d.eggWaiting || d.nextEggAt == null || now < d.nextEggAt || !compatiblePair(d)) continue
-            state = state.withDayCare(region, d.copy(eggWaiting = true, nextEggAt = null))
+            state = state.withDayCare(region, d.copy(eggWaiting = true, nextEggAt = null, eggSpecies = eggSpecies(d, state.dexMax())))
         }
         return state
     }

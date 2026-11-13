@@ -1247,6 +1247,49 @@ class ApplicationTest {
     }
 
     @Test
+    fun `aventure - oeuf en attente, parents repris de la pension`() = appTest {
+        suspend fun game(response: HttpResponse): GameView {
+            assertTrue(response.status.isSuccess(), response.bodyAsText())
+            return json.decodeFromString<GameView>(response.bodyAsText())
+        }
+        suspend fun post(path: String, body: String? = null) = client.post("/game$path") {
+            if (body != null) { contentType(ContentType.Application.Json); setBody(body) }
+        }
+        game(post("/new", """{"starter":"bulbasaur"}"""))
+        editSave { save ->
+            val first = save["team"]!!.jsonArray[0].jsonObject
+            fun copy(uid: String) = JsonObject(first + ("uid" to JsonPrimitive(uid)))
+            JsonObject(save + mapOf("team" to JsonArray(listOf(first, copy("p2"), copy("p3"))), "uidCounter" to JsonPrimitive(3)))
+        }
+        game(post("/daycare/deposit", """{"uid":"p2"}"""))
+        game(post("/daycare/deposit", """{"uid":"p3"}"""))
+        editSave { save ->
+            val all = save["dayCares"]!!.jsonObject
+            val d = all["kanto"]!!.jsonObject
+            JsonObject(save + ("dayCares" to JsonObject(all + ("kanto" to JsonObject(d + ("nextEggAt" to JsonPrimitive(System.currentTimeMillis() - 1000)))))))
+        }
+        assertEquals(true, game(client.get("/game")).dayCare!!.eggWaiting)
+        // Les deux parents repartent : l'œuf attend toujours, et se prend sans erreur
+        game(post("/daycare/withdraw", """{"uid":"p2"}"""))
+        var v = game(post("/daycare/withdraw", """{"uid":"p3"}"""))
+        assertEquals(emptyList(), v.dayCare!!.pokemon)
+        assertEquals(true, v.dayCare!!.eggWaiting)
+        v = game(post("/daycare/egg"))
+        assertEquals(1, v.eggs.size)
+        assertEquals(false, v.dayCare!!.eggWaiting)
+        assertEquals(null, v.dayCare!!.nextEggInSeconds) // plus de couple : pas de prochain œuf
+
+        // Sauvegarde d'avant le suivi de l'espèce : œuf en attente sans parent ni espèce connue
+        editSave { save ->
+            JsonObject(save + ("dayCares" to json.parseToJsonElement("""{"kanto":{"pokemon":[],"eggWaiting":true}}""")))
+        }
+        v = game(post("/daycare/egg"))
+        assertEquals(1, v.eggs.size)
+        assertEquals(false, v.dayCare!!.eggWaiting)
+        assertTrue(v.lastEvent!!.contains("n'a pas pu être retrouvé"), v.lastEvent)
+    }
+
+    @Test
     fun `aventure - seulement des pokemon de Kanto dans les rencontres`() = appTest {
         // La Route 1 simulée a aussi un Germignon (Johto) dans Vert Feuille : il n'apparaît jamais et ne compte pas
         client.post("/game/new") { contentType(ContentType.Application.Json); setBody("""{"starter":"squirtle"}""") }
