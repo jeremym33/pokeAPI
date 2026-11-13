@@ -643,7 +643,7 @@ class GameService(
         val boost = count >= GameRules.BOOST_EVERY
         val counters = s.boostCounters + (s.stepIndex to if (boost) 0 else count)
         // Après la victoire contre le Maître, le coup de pouce peut aussi amener un Pokémon rare du lieu
-        val rare = if (s.leagueIn(KANTO).wins > 0) rareSpecies().filterValues { it == s.stepIndex }.keys.toList() else emptyList()
+        val rare = if (s.leagueIn(s.region()).wins > 0) rareSpecies(s.region()).filterValues { it == s.stepIndex }.keys.toList() else emptyList()
         val rarePick = boost && rare.isNotEmpty() && (unseen.isEmpty() || random.nextBoolean())
         val entry = if (rarePick) {
             val id = rare.random(random)
@@ -686,7 +686,8 @@ class GameService(
     /** Pokémon que la Ligue d'une région peut aligner : ceux de la région (Kanto, ou Kanto et Johto), sans légendaires. */
     private suspend fun leagueCandidates(region: String, type: String? = null): List<com.example.pokeapi.model.PokemonSummary> {
         val maxDex = GameRules.REGION_DEX.getValue(region)
-        val rare = if (region == KANTO) rareSpecies().keys else emptySet()
+        // Pokémon rares exclus : ils restent la récompense de la Ligue
+        val rare = if (region == KANTO) rareSpecies(KANTO).keys else rareSpecies(KANTO).keys + rareSpecies(JOHTO).keys
         val regions = if (region == KANTO) listOf(KANTO) else listOf(KANTO, JOHTO)
         return regions.flatMap { r -> pokemonService.list(PokemonQuery(limit = 200, types = listOfNotNull(type), region = r)).items }
             .filter { it.regionalForm == null && GameRules.inDex(it.id, maxDex) && it.id !in rare && it.id !in GameRules.LEGENDARIES }
@@ -748,37 +749,41 @@ class GameService(
 
     // ---------- Pokémon rares (après la Ligue) ----------
 
-    /** Pokémon rares par espèce -> étape où ils apparaissent (calculé une fois). */
-    private var rareCache: Map<Int, Int>? = null
+    /** Pokémon rares de chaque région : espèce -> étape où ils apparaissent (calculé une fois). */
+    private val rareCache = mutableMapOf<String, Map<Int, Int>>()
 
     /**
-     * Pokémon de Kanto introuvables à l'état sauvage (starters, fossiles, légendaires, Évoli…), sans ceux qu'on
-     * obtient en faisant évoluer un Pokémon trouvable. Chacun est placé sur le lieu dont les Pokémon partagent le
-     * plus ses types ; Mewtwo, seulement dans la Grotte Azurée.
+     * Pokémon d'une région introuvables à l'état sauvage dans ses lieux (starters, fossiles, bébés, légendaires…),
+     * sans ceux qu'on obtient en faisant évoluer un Pokémon trouvable. Kanto : n° 1 à 151 (Vert Feuille) ; Johto :
+     * n° 152 à 251 (Cristal). Les légendaires ont un lieu fixe ([GameRules.RARE_HOMES]) ; les autres sont placés
+     * sur le lieu de la région dont les Pokémon partagent le plus leurs types, le moins chargé d'abord. Ils
+     * apparaissent par le coup de pouce une fois le Maître de la Ligue de la région battu.
      */
-    private suspend fun rareSpecies(): Map<Int, Int> {
-        rareCache?.let { return it }
-        // Lieux de Kanto seulement : il faut ces Pokémon pour compléter Kanto, avant d'ouvrir Johto
-        val places = GameRules.STEPS.indices.filter { GameRules.STEPS[it].region == KANTO && !GameRules.STEPS[it].city && pool(it, 8).isNotEmpty() }
-        val wild = places.flatMap { step -> pool(step, 8).map { it.pokemonId } }.toSet()
-        val types = pokemonRepository.summaries((1..GameRules.DEX_SIZE).toList()).filter { it.regionalForm == null }.associate { it.id to it.types }
-        val rare = (1..GameRules.DEX_SIZE).filter { id ->
-            // Introuvable, et première forme de Kanto de sa lignée (les suivantes s'obtiennent en évoluant)
-            id !in wild && (kantoBase(id) ?: id) == id &&
+    private suspend fun rareSpecies(region: String = KANTO): Map<Int, Int> {
+        rareCache[region]?.let { return it }
+        val maxDex = GameRules.REGION_DEX.getValue(region)
+        val ids = (if (region == KANTO) 1..GameRules.DEX_SIZE else (GameRules.DEX_SIZE + 1)..maxDex).toList()
+        val places = GameRules.STEPS.indices.filter { GameRules.STEPS[it].region == region && !GameRules.STEPS[it].city && pool(it, 8).isNotEmpty() }
+        val encounters = places.associateWith { pool(it, 8) }
+        val wild = encounters.values.flatten().map { it.pokemonId }.toSet()
+        val types = pokemonRepository.summaries((1..maxDex).toList()).filter { it.regionalForm == null }.associate { it.id to it.types }
+        val rare = ids.filter { id ->
+            // Introuvable, et première forme de sa lignée dans le Pokédex de la région (les suivantes s'obtiennent en
+            // évoluant ; Pichu, bébé de Johto, l'est même si Pikachu est trouvable)
+            id !in wild && (kantoBase(id, maxDex) ?: id) == id &&
                 // Données disponibles (sinon la rencontre échouerait)
                 runCatching { pokemonService.getPokemon(id.toString()) }.getOrNull() != null
         }
-        val cave = GameRules.STEPS.indexOfFirst { it.location == "cerulean-cave" }
-        val encounters = places.associateWith { pool(it, 8) }
+        val homes = GameRules.RARE_HOMES.filterKeys { it in rare }
+            .mapValues { (_, loc) -> GameRules.STEPS.indexOfFirst { it.location == loc && it.region == region } }.filterValues { it >= 0 }
         val placed = mutableMapOf<Int, Int>()
-        // Légendaires : lieu fixe ; les autres, répartis sur les lieux qui partagent un de leurs types, le moins chargé d'abord
         rare.forEach { id ->
-            val home = GameRules.RARE_HOMES[id]?.let { loc -> GameRules.STEPS.indexOfFirst { it.location == loc } }?.takeIf { it >= 0 }
-            if (home != null) { placed[id] = home; return@forEach }
+            homes[id]?.let { placed[id] = it; return@forEach }
             val own = types[id].orEmpty()
             fun overlap(step: Int) = encounters.getValue(step).map { it.pokemonId }.distinct()
                 .count { other -> types[other].orEmpty().any { it in own } }
-            val options = places.filter { it != cave }
+            // Mewtwo est seul dans la Grotte Azurée
+            val options = places.filter { it != homes[GameRules.MEWTWO] }
             val matching = options.filter { overlap(it) > 0 }.ifEmpty { options }
             val best = matching.minWithOrNull(
                 compareBy<Int> { step -> placed.values.count { it == step } }
@@ -787,7 +792,7 @@ class GameService(
             ) ?: return@forEach
             placed[id] = best
         }
-        if (types.isNotEmpty()) rareCache = placed
+        if (types.isNotEmpty()) rareCache[region] = placed
         return placed
     }
 
@@ -1159,9 +1164,9 @@ class GameService(
             } else {
                 val first = league.wins == 0
                 log += "Vous avez battu le Maître de la Ligue : vous êtes le nouveau Maître de ${regionName(region)} !"
-                if (first && region == KANTO) {
-                    log += "Des Pokémon rares, introuvables jusqu'ici, se cachent désormais dans Kanto : ils n'apparaissent que par chance, de temps en temps."
-                    log += "La Grotte Azurée est maintenant accessible."
+                if (first) {
+                    log += "Des Pokémon rares, introuvables jusqu'ici, se cachent désormais dans ${regionName(region)} : ils n'apparaissent que par chance, de temps en temps."
+                    if (region == KANTO) log += "La Grotte Azurée est maintenant accessible."
                 }
                 state = state.withLeague(region, league.copy(stage = 0, wins = league.wins + 1))
             }
@@ -1581,8 +1586,8 @@ class GameService(
                     if (s.hasSeen(n)) RouteSpecies(n, true, p?.nameFr ?: p?.name, p?.spriteUrl) else RouteSpecies(n, false)
                 }
             }
-            val rare = if (s.leagueIn(KANTO).wins == 0 || step.city) emptyList() else {
-                val ids = rareSpecies().filterValues { it == i }.keys.sorted()
+            val rare = if (s.leagueIn(step.region).wins == 0 || step.city) emptyList() else {
+                val ids = rareSpecies(step.region).filterValues { it == i }.keys.sorted()
                 val info = pokemonRepository.summaries(ids).associateBy { it.id }
                 ids.map { n -> val p = info[n]; if (s.hasSeen(n)) RouteSpecies(n, true, p?.nameFr ?: p?.name, p?.spriteUrl) else RouteSpecies(n, false) }
             }

@@ -183,14 +183,23 @@ object GameRules {
     /** Légendaires et fabuleux de Kanto et Johto : jamais dans les équipes des arènes ni de la Ligue. */
     val LEGENDARIES = setOf(144, 145, 146, 150, 151, 243, 244, 245, 249, 250, 251)
 
-    /** Niveau des Pokémon rares (coup de pouce, après la Ligue) ; Mewtwo, dans la Grotte Azurée, est plus fort. */
-    fun rareLevel(routeMaxLevel: Int, pokemonId: Int): Int = if (pokemonId == MEWTWO) 70 else maxOf(routeMaxLevel + 5, 50)
+    /** Niveau des Pokémon rares (coup de pouce, après la Ligue) ; Mewtwo, Lugia et Ho-Oh sont plus forts. */
+    fun rareLevel(routeMaxLevel: Int, pokemonId: Int): Int = LEGENDARY_LEVELS[pokemonId] ?: maxOf(routeMaxLevel + 5, 50)
 
     const val MEWTWO = 150
 
-    /** Lieux fixes des Pokémon rares légendaires : Artikodin, Électhor, Sulfura et Mewtwo. */
+    /** Niveaux fixes des légendaires les plus puissants : Mewtwo, Lugia et Ho-Oh. */
+    val LEGENDARY_LEVELS = mapOf(MEWTWO to 70, 249 to 90, 250 to 90)
+
+    /**
+     * Lieux fixes des Pokémon rares légendaires. Kanto : Artikodin, Électhor, Sulfura et Mewtwo. Johto : Raikou,
+     * Entei et Suicune dans la Tour Cendrée, Lugia sur la Route 41 (Îles Tourbillon), Ho-Oh sur la Route 37 (vers la
+     * Tour Carillon), Celebi dans le Bois aux Chênes.
+     */
     val RARE_HOMES = mapOf(
         144 to "seafoam-islands", 145 to "kanto-power-plant", 146 to "kanto-victory-road-2", MEWTWO to "cerulean-cave",
+        243 to "burned-tower", 244 to "burned-tower", 245 to "burned-tower", 249 to "johto-sea-route-41", 250 to "johto-route-37",
+        251 to "ilex-forest",
     )
 
     /** Pension : un couple compatible produit un œuf toutes les 5 minutes (un seul attend à la pension). */

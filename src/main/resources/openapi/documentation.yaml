@@ -469,7 +469,10 @@ paths:
         plateau, fait reprendre le défi depuis le début. Chaque Ligue a ses propres victoires (league.region,
         league.championWins). Battre le Maître de Kanto ouvre la Grotte Azurée et fait apparaître, par le coup de
         pouce, les Pokémon de Kanto introuvables à l'état sauvage (StepView.rare) ; Mewtwo seulement dans la Grotte
-        Azurée. La Ligue de Johto (6 Pokémon par adversaire, niveaux 78 à 100) est un défi de fin de partie.
+        Azurée. La Ligue de Johto (6 Pokémon par adversaire, niveaux 78 à 100) fait de même pour les Pokémon de Johto
+        introuvables dans Cristal (n° 152 à 251 : starters, bébés, fossiles…) ; légendaires à lieu fixe : Raikou, Entei
+        et Suicune dans la Tour Cendrée, Lugia sur le Chenal 41, Ho-Oh (niv. 90) sur la Route 37, Celebi dans le Bois aux
+        Chênes.
 
         Les parties enregistrées avant les Ligues par région sont mises à jour au démarrage du serveur et à leur
         chargement : l'ancienne Ligue devient celle de Kanto, sans perte de progression.
