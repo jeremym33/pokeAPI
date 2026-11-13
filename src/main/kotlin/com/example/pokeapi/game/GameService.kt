@@ -388,14 +388,15 @@ class GameService(
     private suspend fun compatiblePair(d: DayCare): Boolean =
         d.pokemon.size == 2 && GameRules.compatible(breedingInfo(d.pokemon[0].speciesId).first, breedingInfo(d.pokemon[1].speciesId).first)
 
-    private fun checkInCity(s: GameState) {
-        if (!GameRules.STEPS[s.stepIndex].city) throw BadRequestException("La pension se trouve dans les villes")
+    /** La pension soigne : pas d'aller-retour pendant un défi de la Ligue (pas de Centre Pokémon non plus). */
+    private fun noDayCareDuringLeague(s: GameState) {
+        if (s.leagueIn(s.region()).stage > 0) throw BadRequestException("Pas de pension pendant le défi de la Ligue")
     }
 
-    /** Dépose un Pokémon (équipe ou boîte) à la pension, 2 au plus. */
+    /** Dépose un Pokémon (équipe ou boîte) à la pension de la région, 2 au plus, depuis n'importe quel lieu. */
     suspend fun depositDayCare(userId: Int, uid: String): GameView = act(userId) { s ->
         noBattle(s)
-        checkInCity(s)
+        noDayCareDuringLeague(s)
         val here = s.dayCareIn(s.region())
         if (here.pokemon.size >= 2) throw BadRequestException("La pension garde déjà 2 Pokémon")
         val f = (s.team + s.box).firstOrNull { it.uid == uid } ?: throw BadRequestException("Pokémon introuvable")
@@ -409,7 +410,7 @@ class GameService(
     /** Reprend un Pokémon de la pension : il rejoint l'équipe (ou la boîte si elle est complète). */
     suspend fun withdrawDayCare(userId: Int, uid: String): GameView = act(userId) { s ->
         noBattle(s)
-        checkInCity(s)
+        noDayCareDuringLeague(s)
         val here = s.dayCareIn(s.region())
         val f = here.pokemon.firstOrNull { it.uid == uid }
             ?: throw BadRequestException("Ce Pokémon n'est pas à la pension de ${regionName(s.region())}")
@@ -420,7 +421,6 @@ class GameService(
     /** Prend l'œuf qui attend à la pension : il éclora après quelques combats. */
     suspend fun takeEgg(userId: Int): GameView = act(userId) { s ->
         noBattle(s)
-        checkInCity(s)
         val here = s.dayCareIn(s.region())
         if (!here.eggWaiting) throw BadRequestException("Aucun œuf n'attend à la pension")
         if (s.eggs.size >= GameRules.MAX_EGGS) throw BadRequestException("Vous portez déjà ${GameRules.MAX_EGGS} œufs")

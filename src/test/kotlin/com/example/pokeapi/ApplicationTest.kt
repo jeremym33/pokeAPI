@@ -1234,12 +1234,16 @@ class ApplicationTest {
         val baby = v.team.last()
         assertEquals(1, baby.level)
         assertEquals("p4", baby.uid)
-        // Reprendre un Pokémon de la pension : seulement en ville
-        assertEquals(HttpStatusCode.BadRequest, post("/daycare/withdraw", """{"uid":"p2"}""").status)
-        game(post("/travel", """{"step":0}"""))
+        // La pension de la région est accessible de partout, même sur une route
+        assertEquals(2, v.dayCare!!.pokemon.size)
         v = game(post("/daycare/withdraw", """{"uid":"p2"}"""))
         assertTrue(v.team.any { it.uid == "p2" })
         assertEquals(null, v.dayCare!!.nextEggInSeconds) // plus de couple
+        v = game(post("/daycare/deposit", """{"uid":"p2"}"""))
+        assertEquals(2, v.dayCare!!.pokemon.size)
+        // Mais pas pendant un défi de la Ligue (elle soigne les Pokémon)
+        editSave { save -> JsonObject(save + ("leagues" to json.parseToJsonElement("""{"kanto":{"stage":2}}"""))) }
+        assertEquals(HttpStatusCode.BadRequest, post("/daycare/withdraw", """{"uid":"p2"}""").status)
     }
 
     @Test
