@@ -29,6 +29,12 @@ data class FighterView(
     val confused: Boolean = false,
     /** Chromatique (« shiny ») ; les images sont alors celles de la version chromatique. */
     val shiny: Boolean = false,
+    /** Région d'origine (kanto, johto). */
+    val origin: String = KANTO,
+    /** Peut combattre dans la région actuelle (originaire de la région, ou compagnon de voyage). */
+    val usable: Boolean = true,
+    /** Compagnon de voyage dans la région actuelle. */
+    val companion: Boolean = false,
 )
 
 /** Objet d'évolution du sac : quantité et Pokémon sur lesquels il a un effet. */
@@ -195,6 +201,8 @@ data class GameView(
     val dexSize: Int = GameRules.DEX_SIZE,
     /** Johto ouvert (les 151 Pokémon de Kanto obtenus). */
     val johtoUnlocked: Boolean = false,
+    /** Région de l'étape actuelle. */
+    val region: String = KANTO,
     val steps: List<StepView> = emptyList(),
     val team: List<FighterView> = emptyList(),
     val box: List<FighterView> = emptyList(),

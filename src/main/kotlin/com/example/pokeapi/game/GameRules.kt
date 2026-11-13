@@ -147,6 +147,9 @@ object GameRules {
     /** Starters de Johto : l'un d'eux, en œuf, est offert à l'ouverture de Johto. */
     val JOHTO_STARTERS = listOf(152, 155, 158)
 
+    /** Région d'une espèce : Kanto (n° 1 à 151) ou Johto (152 à 251). */
+    fun speciesRegion(speciesId: Int): String = if (speciesId <= DEX_SIZE) KANTO else JOHTO
+
     /** Pokémon des régions débloquées (n° 1 à [maxDex]). */
     fun inDex(pokemonId: Int, maxDex: Int): Boolean = pokemonId in 1..maxDex
 

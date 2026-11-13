@@ -1210,8 +1210,9 @@ class ApplicationTest {
 
         // 5 minutes plus tard : un œuf attend
         editSave { save ->
-            val d = save["dayCare"]!!.jsonObject
-            JsonObject(save + ("dayCare" to JsonObject(d + ("nextEggAt" to JsonPrimitive(System.currentTimeMillis() - 1000)))))
+            val all = save["dayCares"]!!.jsonObject
+            val d = all["kanto"]!!.jsonObject
+            JsonObject(save + ("dayCares" to JsonObject(all + ("kanto" to JsonObject(d + ("nextEggAt" to JsonPrimitive(System.currentTimeMillis() - 1000)))))))
         }
         v = game(client.get("/game"))
         assertEquals(true, v.dayCare!!.eggWaiting)
@@ -1408,10 +1409,70 @@ class ApplicationTest {
         // Bourg Geon accessible (et, dans les données simulées sans rencontres, jusqu'à la première arène de Johto)
         assertEquals(v.steps.first { it.region == "johto" && it.gym != null }.index, v.unlockedStep)
         assertEquals(251, json.decodeFromString<DexView>(client.get("/game/dex").bodyAsText()).total)
-        // Une seule fois
-        v = game(client.post("/game/travel") { contentType(ContentType.Application.Json); setBody("""{"step":$newBark}""") })
+        // Une seule fois ; entrer dans Johto demande un compagnon (aucun Pokémon de Johto encore)
+        assertEquals(HttpStatusCode.BadRequest, client.post("/game/travel") { contentType(ContentType.Application.Json); setBody("""{"step":$newBark}""") }.status)
+        v = game(client.post("/game/travel") { contentType(ContentType.Application.Json); setBody("""{"step":$newBark,"companion":"p1"}""") })
         assertEquals(1, v.eggs.size)
         assertEquals(newBark, v.currentStep)
+        assertEquals("johto", v.region)
+        assertEquals(true, v.team.single().companion)
+        assertEquals(true, v.team.single().usable)
+        assertEquals("kanto", v.team.single().origin)
+    }
+
+    @Test
+    fun `aventure - regions, compagnon de voyage, entrainement et pension par region`() = appTest {
+        suspend fun game(response: HttpResponse): GameView {
+            assertTrue(response.status.isSuccess(), response.bodyAsText())
+            return json.decodeFromString<GameView>(response.bodyAsText())
+        }
+        suspend fun post(path: String, body: String? = null) = client.post("/game$path") {
+            if (body != null) { contentType(ContentType.Application.Json); setBody(body) }
+        }
+        var v = game(post("/new", """{"starter":"bulbasaur"}"""))
+        val newBark = v.steps.indexOfFirst { it.location == "new-bark-town" }
+        val gyms = v.steps.filter { it.gym != null && it.region == "kanto" }.map { it.index }
+        // Kanto complet ; dans l'équipe : p1 (Kanto), p2 (Kanto aussi) ; un Bulbizarre déjà « né » à Johto dans la boîte
+        editSave { save ->
+            val first = save["team"]!!.jsonArray[0].jsonObject
+            JsonObject(save + mapOf(
+                "team" to JsonArray(listOf(first, JsonObject(first + ("uid" to JsonPrimitive("p2"))))),
+                "box" to JsonArray(listOf(JsonObject(first + mapOf("uid" to JsonPrimitive("p3"), "origin" to JsonPrimitive("johto"))))),
+                "badges" to json.parseToJsonElement(gyms.toString()), "championWins" to JsonPrimitive(1), "johtoUnlocked" to JsonPrimitive(true),
+                "clearedSteps" to json.parseToJsonElement("[1]"), "caught" to json.parseToJsonElement((1..151).toList().toString()),
+            ))
+        }
+        // Une pension à Kanto : p2 y est confié
+        game(post("/daycare/deposit", """{"uid":"p2"}"""))
+        // Vers Johto avec p3 (né à Johto) : pas besoin de compagnon ; p1, de Kanto, ne peut pas combattre
+        v = game(post("/travel", """{"step":$newBark}"""))
+        assertEquals(false, v.team.single { it.uid == "p1" }.usable)
+        assertEquals(true, v.box.single { it.uid == "p3" }.usable)
+        // Pension de Johto : vide (celle de Kanto garde p2)
+        assertEquals(emptyList(), v.dayCare!!.pokemon)
+        // Repartir à Kanto puis revenir avec p1 comme compagnon
+        game(post("/travel", """{"step":0}"""))
+        assertEquals(listOf("p2"), game(client.get("/game")).dayCare!!.pokemon.map { it.uid })
+        v = game(post("/travel", """{"step":$newBark,"companion":"p1"}"""))
+        assertEquals(true, v.team.single { it.uid == "p1" }.companion)
+        assertEquals(true, v.team.single { it.uid == "p1" }.usable)
+        // Un Pokémon déjà de Johto ne peut pas être « compagnon » de Johto
+        game(post("/travel", """{"step":0}"""))
+        assertEquals(HttpStatusCode.BadRequest, post("/travel", """{"step":$newBark,"companion":"p3"}""").status)
+
+        // Entraînement : un lieu de Kanto refuse un Pokémon de Johto qui n'y est pas né (Germignon)
+        editSave { save ->
+            val first = save["team"]!!.jsonArray[0].jsonObject
+            val chikorita = JsonObject(first + mapOf("uid" to JsonPrimitive("p9"), "pokemonId" to JsonPrimitive(152), "speciesId" to JsonPrimitive(152), "origin" to JsonPrimitive("johto")))
+            JsonObject(save + ("team" to JsonArray(save["team"]!!.jsonArray + chikorita)))
+        }
+        game(post("/travel", """{"step":1}"""))
+        val refused = post("/training/leave", """{"uid":"p9"}""")
+        assertEquals(HttpStatusCode.BadRequest, refused.status)
+        assertTrue(refused.bodyAsText().contains("ne peut pas s'y entraîner"), refused.bodyAsText())
+        // … mais accepte p3 (espèce de Kanto, née à Johto)
+        v = game(post("/training/leave", """{"uid":"p3"}"""))
+        assertEquals("p3", v.training.single().fighter.uid)
     }
 
     @Test

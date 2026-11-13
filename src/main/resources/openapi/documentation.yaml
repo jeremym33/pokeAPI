@@ -261,11 +261,19 @@ paths:
       tags: [Aventure]
       security: [{ bearerAuth: [] }]
       summary: Se rendre à une étape déjà accessible
+      description: |
+        Dans une région, seuls les Pokémon qui en sont originaires (capturés, offerts ou nés là) peuvent combattre, plus
+        un compagnon de voyage. Au passage d'une région à l'autre, `companion` désigne ce compagnon (un seul, venu d'une
+        autre région) ; il est obligatoire si le joueur n'a encore aucun Pokémon originaire de la région d'arrivée.
       requestBody:
         required: true
         content:
           application/json:
-            schema: { type: object, properties: { step: { type: integer, example: 1 } } }
+            schema:
+              type: object
+              properties:
+                step: { type: integer, example: 1 }
+                companion: { type: string, nullable: true, example: p1, description: Compagnon de voyage (changement de région) }
       responses:
         "200":
           description: État de la partie

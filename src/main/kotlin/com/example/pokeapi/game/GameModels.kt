@@ -83,6 +83,8 @@ data class Fighter(
     val battleTurns: Int = 0,
     /** Pokémon chromatique (« shiny ») : couleurs rares, conservées en évoluant. */
     val shiny: Boolean = false,
+    /** Région d'origine (capture, cadeau, éclosion) ; null pour un Pokémon d'avant, déduite de son espèce. */
+    val origin: String? = null,
 ) {
     val displayName: String get() = nameFr ?: name.replaceFirstChar(Char::uppercase)
     val maxHp: Int get() = GameRules.stats(this).hp
@@ -155,6 +157,8 @@ data class Egg(
     val speciesId: Int,
     val fightsLeft: Int,
     val fightsTotal: Int,
+    /** Région où l'œuf a été obtenu : le Pokémon y sera « né ». */
+    val origin: String? = null,
 )
 
 /** Réglages du joueur, sauvegardés avec la partie. */
@@ -210,7 +214,12 @@ data class GameState(
     /** Espèces dont la version chromatique a été vue en combat / a rejoint l'équipe (Motisdex). */
     val shinySeen: Set<Int> = emptySet(),
     val shinyCaught: Set<Int> = emptySet(),
+    /** Ancienne pension unique (celle de Kanto) : remplacée par [dayCares]. */
     val dayCare: DayCare = DayCare(),
+    /** Une pension par région. */
+    val dayCares: Map<String, DayCare> = emptyMap(),
+    /** Compagnon de voyage de chaque région : le seul Pokémon venu d'ailleurs qui peut y combattre. */
+    val companions: Map<String, String> = emptyMap(),
     /** Ligue : prochain adversaire (0 à 3 : Conseil, 4 : Maître) pendant un défi en cours, 0 sinon. */
     val leagueStage: Int = 0,
     /** Types des 4 membres du Conseil, choisis au premier défi. */

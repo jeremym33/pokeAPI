@@ -181,7 +181,7 @@ class GameService(
             .mapNotNull { n -> runCatching { pokemonService.getPokemon(n.toString()) }.getOrNull() }
             .associate { p -> p.speciesId to PokemonSummary(p.id, p.speciesId, null, p.name, p.nameFr, p.generation, p.region, p.types, p.statTotal, p.spriteUrl, p.artworkUrl) }
         val info = known + fetched
-        val owned = (s.team + s.box + s.training.values.map { it.fighter } + s.dayCare.pokemon).groupingBy { it.speciesId }.eachCount()
+        val owned = (s.team + s.box + s.training.values.map { it.fighter } + s.allDayCarePokemon()).groupingBy { it.speciesId }.eachCount()
         val entries = numbers.map { n ->
             val status = when (n) {
                 in s.caught -> DexStatus.CAUGHT
@@ -267,7 +267,7 @@ class GameService(
 
     suspend fun newGame(userId: Int, starter: String): GameView = lock.withLock {
         if (starter !in GameRules.STARTERS) throw BadRequestException("Starter inconnu : '$starter' (${GameRules.STARTERS.joinToString()})")
-        val first = buildFighter(starter, GameRules.STARTER_LEVEL, "p1")
+        val first = buildFighter(starter, GameRules.STARTER_LEVEL, "p1").copy(origin = KANTO)
         val state = GameState(movesVersion = GAME_MOVES_VERSION, routeRules = ROUTE_RULES, starter = starter, team = listOf(first), caught = setOf(first.speciesId), seen = setOf(first.speciesId), uidCounter = 1)
         save(userId, state)
         toView(userId, state)
@@ -277,14 +277,33 @@ class GameService(
         newSuspendedTransaction(Dispatchers.IO, database) { GameSaveTable.deleteWhere { id eq userId } }
     }
 
-    suspend fun travel(userId: Int, step: Int): GameView = act(userId) { s ->
+    suspend fun travel(userId: Int, step: Int, companion: String? = null): GameView = act(userId) { s ->
         noBattle(s)
         if (step !in GameRules.STEPS.indices) throw BadRequestException("Étape inconnue : $step")
         if (step > unlockedStep(s)) throw BadRequestException("Cette étape n'est pas encore accessible")
         val city = GameRules.STEPS[step].city
         // Quitter le Plateau Indigo en plein défi : il reprendra depuis le début
         val leagueStage = if (step != s.stepIndex) 0 else s.leagueStage
-        s.copy(stepIndex = step, lastCenter = if (city) step else s.lastCenter, leagueStage = leagueStage)
+        val moved = s.copy(stepIndex = step, lastCenter = if (city) step else s.lastCenter, leagueStage = leagueStage)
+        val target = GameRules.STEPS[step].region
+        if (target == s.region()) return@act moved
+        // Passage d'une région à l'autre : un seul Pokémon venu d'ailleurs peut accompagner le joueur
+        val owned = s.team + s.box
+        if (companion != null) {
+            val f = owned.firstOrNull { it.uid == companion } ?: throw BadRequestException("Pokémon introuvable")
+            if (f.originRegion() == target) throw BadRequestException("${f.displayName} est déjà de ${regionName(target)} : choisissez un Pokémon venu d'ailleurs")
+            // Le compagnon rejoint l'équipe s'il était dans la boîte (et qu'il reste une place)
+            val team = if (moved.team.any { it.uid == f.uid } || moved.team.size >= 6) moved.team else moved.team + f
+            moved.copy(
+                team = team, box = moved.box.filter { b -> team.none { it.uid == b.uid } }, companions = moved.companions + (target to f.uid),
+                lastEvent = "${f.displayName} vous accompagne à ${regionName(target)} : c'est le seul Pokémon venu d'ailleurs qui pourra y combattre.",
+            )
+        } else {
+            if (owned.none { it.originRegion() == target }) {
+                throw BadRequestException("Choisissez le Pokémon qui vous accompagne à ${regionName(target)} : vous n'avez encore aucun Pokémon de cette région")
+            }
+            moved.copy(companions = moved.companions - target)
+        }
     }
 
     suspend fun heal(userId: Int): GameView = act(userId) { s ->
@@ -352,24 +371,24 @@ class GameService(
     suspend fun depositDayCare(userId: Int, uid: String): GameView = act(userId) { s ->
         noBattle(s)
         checkInCity(s)
-        if (s.dayCare.pokemon.size >= 2) throw BadRequestException("La pension garde déjà 2 Pokémon")
+        val here = s.dayCareIn(s.region())
+        if (here.pokemon.size >= 2) throw BadRequestException("La pension garde déjà 2 Pokémon")
         val f = (s.team + s.box).firstOrNull { it.uid == uid } ?: throw BadRequestException("Pokémon introuvable")
         if (s.team.size == 1 && s.team.single().uid == uid) throw BadRequestException("Gardez au moins un Pokémon dans l'équipe")
-        val dayCare = s.dayCare.copy(pokemon = s.dayCare.pokemon + f.healed().leftBattle())
+        val dayCare = here.copy(pokemon = here.pokemon + f.healed().leftBattle())
         val compatible = compatiblePair(dayCare)
-        s.copy(
-            team = s.team.filter { it.uid != uid }, box = s.box.filter { it.uid != uid },
-            dayCare = dayCare.copy(nextEggAt = if (compatible) System.currentTimeMillis() + GameRules.EGG_INTERVAL_MS else null),
-            lastEvent = "${f.displayName} est confié à la pension.",
-        )
+        s.copy(team = s.team.filter { it.uid != uid }, box = s.box.filter { it.uid != uid }, lastEvent = "${f.displayName} est confié à la pension de ${regionName(s.region())}.")
+            .withDayCare(s.region(), dayCare.copy(nextEggAt = if (compatible) System.currentTimeMillis() + GameRules.EGG_INTERVAL_MS else null))
     }
 
     /** Reprend un Pokémon de la pension : il rejoint l'équipe (ou la boîte si elle est complète). */
     suspend fun withdrawDayCare(userId: Int, uid: String): GameView = act(userId) { s ->
         noBattle(s)
         checkInCity(s)
-        val f = s.dayCare.pokemon.firstOrNull { it.uid == uid } ?: throw BadRequestException("Ce Pokémon n'est pas à la pension")
-        val back = s.copy(dayCare = s.dayCare.copy(pokemon = s.dayCare.pokemon - f, nextEggAt = null), lastEvent = "${f.displayName} revient de la pension.")
+        val here = s.dayCareIn(s.region())
+        val f = here.pokemon.firstOrNull { it.uid == uid }
+            ?: throw BadRequestException("Ce Pokémon n'est pas à la pension de ${regionName(s.region())}")
+        val back = s.copy(lastEvent = "${f.displayName} revient de la pension.").withDayCare(s.region(), here.copy(pokemon = here.pokemon - f, nextEggAt = null))
         if (back.team.size < 6) back.copy(team = back.team + f) else back.copy(box = back.box + f)
     }
 
@@ -377,19 +396,20 @@ class GameService(
     suspend fun takeEgg(userId: Int): GameView = act(userId) { s ->
         noBattle(s)
         checkInCity(s)
-        if (!s.dayCare.eggWaiting) throw BadRequestException("Aucun œuf n'attend à la pension")
+        val here = s.dayCareIn(s.region())
+        if (!here.eggWaiting) throw BadRequestException("Aucun œuf n'attend à la pension")
         if (s.eggs.size >= GameRules.MAX_EGGS) throw BadRequestException("Vous portez déjà ${GameRules.MAX_EGGS} œufs")
         // Espèce : la forme de base de Kanto d'un des parents (pas Métamorph)
-        val parents = s.dayCare.pokemon.filter { "ditto" !in breedingInfo(it.speciesId).first }
+        val parents = here.pokemon.filter { "ditto" !in breedingInfo(it.speciesId).first }
         val parent = parents.random(random)
         val species = kantoBase(parent.pokemonId, s.dexMax()) ?: parent.speciesId
         val fights = GameRules.hatchFights(breedingInfo(species).second)
-        val egg = Egg(uid = "egg${s.uidCounter + 1}", speciesId = species, fightsLeft = fights, fightsTotal = fights)
+        // Le Pokémon qui en sortira sera « né » dans la région de la pension
+        val egg = Egg(uid = "egg${s.uidCounter + 1}", speciesId = species, fightsLeft = fights, fightsTotal = fights, origin = s.region())
         s.copy(
             eggs = s.eggs + egg, uidCounter = s.uidCounter + 1,
-            dayCare = s.dayCare.copy(eggWaiting = false, nextEggAt = System.currentTimeMillis() + GameRules.EGG_INTERVAL_MS),
             lastEvent = "Vous prenez l'œuf. Il éclora après environ $fights combats.",
-        )
+        ).withDayCare(s.region(), here.copy(eggWaiting = false, nextEggAt = System.currentTimeMillis() + GameRules.EGG_INTERVAL_MS))
     }
 
     /** Première forme de la lignée dans les régions débloquées (Raichu → Pikachu ; → Pichu une fois Johto ouvert). */
@@ -404,9 +424,13 @@ class GameService(
 
     /** Le prochain œuf est prêt ? (temps réel, même partie fermée) */
     private suspend fun syncDayCare(s: GameState, now: Long = System.currentTimeMillis()): GameState {
-        val d = s.dayCare
-        if (d.eggWaiting || d.nextEggAt == null || now < d.nextEggAt || !compatiblePair(d)) return s
-        return s.copy(dayCare = d.copy(eggWaiting = true, nextEggAt = null))
+        var state = s
+        for (region in listOf(KANTO, JOHTO)) {
+            val d = state.dayCareIn(region)
+            if (d.eggWaiting || d.nextEggAt == null || now < d.nextEggAt || !compatiblePair(d)) continue
+            state = state.withDayCare(region, d.copy(eggWaiting = true, nextEggAt = null))
+        }
+        return state
     }
 
     /** Un combat de plus pour les œufs transportés ; ceux qui sont prêts éclosent (1 chance sur 4 096 de chromatique). */
@@ -415,7 +439,7 @@ class GameService(
         var state = s.copy(eggs = s.eggs.map { it.copy(fightsLeft = it.fightsLeft - 1) })
         state.eggs.filter { it.fightsLeft <= 0 }.forEach { egg ->
             val baby = buildFighter(egg.speciesId.toString(), 1, egg.uid.replace("egg", "p"))
-                .copy(shiny = random.nextDouble() < GameRules.SHINY_CHANCE)
+                .copy(shiny = random.nextDouble() < GameRules.SHINY_CHANCE, origin = egg.origin ?: state.region())
             log += "Oh ? L'œuf éclot ! C'est un ${baby.displayName}${if (baby.shiny) " chromatique ✨" else ""} !"
             state = state.copy(
                 eggs = state.eggs.filter { it.uid != egg.uid },
@@ -436,6 +460,7 @@ class GameService(
         if (s.stepIndex in s.training) throw BadRequestException("Un Pokémon s'entraîne déjà ici : échangez-le ou reprenez-le")
         val f = (s.team + s.box).firstOrNull { it.uid == uid } ?: throw BadRequestException("Pokémon introuvable")
         if (s.team.size == 1 && s.team.single().uid == uid) throw BadRequestException("Gardez au moins un Pokémon dans l'équipe")
+        checkTrainee(s, f)
         s.copy(team = s.team.filter { it.uid != uid }, box = s.box.filter { it.uid != uid }).startTraining(s.stepIndex, f)
     }
 
@@ -453,10 +478,19 @@ class GameService(
         noBattle(s)
         val t = s.training[s.stepIndex] ?: throw BadRequestException("Aucun Pokémon ne s'entraîne ici")
         val f = (s.team + s.box).firstOrNull { it.uid == uid } ?: throw BadRequestException("Pokémon introuvable")
+        checkTrainee(s, f)
         // Le Pokémon repris prend la place exacte de celui qui part (position dans l'équipe, ou boîte)
         s.copy(team = s.team.map { if (it.uid == uid) t.fighter else it }, box = s.box.map { if (it.uid == uid) t.fighter else it })
             .startTraining(s.stepIndex, f)
             .let { it.copy(lastEvent = "${returnMessage(t)} ${it.lastEvent}") }
+    }
+
+    /** Un lieu n'entraîne que les Pokémon de sa région (espèce) ou nés dans cette région. */
+    private fun checkTrainee(s: GameState, f: Fighter) {
+        val region = s.region()
+        if (GameRules.speciesRegion(f.speciesId) != region && f.originRegion() != region) {
+            throw BadRequestException("${f.displayName} n'est ni un Pokémon de ${regionName(region)} ni né dans cette région : il ne peut pas s'y entraîner")
+        }
     }
 
     private suspend fun checkTrainingPlace(s: GameState) {
@@ -574,7 +608,7 @@ class GameService(
     suspend fun updateSettings(userId: Int, settings: GameSettings): GameView = act(userId) { s -> s.copy(settings = settings) }
 
     private suspend fun startWildBattle(s: GameState): GameState {
-        val active = s.team.firstOrNull { !it.fainted } ?: throw BadRequestException("Votre équipe est K.O. : passez au Centre Pokémon")
+        val active = s.firstFighter()
         val pool = pool(s.stepIndex, s.badges.size)
         if (pool.isEmpty()) throw BadRequestException("Aucun Pokémon sauvage ici")
         // Coup de pouce invisible : tous les 10 combats sur la route, la rencontre se fait avec une espèce pas
@@ -631,7 +665,7 @@ class GameService(
         noBattle(s0)
         if (!GameRules.STEPS[s0.stepIndex].league) throw BadRequestException("La Ligue se trouve au Plateau Indigo")
         if (s0.badges.size < 8) throw BadRequestException("Il faut les 8 badges pour défier la Ligue")
-        val active = s0.team.firstOrNull { !it.fainted } ?: throw BadRequestException("Votre équipe est K.O. : passez au Centre Pokémon")
+        val active = s0.firstFighter()
         val s = withLeagueTypes(s0)
         val stage = s.leagueStage
         val type = s.leagueTypes.getOrNull(stage)
@@ -714,7 +748,7 @@ class GameService(
         val step = GameRules.STEPS[s0.stepIndex]
         if (!step.gym) throw BadRequestException("Pas d'arène ici")
         if (s0.stepIndex in s0.badges) throw BadRequestException("Vous avez déjà le badge de cette arène")
-        val active = s0.team.firstOrNull { !it.fainted } ?: throw BadRequestException("Votre équipe est K.O. : passez au Centre Pokémon")
+        val active = s0.firstFighter()
         val s = withGymType(s0, s0.stepIndex)
         val type = s.gymTypes.getValue(s.stepIndex)
         val enemies = gymTeam(s.stepIndex, type, gymTopLevel(s), GameRules.REGION_DEX.getValue(GameRules.STEPS[s.stepIndex].region))
@@ -840,6 +874,7 @@ class GameService(
         val b = activeBattle(s)
         val target = s.team.firstOrNull { it.uid == uid } ?: throw BadRequestException("Ce Pokémon n'est pas dans l'équipe")
         if (target.fainted) throw BadRequestException("${target.displayName} est K.O.")
+        if (!s.usable(target)) throw BadRequestException("${target.displayName} n'est pas de ${regionName(s.region())} : il ne peut pas combattre ici")
         if (uid == b.activeUid) throw BadRequestException("${target.displayName} est déjà au combat")
         val log = mutableListOf("Go, ${target.displayName} !")
         // Le Pokémon qui sort perd ses changements de statistiques.
@@ -1011,7 +1046,7 @@ class GameService(
                 // Lanceur K.O. par le contrecoup en même temps que l'adversaire
                 if (state.team.first { it.uid == battle.activeUid }.fainted) {
                     log += "${player.displayName} est K.O. !"
-                    if (state.team.any { !it.fainted }) return state.copy(battle = state.battle!!.copy(mustSwitch = true))
+                    if (state.canFight()) return state.copy(battle = state.battle!!.copy(mustSwitch = true))
                     return defeat(evolveTeam(state, log), log)
                 }
                 return state
@@ -1020,7 +1055,7 @@ class GameService(
         }
         if (player.fainted) {
             log += "${player.displayName} est K.O. !"
-            if (state.team.any { !it.fainted }) return state.copy(battle = b.copy(mustSwitch = true))
+            if (state.canFight()) return state.copy(battle = b.copy(mustSwitch = true))
             return defeat(evolveTeam(state, log), log)
         }
         return state
@@ -1057,7 +1092,7 @@ class GameService(
                 // Réglage « seulement les nouveaux Pokémon » : pas de proposition pour une espèce déjà obtenue.
                 log += "${enemy.displayName} s'éloigne (déjà dans votre Pokédex)."
             } else if (random.nextDouble() < GameRules.joinChance(enemy.captureRate)) {
-                val recruit = enemy.copy(uid = "p${state.uidCounter + 1}", xp = GameRules.xpForLevel(enemy.level)).healed()
+                val recruit = enemy.copy(uid = "p${state.uidCounter + 1}", xp = GameRules.xpForLevel(enemy.level), origin = GameRules.STEPS[b.step].region).healed()
                 log += "${enemy.displayName} veut vous rejoindre !" + if (enemy.speciesId in state.caught) " (vous en avez déjà un)" else " (nouveau !)"
                 state = state.copy(battle = state.battle!!.copy(recruit = recruit))
             } else {
@@ -1168,6 +1203,7 @@ class GameService(
             // Les attaques choisies sont conservées ; celles de la nouvelle forme s'y ajoutent (learnNewMoves).
             moves = f.moves,
             shiny = f.shiny,
+            origin = f.origin,
             knownMoves = f.allMoves,
         )
     }
@@ -1360,6 +1396,33 @@ class GameService(
 
     private fun GameState.hasSeen(species: Int) = species in seen || species in caught
 
+    /** Région de l'étape actuelle. */
+    private fun GameState.region(): String = GameRules.STEPS[stepIndex].region
+
+    /** Région d'origine d'un Pokémon (déduite de son espèce pour un Pokémon d'avant les régions). */
+    private fun Fighter.originRegion(): String = origin ?: GameRules.speciesRegion(speciesId)
+
+    /** Peut combattre dans la région actuelle : originaire de la région, ou son compagnon de voyage. */
+    private fun GameState.usable(f: Fighter): Boolean = f.originRegion() == region() || companions[region()] == f.uid
+
+    /** Un Pokémon de l'équipe peut encore combattre ici. */
+    private fun GameState.canFight(): Boolean = team.any { !it.fainted && usable(it) }
+
+    private fun GameState.firstFighter(): Fighter = team.firstOrNull { !it.fainted && usable(it) } ?: throw BadRequestException(
+        if (team.any { !it.fainted }) "Aucun Pokémon de ${regionName(region())} (ni votre compagnon de voyage) en état de combattre"
+        else "Votre équipe est K.O. : passez au Centre Pokémon",
+    )
+
+    private fun regionName(region: String) = if (region == JOHTO) "Johto" else "Kanto"
+
+    /** Pension de la région (l'ancienne pension unique est celle de Kanto). */
+    private fun GameState.dayCareIn(region: String): DayCare = dayCares[region] ?: if (region == KANTO) dayCare else DayCare()
+
+    private fun GameState.withDayCare(region: String, d: DayCare): GameState =
+        copy(dayCares = dayCares + (region to d), dayCare = if (region == KANTO) DayCare() else dayCare)
+
+    private fun GameState.allDayCarePokemon(): List<Fighter> = listOf(KANTO, JOHTO).flatMap { dayCareIn(it).pokemon }
+
     /** Dernier numéro des régions débloquées : 151 (Kanto), puis 251 une fois Johto ouvert. */
     private fun GameState.dexMax(): Int = if (johtoUnlocked) GameRules.REGION_DEX.getValue(JOHTO) else GameRules.DEX_SIZE
 
@@ -1371,7 +1434,7 @@ class GameService(
         if (s.johtoUnlocked || !(1..GameRules.DEX_SIZE).all { it in s.caught }) return s
         val starter = GameRules.JOHTO_STARTERS.random(random)
         val fights = GameRules.hatchFights(breedingInfo(starter).second)
-        val egg = Egg(uid = "egg${s.uidCounter + 1}", speciesId = starter, fightsLeft = fights, fightsTotal = fights)
+        val egg = Egg(uid = "egg${s.uidCounter + 1}", speciesId = starter, fightsLeft = fights, fightsTotal = fights, origin = JOHTO)
         val message = "Vous avez obtenu les 151 Pokémon de Kanto : la région de Johto est ouverte ! " +
             "Un professeur de Bourg Geon vous confie un œuf pour le voyage."
         return s.copy(
@@ -1506,7 +1569,7 @@ class GameService(
                 recruit = b.recruit?.toView(),
                 recruitIsNew = b.recruit?.let { it.speciesId !in s.caught } ?: false,
                 canContinue = b.kind == BattleKind.WILD && b.outcome in setOf(BattleOutcome.WON, BattleOutcome.FLED) &&
-                    s.settings.nextEncounterButton && s.team.any { !it.fainted } && pool(s.stepIndex, s.badges.size).isNotEmpty(),
+                    s.settings.nextEncounterButton && s.canFight() && pool(s.stepIndex, s.badges.size).isNotEmpty(),
             )
         }
         // Objets possédés, avec les Pokémon sur lesquels ils ont un effet.
@@ -1531,8 +1594,9 @@ class GameService(
             // Une espèce obtenue (évolution…) compte aussi comme vue
             seen = (s.seen + s.caught).count { it <= GameRules.DEX_SIZE },
             steps = steps,
-            team = s.team.map { it.toView() },
-            box = s.box.map { it.toView() },
+            team = s.team.map { it.toViewIn(s) },
+            box = s.box.map { it.toViewIn(s) },
+            region = s.region(),
             battle = battle,
             items = items,
             lastEvent = s.lastEvent,
@@ -1555,7 +1619,7 @@ class GameService(
     }
 
     private suspend fun dayCareView(s: GameState): DayCareView {
-        val d = s.dayCare
+        val d = s.dayCareIn(s.region())
         val compatible = compatiblePair(d)
         val message = when {
             d.pokemon.size < 2 -> null
@@ -1563,8 +1627,12 @@ class GameService(
             else -> "Ces deux-là ne semblent pas faits pour avoir un œuf."
         }
         val wait = d.nextEggAt?.takeIf { compatible && !d.eggWaiting }?.let { ((it - System.currentTimeMillis()) / 1000).coerceAtLeast(0).toInt() }
-        return DayCareView(d.pokemon.map { it.toView() }, compatible, message, d.eggWaiting, wait)
+        return DayCareView(d.pokemon.map { it.toViewIn(s) }, compatible, message, d.eggWaiting, wait)
     }
+
+    /** Vue d'un Pokémon du joueur : région d'origine, et s'il peut combattre dans la région actuelle. */
+    private fun Fighter.toViewIn(s: GameState): FighterView =
+        toView().copy(origin = originRegion(), usable = s.usable(this), companion = s.companions[s.region()] == uid)
 
     private fun Fighter.toView(): FighterView {
         val start = GameRules.xpForLevel(level)
