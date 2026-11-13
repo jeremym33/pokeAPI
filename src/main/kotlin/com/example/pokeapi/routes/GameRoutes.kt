@@ -81,6 +81,8 @@ fun Route.gameRoutes(service: GameService, auth: AuthService) {
         post("/explore") { call.respond(service.explore(call.user())) }
         // Ligue (Plateau Indigo) : prochain membre du Conseil, puis le Maître
         post("/league") { call.respond(service.challengeLeague(call.user())) }
+        // Quitter le défi en cours (sinon toute autre action est refusée) : il reprendra au premier membre
+        post("/league/abandon") { call.respond(service.abandonLeague(call.user())) }
         post("/gym") { call.respond(service.challengeGym(call.user())) }
         put("/settings") { call.respond(service.updateSettings(call.user(), call.receive<GameSettings>())) }
         put("/pokemon/{uid}/moves") {

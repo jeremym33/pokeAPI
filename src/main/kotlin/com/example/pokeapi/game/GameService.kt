@@ -307,9 +307,9 @@ class GameService(
         if (step !in GameRules.STEPS.indices) throw BadRequestException("Étape inconnue : $step")
         if (step > unlockedStep(s)) throw BadRequestException("Cette étape n'est pas encore accessible")
         val city = GameRules.STEPS[step].city
-        // Quitter le Plateau Indigo en plein défi : il reprendra depuis le début
-        val left = if (step != s.stepIndex) s.leaguesRestarted() else s
-        val moved = left.copy(stepIndex = step, lastCenter = if (city) step else s.lastCenter)
+        // Quitter le Plateau Indigo en plein défi : il faut d'abord quitter le défi (abandonLeague)
+        if (step != s.stepIndex) noLeagueChallenge(s)
+        val moved = s.copy(stepIndex = step, lastCenter = if (city) step else s.lastCenter)
         val target = GameRules.STEPS[step].region
         if (target == s.region()) return@act moved
         // Passage d'une région à l'autre : un seul Pokémon venu d'ailleurs peut accompagner le joueur
@@ -334,13 +334,14 @@ class GameService(
     suspend fun heal(userId: Int): GameView = act(userId) { s ->
         noBattle(s)
         if (!GameRules.STEPS[s.stepIndex].city) throw BadRequestException("Le Centre Pokémon se trouve dans les villes")
-        if (s.leagueIn(s.region()).stage > 0) throw BadRequestException("Pas de soin pendant le défi de la Ligue : continuez, ou quittez le plateau pour recommencer plus tard")
+        noLeagueChallenge(s)
         s.copy(team = s.team.map { it.healed() }, box = s.box.map { it.healed() })
     }
 
     /** Utilise un objet d'évolution (pierre, Câble Link) sur un Pokémon de l'équipe ou de la boîte. */
     suspend fun useItem(userId: Int, item: String, uid: String): GameView = act(userId) { s ->
         noBattle(s)
+        noLeagueChallenge(s)
         val evolutionItem = GameRules.ITEMS.firstOrNull { it.item == item } ?: throw BadRequestException("Objet inconnu : '$item'")
         if ((s.items[item] ?: 0) <= 0) throw BadRequestException("Vous n'avez pas de ${evolutionItem.nameFr}")
         val f = (s.team + s.box).firstOrNull { it.uid == uid } ?: throw BadRequestException("Pokémon introuvable")
@@ -368,6 +369,7 @@ class GameService(
 
     suspend fun setTeam(userId: Int, uids: List<String>): GameView = act(userId) { s ->
         noBattle(s)
+        noLeagueChallenge(s)
         val all = (s.team + s.box).associateBy { it.uid }
         if (uids.isEmpty() || uids.size > 6 || uids.distinct().size != uids.size || uids.any { it !in all }) {
             throw BadRequestException("L'équipe doit contenir de 1 à 6 Pokémon que vous possédez")
@@ -388,15 +390,10 @@ class GameService(
     private suspend fun compatiblePair(d: DayCare): Boolean =
         d.pokemon.size == 2 && GameRules.compatible(breedingInfo(d.pokemon[0].speciesId).first, breedingInfo(d.pokemon[1].speciesId).first)
 
-    /** La pension soigne : pas d'aller-retour pendant un défi de la Ligue (pas de Centre Pokémon non plus). */
-    private fun noDayCareDuringLeague(s: GameState) {
-        if (s.leagueIn(s.region()).stage > 0) throw BadRequestException("Pas de pension pendant le défi de la Ligue")
-    }
-
     /** Dépose un Pokémon (équipe ou boîte) à la pension de la région, 2 au plus, depuis n'importe quel lieu. */
     suspend fun depositDayCare(userId: Int, uid: String): GameView = act(userId) { s ->
         noBattle(s)
-        noDayCareDuringLeague(s)
+        noLeagueChallenge(s)
         val here = s.dayCareIn(s.region())
         if (here.pokemon.size >= 2) throw BadRequestException("La pension garde déjà 2 Pokémon")
         val f = (s.team + s.box).firstOrNull { it.uid == uid } ?: throw BadRequestException("Pokémon introuvable")
@@ -410,7 +407,7 @@ class GameService(
     /** Reprend un Pokémon de la pension : il rejoint l'équipe (ou la boîte si elle est complète). */
     suspend fun withdrawDayCare(userId: Int, uid: String): GameView = act(userId) { s ->
         noBattle(s)
-        noDayCareDuringLeague(s)
+        noLeagueChallenge(s)
         val here = s.dayCareIn(s.region())
         val f = here.pokemon.firstOrNull { it.uid == uid }
             ?: throw BadRequestException("Ce Pokémon n'est pas à la pension de ${regionName(s.region())}")
@@ -421,6 +418,7 @@ class GameService(
     /** Prend l'œuf qui attend à la pension : il éclora après quelques combats. */
     suspend fun takeEgg(userId: Int): GameView = act(userId) { s ->
         noBattle(s)
+        noLeagueChallenge(s)
         val here = s.dayCareIn(s.region())
         if (!here.eggWaiting) throw BadRequestException("Aucun œuf n'attend à la pension")
         if (s.eggs.size >= GameRules.MAX_EGGS) throw BadRequestException("Vous portez déjà ${GameRules.MAX_EGGS} œufs")
@@ -481,6 +479,7 @@ class GameService(
     /** Laisse un Pokémon (équipe ou boîte) s'entraîner sur le lieu actuel. */
     suspend fun leaveTrainee(userId: Int, uid: String): GameView = act(userId) { s ->
         noBattle(s)
+        noLeagueChallenge(s)
         checkTrainingPlace(s)
         if (s.stepIndex in s.training) throw BadRequestException("Un Pokémon s'entraîne déjà ici : échangez-le ou reprenez-le")
         val f = (s.team + s.box).firstOrNull { it.uid == uid } ?: throw BadRequestException("Pokémon introuvable")
@@ -492,6 +491,7 @@ class GameService(
     /** Reprend le Pokémon qui s'entraîne sur le lieu actuel : il rejoint l'équipe (ou la boîte si elle est complète). */
     suspend fun retrieveTrainee(userId: Int): GameView = act(userId) { s ->
         noBattle(s)
+        noLeagueChallenge(s)
         val t = s.training[s.stepIndex] ?: throw BadRequestException("Aucun Pokémon ne s'entraîne ici")
         val back = s.copy(training = s.training - s.stepIndex)
         (if (back.team.size < 6) back.copy(team = back.team + t.fighter) else back.copy(box = back.box + t.fighter))
@@ -501,6 +501,7 @@ class GameService(
     /** Échange le Pokémon qui s'entraîne ici contre un autre : chacun prend la place de l'autre. */
     suspend fun swapTrainee(userId: Int, uid: String): GameView = act(userId) { s ->
         noBattle(s)
+        noLeagueChallenge(s)
         val t = s.training[s.stepIndex] ?: throw BadRequestException("Aucun Pokémon ne s'entraîne ici")
         val f = (s.team + s.box).firstOrNull { it.uid == uid } ?: throw BadRequestException("Pokémon introuvable")
         checkTrainee(s, f)
@@ -591,6 +592,7 @@ class GameService(
      */
     suspend fun release(userId: Int, uid: String): GameView = act(userId) { s ->
         noBattle(s)
+        noLeagueChallenge(s)
         val f = (s.team + s.box).firstOrNull { it.uid == uid } ?: throw BadRequestException("Pokémon introuvable")
         if (s.team.size == 1 && s.team.single().uid == uid) throw BadRequestException("Gardez au moins un Pokémon dans l'équipe")
         s.copy(
@@ -618,6 +620,7 @@ class GameService(
     /** Choisit les attaques équipées (1 à 4, dans l'ordre donné) parmi celles que le Pokémon connaît. */
     suspend fun setMoves(userId: Int, uid: String, names: List<String>): GameView = act(userId) { s ->
         noBattle(s)
+        noLeagueChallenge(s)
         val f = (s.team + s.box).firstOrNull { it.uid == uid } ?: throw BadRequestException("Pokémon introuvable")
         val known = f.allMoves.associateBy { it.name }
         if (names.isEmpty() || names.size > 4 || names.distinct().size != names.size) {
@@ -676,6 +679,24 @@ class GameService(
     private fun GameState.leagueIn(region: String): LeagueProgress = leagues[region] ?: LeagueProgress()
 
     private fun GameState.withLeague(region: String, l: LeagueProgress): GameState = copy(leagues = leagues + (region to l))
+
+    /** Un défi de la Ligue est en cours (au moins un membre du Conseil battu) ? */
+    private fun GameState.leagueRunning(): Boolean = leagues.values.any { it.stage > 0 }
+
+    /**
+     * Pendant un défi de la Ligue, rien d'autre n'est possible (soins, pension, objets, équipe, voyage…) : il faut
+     * le terminer, ou le quitter avec [abandonLeague].
+     */
+    private fun noLeagueChallenge(s: GameState) {
+        if (s.leagueRunning()) throw BadRequestException("Défi de la Ligue en cours : terminez-le, ou quittez-le d'abord")
+    }
+
+    /** Quitte le défi de la Ligue en cours : il reprendra depuis le premier membre du Conseil. */
+    suspend fun abandonLeague(userId: Int): GameView = act(userId) { s ->
+        noBattle(s)
+        if (!s.leagueRunning()) throw BadRequestException("Aucun défi de la Ligue en cours")
+        s.leaguesRestarted().copy(lastEvent = "Vous quittez le défi de la Ligue : il reprendra depuis le premier membre du Conseil.")
+    }
 
     /** Défis en cours abandonnés : ils reprendront au premier membre du Conseil. */
     private fun GameState.leaguesRestarted(): GameState = copy(leagues = leagues.mapValues { it.value.copy(stage = 0) })

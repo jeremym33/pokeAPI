@@ -1369,7 +1369,7 @@ class ApplicationTest {
         editSave { save -> JsonObject(save + mapOf("stepIndex" to JsonPrimitive(league), "lastCenter" to JsonPrimitive(league))) }
         assertEquals(false, json.decodeFromString<GameView>(client.get("/game").bodyAsText()).league!!.open)
         assertEquals(HttpStatusCode.BadRequest, client.post("/game/league").status)
-        // Badges, Conseil au 3e membre ; quitter le plateau remet le défi à zéro
+        // Badges, Conseil au 3e membre
         val gyms = v0.steps.filter { it.gym != null }.map { it.index }
         editSave { save ->
             JsonObject(save + mapOf(
@@ -1377,6 +1377,16 @@ class ApplicationTest {
                 "clearedSteps" to json.parseToJsonElement("[1]"), // Route 1 franchie : le retour au plateau est possible
             ))
         }
+        // Défi en cours : toute autre action est refusée (voyage, soin, équipe, objets, pension…)
+        assertEquals(HttpStatusCode.BadRequest, client.post("/game/travel") { contentType(ContentType.Application.Json); setBody("""{"step":0}""") }.status)
+        assertEquals(HttpStatusCode.BadRequest, client.post("/game/heal").status)
+        assertEquals(HttpStatusCode.BadRequest, client.put("/game/team") { contentType(ContentType.Application.Json); setBody("""{"uids":["p1"]}""") }.status)
+        assertEquals(HttpStatusCode.BadRequest, client.post("/game/daycare/egg").status)
+        assertEquals(2, json.decodeFromString<GameView>(client.get("/game").bodyAsText()).league!!.stage)
+        // Quitter le défi : il reprendra au premier membre, et le joueur peut partir
+        val left = json.decodeFromString<GameView>(client.post("/game/league/abandon").bodyAsText())
+        assertEquals(0, left.league!!.stage)
+        assertEquals(HttpStatusCode.BadRequest, client.post("/game/league/abandon").status) // plus de défi en cours
         val moved = json.decodeFromString<GameView>(client.post("/game/travel") { contentType(ContentType.Application.Json); setBody("""{"step":0}""") }.bodyAsText())
         assertEquals(null, moved.league)
         val back = json.decodeFromString<GameView>(client.post("/game/travel") { contentType(ContentType.Application.Json); setBody("""{"step":$league}""") }.bodyAsText())

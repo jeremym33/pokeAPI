@@ -466,7 +466,7 @@ paths:
         Johto (dernière étape, après la Route 27, les Chutes Tohjo, la Route 26 et la Route Victoire). Avec les 8 badges
         de la région : 4 membres du Conseil (un type chacun, différent des arènes de la région) puis le Maître (équipe
         mixte, sans légendaires), à battre à la suite, sans Centre Pokémon entre les combats. Une défaite, ou quitter le
-        plateau, fait reprendre le défi depuis le début. Chaque Ligue a ses propres victoires (league.region,
+        défi (/game/league/abandon, seule autre action possible pendant le défi), le fait reprendre depuis le début. Chaque Ligue a ses propres victoires (league.region,
         league.championWins). Battre le Maître de Kanto ouvre la Grotte Azurée et fait apparaître, par le coup de
         pouce, les Pokémon de Kanto introuvables à l'état sauvage (StepView.rare) ; Mewtwo seulement dans la Grotte
         Azurée. La Ligue de Johto (6 Pokémon par adversaire, niveaux 78 à 100) fait de même pour les Pokémon de Johto
@@ -479,6 +479,23 @@ paths:
       responses:
         "200":
           description: État de la partie (battle de type LEAGUE, league)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /game/league/abandon:
+    post:
+      tags: [Aventure]
+      security: [{ bearerAuth: [] }]
+      summary: Quitter le défi de la Ligue en cours
+      description: |
+        Pendant un défi de la Ligue (au moins un membre du Conseil battu), toute autre action est refusée (400) :
+        voyage, Centre Pokémon, pension, entraînement, objets, équipe, attaques, relâcher un Pokémon. Il faut terminer
+        le défi, ou le quitter ici : il reprendra depuis le premier membre du Conseil.
+      responses:
+        "200":
+          description: État de la partie (league.stage à 0)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/GameView" }
