@@ -1165,7 +1165,8 @@ class GameService(
         val location = GameRules.STEPS[step].location
         val all = pools.getOrPut(location) {
             val detail = locationService.location(location) ?: return@getOrPut emptyList()
-            detail.areas.flatMap { a -> a.encounters.filter { it.version == GameRules.VERSION } }.flatMap { e ->
+            // Seulement les Pokémon de Kanto (seule région débloquée) : pas de Qulbutoké dans la Grotte Azurée.
+            detail.areas.flatMap { a -> a.encounters.filter { it.version == GameRules.VERSION && GameRules.inKanto(it.pokemonId) } }.flatMap { e ->
                 e.methods.map { m -> PoolEntry(e.pokemonId, e.types, m.method, m.minLevel, m.maxLevel, m.chance) }
             }
         }

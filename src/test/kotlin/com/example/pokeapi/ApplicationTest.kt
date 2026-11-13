@@ -153,6 +153,9 @@ class ApplicationTest {
               {"version": ${res("lets-go-pikachu")}, "max_chance": 100, "encounter_details": [${walk(3, 5, 100)}]},
               {"version": ${res("red-japan")}, "max_chance": 50, "encounter_details": [${walk(2, 3, 20)}]},
               {"version": ${res("leafgreen")}, "max_chance": 100, "encounter_details": [${walk(2, 3, 100)}]}
+            ]},
+            {"pokemon": {"name": "chikorita", "url": "https://pokeapi.co/api/v2/pokemon/152/"}, "version_details": [
+              {"version": ${res("leafgreen")}, "max_chance": 100, "encounter_details": [${walk(2, 3, 100)}]}
             ]}]}""",
         "version/red-japan" to """{"name": "red-japan", "names": ${fr("Rouge")}, "version_group": ${res("red-green-japan")}}""",
         "version/leafgreen" to """{"name": "leafgreen", "names": ${fr("Vert Feuille")}, "version_group": ${res("firered-leafgreen")}}""",
@@ -1236,6 +1239,19 @@ class ApplicationTest {
         v = game(post("/daycare/withdraw", """{"uid":"p2"}"""))
         assertTrue(v.team.any { it.uid == "p2" })
         assertEquals(null, v.dayCare!!.nextEggInSeconds) // plus de couple
+    }
+
+    @Test
+    fun `aventure - seulement des pokemon de Kanto dans les rencontres`() = appTest {
+        // La Route 1 simulée a aussi un Germignon (Johto) dans Vert Feuille : il n'apparaît jamais et ne compte pas
+        client.post("/game/new") { contentType(ContentType.Application.Json); setBody("""{"starter":"squirtle"}""") }
+        client.post("/game/travel") { contentType(ContentType.Application.Json); setBody("""{"step":1}""") }
+        repeat(20) {
+            val v = json.decodeFromString<GameView>(client.post("/game/explore").bodyAsText())
+            assertEquals("Bulbizarre", v.battle!!.enemy.name)
+            assertEquals(1, v.steps[1].speciesTotal)
+            client.post("/game/battle/flee"); client.post("/game/battle/close")
+        }
     }
 
     @Test
