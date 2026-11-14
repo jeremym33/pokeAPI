@@ -80,7 +80,13 @@ data class DexView(
 )
 
 @Serializable
-data class GymView(val number: Int, val type: String?, val badge: Boolean)
+data class GymView(
+    val number: Int,
+    val type: String?,
+    val badge: Boolean,
+    /** L'arène accepte les défis (Jadielle : seulement après les 7 autres badges de Kanto). */
+    val open: Boolean = true,
+)
 
 @Serializable
 data class StepView(

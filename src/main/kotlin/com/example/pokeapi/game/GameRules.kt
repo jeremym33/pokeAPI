@@ -15,6 +15,13 @@ data class Step(
     val league: Boolean = false,
     /** Région de l'étape : Kanto (Vert Feuille), puis Johto (Cristal), ouvert une fois les 151 Pokémon de Kanto obtenus. */
     val region: String = KANTO,
+    /**
+     * Arène qui n'ouvre qu'après les autres (Jadielle) : elle prend place, dans l'ordre des arènes, après ce lieu.
+     * Elle ne bloque pas la route en attendant.
+     */
+    val gymOpensAfter: String? = null,
+    /** Étape fermée tant que le badge de l'arène de ce lieu n'est pas obtenu (Route 23 : badge de Jadielle). */
+    val requiresBadgeOf: String? = null,
 )
 
 const val KANTO = "kanto"
@@ -41,7 +48,8 @@ object GameRules {
     val STEPS: List<Step> = listOf(
         Step("pallet-town", city = true),
         Step("kanto-route-1"),
-        Step("viridian-city", city = true),
+        // Jadielle, une seule fois : son arène ouvre après les 7 autres badges (après la Route 21)
+        Step("viridian-city", city = true, gym = true, gymOpensAfter = "kanto-sea-route-21"),
         Step("kanto-route-22"),
         Step("kanto-route-2"),
         Step("viridian-forest"),
@@ -82,8 +90,7 @@ object GameRules {
         Step("cinnabar-island", city = true, gym = true),
         Step("pokemon-mansion"),
         Step("kanto-sea-route-21"),
-        Step("viridian-city", city = true, gym = true),
-        Step("kanto-route-23"),
+        Step("kanto-route-23", requiresBadgeOf = "viridian-city"),
         Step("kanto-victory-road-2"),
         Step("indigo-plateau", city = true, league = true),
         Step("cerulean-cave"),
@@ -262,8 +269,26 @@ object GameRules {
         (allowedMethods(n) - allowedMethods(n - 1)).sortedBy { METHOD_EFFECTS.keys.indexOf(it) }.forEach { m -> METHOD_EFFECTS[m]?.let { add(it) } }
     }
 
-    /** Numéro (0 à 7) de l'arène d'une étape, dans sa région. */
-    fun gymNumber(step: Int): Int = STEPS.take(step).count { it.gym && it.region == STEPS[step].region }
+    /**
+     * Place d'une arène dans l'ordre des arènes : son étape, ou le lieu après lequel elle ouvre (Jadielle : après
+     * la Route 21, donc 8e arène de Kanto).
+     */
+    fun gymOrder(step: Int): Int {
+        val def = STEPS[step]
+        return def.gymOpensAfter?.let { loc -> STEPS.indexOfFirst { it.location == loc && it.region == def.region } }?.takeIf { it >= 0 } ?: step
+    }
+
+    /** Numéro (0 à 7) de l'arène d'une étape, dans sa région, dans l'ordre des arènes. */
+    fun gymNumber(step: Int): Int =
+        STEPS.indices.count { it != step && STEPS[it].gym && STEPS[it].region == STEPS[step].region && gymOrder(it) < gymOrder(step) }
+
+    /** Étapes des arènes, dans l'ordre des arènes. */
+    fun gymSteps(): List<Int> = STEPS.indices.filter { STEPS[it].gym }.sortedBy { gymOrder(it) }
+
+    /** Étape de l'arène d'un lieu (requiresBadgeOf), dans la même région que [step]. */
+    fun badgeStepFor(step: Int): Int? = STEPS[step].requiresBadgeOf?.let { loc ->
+        STEPS.indexOfFirst { it.location == loc && it.region == STEPS[step].region && it.gym }.takeIf { it >= 0 }
+    }
 
     /** Méthodes de rencontre autorisées selon les badges (surf et cannes plus tard dans l'aventure). */
     fun allowedMethods(badges: Int): Set<String> = buildSet {

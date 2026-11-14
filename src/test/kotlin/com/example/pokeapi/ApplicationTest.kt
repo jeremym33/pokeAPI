@@ -54,6 +54,7 @@ import io.ktor.server.testing.*
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
@@ -672,7 +673,7 @@ class ApplicationTest {
         assertTrue(v.unlockedStep > 1)
 
         // Les lieux absents de PokéAPI simulé sont franchis d'office : on arrive à la première arène (Argenta)
-        val gymStep = v.steps.first { it.gym != null }
+        val gymStep = v.steps.first { it.gym?.number == 1 }
         assertEquals(gymStep.index, v.unlockedStep)
         assertEquals("grass", gymStep.gym!!.type) // type le plus fréquent avant l'arène (Bulbizarre sur la Route 1)
         v = game(post("/travel", """{"step":${gymStep.index}}"""))
@@ -1247,6 +1248,49 @@ class ApplicationTest {
     }
 
     @Test
+    fun `aventure - Jadielle une seule fois, arene ouverte apres les 7 autres badges`() = appTest {
+        suspend fun game(response: HttpResponse): GameView {
+            assertTrue(response.status.isSuccess(), response.bodyAsText())
+            return json.decodeFromString<GameView>(response.bodyAsText())
+        }
+        suspend fun post(path: String, body: String? = null) = client.post("/game$path") {
+            if (body != null) { contentType(ContentType.Application.Json); setBody(body) }
+        }
+        client.post("/pokemon/import?limit=4")
+        var v = game(post("/new", """{"starter":"bulbasaur"}"""))
+        val kanto = v.steps.filter { it.region == "kanto" }
+        assertEquals(1, kanto.count { it.location == "viridian-city" })
+        val viridian = v.steps.single { it.location == "viridian-city" }.index
+        val route21 = v.steps.single { it.location == "kanto-sea-route-21" }.index
+        val route23 = v.steps.single { it.location == "kanto-route-23" }.index
+        assertEquals(8, v.steps[viridian].gym!!.number)
+        assertEquals(false, v.steps[viridian].gym!!.open)
+
+        // Route 1 franchie : Jadielle ne bloque pas la route, l'arène d'Argenta si
+        editSave { save -> JsonObject(save + ("clearedSteps" to json.parseToJsonElement("[1]"))) }
+        v = game(client.get("/game"))
+        assertTrue(v.steps[viridian].cleared)
+        assertEquals("pewter-city", v.steps[v.unlockedStep].location)
+        assertEquals(null, v.steps[viridian].gym!!.type) // type révélé seulement à l'ouverture
+        game(post("/travel", """{"step":$viridian}"""))
+        assertEquals(HttpStatusCode.BadRequest, post("/gym").status) // arène fermée
+
+        // Les 7 autres badges : l'arène ouvre (type révélé), la Route 23 attend son badge
+        val others = kanto.filter { it.gym != null && it.index != viridian }.map { it.index }
+        editSave { save -> JsonObject(save + ("badges" to json.parseToJsonElement(others.toString()))) }
+        v = game(client.get("/game"))
+        assertEquals(route21, v.unlockedStep)
+        assertEquals(true, v.steps[viridian].gym!!.open)
+        assertTrue(v.steps[viridian].gym!!.type != null)
+        // Type présent dans les données simulées, pour former l'équipe du champion
+        editSave { save -> JsonObject(save + ("gymTypes" to JsonObject((save["gymTypes"]!!.jsonObject) + ("$viridian" to JsonPrimitive("grass"))))) }
+        v = game(post("/gym"))
+        assertEquals(BattleKind.GYM, v.battle!!.kind)
+        editSave { save -> JsonObject(save + mapOf("battle" to JsonNull, "badges" to json.parseToJsonElement((others + viridian).toString()))) }
+        assertTrue(game(client.get("/game")).unlockedStep >= route23)
+    }
+
+    @Test
     fun `aventure - oeuf en attente, parents repris de la pension`() = appTest {
         suspend fun game(response: HttpResponse): GameView {
             assertTrue(response.status.isSuccess(), response.bodyAsText())
@@ -1353,9 +1397,8 @@ class ApplicationTest {
                 "team" to JsonArray(listOf(strong)), "badges" to json.parseToJsonElement(gyms.toString()),
                 "stepIndex" to JsonPrimitive(league), "lastCenter" to JsonPrimitive(league),
                 "clearedSteps" to json.parseToJsonElement("[1]"),
-                // Types dont les données simulées ont des Pokémon (hors Pokémon rares) ; ancien format de
-                // sauvegarde (une seule Ligue), mis à jour au chargement
-                "leagueTypes" to json.parseToJsonElement("""["grass", "poison", "grass", "poison"]"""), "saveVersion" to JsonPrimitive(0),
+                // Types dont les données simulées ont des Pokémon (hors Pokémon rares)
+                "leagues" to json.parseToJsonElement("""{"kanto":{"types":["grass", "poison", "grass", "poison"]}}"""),
             ))
         }
         v = game(client.get("/game"))
@@ -1416,7 +1459,7 @@ class ApplicationTest {
         val gyms = v0.steps.filter { it.gym != null }.map { it.index }
         editSave { save ->
             JsonObject(save + mapOf(
-                "badges" to json.parseToJsonElement(gyms.toString()), "leagueStage" to JsonPrimitive(2), "saveVersion" to JsonPrimitive(0),
+                "badges" to json.parseToJsonElement(gyms.toString()), "leagues" to json.parseToJsonElement("""{"kanto":{"stage":2}}"""),
                 "clearedSteps" to json.parseToJsonElement("[1]"), // Route 1 franchie : le retour au plateau est possible
             ))
         }
@@ -1511,7 +1554,7 @@ class ApplicationTest {
         val gyms = v.steps.filter { it.gym != null && it.region == "kanto" }.map { it.index }
         editSave { save ->
             JsonObject(save + mapOf(
-                "badges" to json.parseToJsonElement(gyms.toString()), "championWins" to JsonPrimitive(1), "saveVersion" to JsonPrimitive(0),
+                "badges" to json.parseToJsonElement(gyms.toString()), "leagues" to json.parseToJsonElement("""{"kanto":{"wins":1}}"""),
                 "clearedSteps" to json.parseToJsonElement("[1]"), "caught" to json.parseToJsonElement((1..150).toList().toString()),
             ))
         }
@@ -1556,7 +1599,7 @@ class ApplicationTest {
             JsonObject(save + mapOf(
                 "team" to JsonArray(listOf(first, JsonObject(first + ("uid" to JsonPrimitive("p2"))))),
                 "box" to JsonArray(listOf(JsonObject(first + mapOf("uid" to JsonPrimitive("p3"), "origin" to JsonPrimitive("johto"))))),
-                "badges" to json.parseToJsonElement(gyms.toString()), "championWins" to JsonPrimitive(1), "saveVersion" to JsonPrimitive(0), "johtoUnlocked" to JsonPrimitive(true),
+                "badges" to json.parseToJsonElement(gyms.toString()), "leagues" to json.parseToJsonElement("""{"kanto":{"wins":1}}"""), "johtoUnlocked" to JsonPrimitive(true),
                 "clearedSteps" to json.parseToJsonElement("[1]"), "caught" to json.parseToJsonElement((1..151).toList().toString()),
             ))
         }

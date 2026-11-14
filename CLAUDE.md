@@ -57,8 +57,13 @@ jour avec chaque route ou champ ajouté.
 - **Pas de contenu original recréé** : pas de noms ni d'équipes de champions, du Conseil des 4 ou de Maîtres des jeux
   officiels. Tout est généré depuis les données (types les plus fréquents des routes, statistiques…).
 - **Parcours** (`GameRules.STEPS`) : villes, routes et lieux de Kanto (rencontres de Vert Feuille), puis Johto
-  (Cristal, niveaux +45) jusqu'au Plateau Indigo de Johto. Ajouter des étapes **uniquement à la fin** (les index
-  sont sauvegardés). Une route est franchie avec 10 victoires et toutes ses espèces vues.
+  (Cristal, niveaux +45) jusqu'au Plateau Indigo de Johto. Chaque lieu n'apparaît qu'une fois par région. Les
+  numéros d'étapes sont sauvegardés : ajouter des étapes **à la fin** ; retirer ou déplacer une étape exige une
+  migration des numéros (`SaveUpgrade.kt`, voir `remapStepV2`). Une route est franchie avec 10 victoires et toutes
+  ses espèces vues.
+- **Jadielle** : une seule fois, au début ; son arène (`gymOpensAfter`) est la 8e de Kanto et n'ouvre qu'avec les 7
+  autres badges, sans bloquer la route ; la Route 23 (`requiresBadgeOf`) attend son badge. L'ordre des arènes suit
+  `GameRules.gymOrder` / `gymSteps()`, pas l'ordre des étapes.
 - **Arènes** : 8 par région, type tiré des Pokémon rencontrés avant ; badges = limite de niveau (`LEVEL_CAPS`).
 - **Ligues** : une par région au Plateau Indigo (`leagues[région]`) : 4 membres du Conseil puis le Maître, à la
   suite. Kanto : niv. 52 à 65 ; Johto : niv. 78 à 100. Légendaires exclus des équipes.

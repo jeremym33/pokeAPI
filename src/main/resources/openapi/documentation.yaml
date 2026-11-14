@@ -313,6 +313,9 @@ paths:
       tags: [Aventure]
       security: [{ bearerAuth: [] }]
       summary: Défier l'arène de la ville actuelle
+      description: |
+        L'arène de Jadielle, sur la route dès le début, n'ouvre qu'avec les 7 autres badges de Kanto (8e arène) : elle
+        ne bloque pas la route en attendant (StepView.gym.open), et la Route 23 attend son badge.
       responses:
         "200":
           description: État de la partie

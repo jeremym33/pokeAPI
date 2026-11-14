@@ -214,7 +214,7 @@ class GameService(
     suspend fun badges(userId: Int): BadgesView = lock.withLock {
         val s = loadMigrated(userId) ?: throw NotFoundException("Aucune partie en cours")
         val names = locationNames()
-        val gyms = GameRules.STEPS.indices.filter { GameRules.STEPS[it].gym }
+        val gyms = GameRules.gymSteps()
         val badges = gyms.mapIndexed { k, step ->
             val type = s.gymTypes[step]
             BadgeView(
@@ -716,7 +716,14 @@ class GameService(
     /** Défis en cours abandonnés : ils reprendront au premier membre du Conseil. */
     private fun GameState.leaguesRestarted(): GameState = copy(leagues = leagues.mapValues { it.value.copy(stage = 0) })
 
-    /** Badges obtenus dans une région. */
+    /** Une arène accepte les défis : toujours, sauf celle qui ouvre après les autres (Jadielle : les 7 autres badges). */
+    private fun gymOpen(s: GameState, step: Int): Boolean {
+        if (GameRules.STEPS[step].gymOpensAfter == null) return true
+        val region = GameRules.STEPS[step].region
+        return GameRules.STEPS.indices.filter { it != step && GameRules.STEPS[it].gym && GameRules.STEPS[it].region == region }.all { it in s.badges }
+    }
+
+        /** Badges obtenus dans une région. */
     private fun GameState.regionBadges(region: String): Int = badges.count { GameRules.STEPS[it].region == region }
 
     /** Pokémon que la Ligue d'une région peut aligner : ceux de la région (Kanto, ou Kanto et Johto), sans légendaires. */
@@ -837,6 +844,9 @@ class GameService(
         noBattle(s0)
         val step = GameRules.STEPS[s0.stepIndex]
         if (!step.gym) throw BadRequestException("Pas d'arène ici")
+        if (!gymOpen(s0, s0.stepIndex)) {
+            throw BadRequestException("L'arène est fermée : son champion n'acceptera votre défi qu'avec les ${GameRules.gymNumber(s0.stepIndex)} autres badges de ${regionName(step.region)}")
+        }
         if (s0.stepIndex in s0.badges) throw BadRequestException("Vous avez déjà le badge de cette arène")
         val active = s0.firstFighter()
         val s = withGymType(s0, s0.stepIndex)
@@ -1415,7 +1425,9 @@ class GameService(
         // ouvrent déjà le surf et les meilleures cannes, aux niveaux bien plus hauts)
         val region = GameRules.STEPS[s.stepIndex].region
         val badges = if (region == KANTO) s.badges.size else 0
-        val wildMax = (0 until s.stepIndex).filter { GameRules.STEPS[it].region == region }
+        // Arène qui ouvre après les autres (Jadielle) : à la hauteur des lieux qui la précèdent dans l'ordre des arènes
+        val bound = if (GameRules.STEPS[s.stepIndex].gymOpensAfter != null) GameRules.gymOrder(s.stepIndex) + 1 else s.stepIndex
+        val wildMax = (0 until bound).filter { GameRules.STEPS[it].region == region }
             .maxOfOrNull { i -> pool(i, badges).maxOfOrNull { it.maxLevel } ?: 0 } ?: 0
         return GameRules.gymTopLevel(wildMax, GameRules.levelCap(s.badges.size))
     }
@@ -1542,7 +1554,8 @@ class GameService(
         val def = GameRules.STEPS[step]
         // Plateau Indigo : franchi en battant le Maître (une partie déjà plus loin le garde franchi)
         if (def.league) return s.leagueIn(def.region).wins > 0 || s.stepIndex > step || (s.wins[step + 1] ?: 0) > 0
-        if (def.city) return !def.gym || step in s.badges
+        // Arène qui ouvre plus tard (Jadielle) : la ville ne bloque pas la route ; c'est la Route 23 qui attend le badge
+        if (def.city) return !def.gym || step in s.badges || def.gymOpensAfter != null
         if (step in s.clearedSteps) return true
         val species = routeSpecies(step)
         return species.isEmpty() || ((s.wins[step] ?: 0) >= GameRules.ROUTE_WINS && species.all { s.hasSeen(it) })
@@ -1569,7 +1582,7 @@ class GameService(
         val passed = mutableSetOf<Int>()
         for (i in GameRules.STEPS.indices) {
             val def = GameRules.STEPS[i]
-            val ok = if (def.city) !def.gym || i in s.badges else pool(i, s.badges.size).isEmpty() || (s.wins[i] ?: 0) >= 3
+            val ok = if (def.city) !def.gym || i in s.badges || def.gymOpensAfter != null else pool(i, s.badges.size).isEmpty() || (s.wins[i] ?: 0) >= 3
             if (!ok) break
             if (!def.city) passed += i
         }
@@ -1581,6 +1594,8 @@ class GameService(
         for (i in GameRules.STEPS.indices) {
             // Johto reste fermé tant que les 151 Pokémon de Kanto n'ont pas été obtenus
             if (GameRules.STEPS[i].region == JOHTO && !s.johtoUnlocked) return i - 1
+            // Route 23 : il faut le badge de Jadielle
+            if (GameRules.badgeStepFor(i)?.let { it !in s.badges } == true) return i - 1
             if (!cleared(s, i)) return i
         }
         return GameRules.STEPS.lastIndex
@@ -1589,9 +1604,13 @@ class GameService(
     /** Type d'une arène : le plus fréquent chez les Pokémon sauvages rencontrés depuis l'arène précédente. */
     private suspend fun withGymType(s: GameState, step: Int): GameState {
         if (step in s.gymTypes) return s
-        val previousGym = (step - 1 downTo 0).firstOrNull { GameRules.STEPS[it].gym } ?: -1
+        // Lieux depuis l'arène précédente (dans l'ordre des arènes) jusqu'à celle-ci (Jadielle : jusqu'à la Route 21)
+        val order = GameRules.gymOrder(step)
+        val previousGym = GameRules.STEPS.indices.filter { GameRules.STEPS[it].gym && GameRules.gymOrder(it) < order }
+            .maxOfOrNull { GameRules.gymOrder(it) } ?: -1
+        val end = if (order != step) order + 1 else step
         val counts = mutableMapOf<String, Int>()
-        for (i in (previousGym + 1) until step) {
+        for (i in (previousGym + 1) until end) {
             if (GameRules.STEPS[i].city) continue
             pool(i, 8).distinctBy { it.pokemonId }.flatMap { it.types }.forEach { counts[it] = (counts[it] ?: 0) + 1 }
         }
@@ -1607,7 +1626,8 @@ class GameService(
         val unlocked = unlockedStep(s0)
         // Le type d'une arène est révélé dès qu'elle est accessible.
         var s = s0
-        GameRules.STEPS.forEachIndexed { i, step -> if (step.gym && i <= unlocked) s = withGymType(s, i) }
+        // (Jadielle : révélée à son ouverture, après les autres arènes)
+        GameRules.gymSteps().forEach { i -> if (i <= unlocked && gymOpen(s, i)) s = withGymType(s, i) }
         if (s != s0) save(userId, s)
 
         val names = locationNames()
@@ -1634,7 +1654,7 @@ class GameService(
                 speciesTotal = species.size,
                 species = list,
                 index = i, location = step.location, nameFr = names[step.location], city = step.city,
-                gym = if (step.gym) GymView(GameRules.gymNumber(i) + 1, s.gymTypes[i], i in s.badges) else null,
+                gym = if (step.gym) GymView(GameRules.gymNumber(i) + 1, s.gymTypes[i], i in s.badges, open = gymOpen(s, i)) else null,
                 wins = s.wins[i] ?: 0,
                 winsNeeded = if (step.city || species.isEmpty()) 0 else GameRules.ROUTE_WINS,
                 hasEncounters = hasEncounters,

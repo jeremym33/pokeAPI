@@ -10,6 +10,9 @@ import com.example.pokeapi.game.DayCare
 import com.example.pokeapi.game.LeagueProgress
 import com.example.pokeapi.game.SAVE_VERSION
 import com.example.pokeapi.game.upgradeSave
+import com.example.pokeapi.game.Battle
+import com.example.pokeapi.game.BattleKind
+import com.example.pokeapi.game.Trainee
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -161,7 +164,7 @@ class GameRulesTest {
         assertEquals(8, johto.count { it.gym })
         assertEquals("crystal", GameRules.REGION_VERSIONS["johto"])
         assertTrue(GameRules.inDex(251, 251) && !GameRules.inDex(252, 251))
-        assertEquals(listOf(0, 1, 2), GameRules.STEPS.withIndex().filter { it.value.gym }.take(3).map { GameRules.gymNumber(it.index) })
+        assertEquals(listOf(0, 1, 2), GameRules.gymSteps().take(3).map { GameRules.gymNumber(it) })
         // Arène : 3 niveaux au-dessus des sauvages, sans atteindre la limite
         assertEquals(9, GameRules.gymTopLevel(6, 15))
         assertEquals(14, GameRules.gymTopLevel(40, 15))
@@ -275,5 +278,48 @@ class GameRulesTest {
         assertEquals("johto", upgradeSave(old.copy(team = listOf(bulbasaur.copy(origin = "johto")))).team.single().origin)
         // Nouvelle partie sans Ligue : rien à reprendre
         assertEquals(emptyMap(), upgradeSave(GameState(starter = "bulbasaur", team = listOf(bulbasaur))).leagues)
+    }
+
+    @Test
+    fun `parcours - Jadielle une seule fois, son arene en 8e`() {
+        val viridian = GameRules.STEPS.indices.filter { GameRules.STEPS[it].location == "viridian-city" }
+        assertEquals(listOf(2), viridian)
+        assertEquals(7, GameRules.gymNumber(2)) // 8e arène de Kanto
+        assertEquals((0..7).toList(), GameRules.gymSteps().filter { GameRules.STEPS[it].region == "kanto" }.map { GameRules.gymNumber(it) })
+        val route23 = GameRules.STEPS.indexOfFirst { it.location == "kanto-route-23" }
+        assertEquals(2, GameRules.badgeStepFor(route23))
+        // Chaque lieu n'apparaît qu'une fois par région
+        GameRules.STEPS.groupBy { it.region }.forEach { (region, steps) ->
+            assertEquals(steps.size, steps.map { it.location }.distinct().size, "lieu en double dans $region")
+        }
+    }
+
+    @Test
+    fun `mise a jour des numeros d'etapes (une seule Jadielle)`() {
+        val bulbasaur = fighter(5).copy(uid = "p1")
+        // Ancienne partie arrêtée sur la Route 23 (ancienne étape 44), arène de Jadielle (ancienne étape 43) battue
+        val old = GameState(
+            starter = "bulbasaur", team = listOf(bulbasaur), saveVersion = 1,
+            stepIndex = 44, lastCenter = 43, badges = setOf(6, 10, 15, 25, 31, 36, 40, 43),
+            wins = mapOf(1 to 10, 42 to 12, 44 to 3), clearedSteps = setOf(1, 3, 42), gymTypes = mapOf(6 to "rock", 43 to "ground"),
+            boostCounters = mapOf(44 to 4), training = mapOf(45 to Trainee(bulbasaur.copy(uid = "p9"), since = 0, lastSync = 0)),
+            battle = Battle(kind = BattleKind.WILD, step = 44, enemies = listOf(bulbasaur.copy(uid = "w")), activeUid = "p1", participants = setOf("p1")),
+        )
+        val u = upgradeSave(old)
+        assertEquals(SAVE_VERSION, u.saveVersion)
+        assertEquals("kanto-route-23", GameRules.STEPS[u.stepIndex].location)
+        assertEquals(43, u.stepIndex)
+        assertEquals(2, u.lastCenter) // Jadielle
+        assertEquals(setOf(6, 10, 15, 25, 31, 36, 40, 2), u.badges)
+        assertTrue(u.badges.all { GameRules.STEPS[it].gym })
+        assertEquals(mapOf(1 to 10, 42 to 12, 43 to 3), u.wins)
+        assertEquals(setOf(1, 3, 42), u.clearedSteps)
+        assertEquals("kanto-sea-route-21", GameRules.STEPS[42].location)
+        assertEquals(mapOf(6 to "rock", 2 to "ground"), u.gymTypes)
+        assertEquals(mapOf(43 to 4), u.boostCounters)
+        assertEquals(setOf(44), u.training.keys)
+        assertEquals("kanto-victory-road-2", GameRules.STEPS[44].location)
+        assertEquals(43, u.battle!!.step)
+        assertEquals(u, upgradeSave(u))
     }
 }
