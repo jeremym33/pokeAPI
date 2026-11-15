@@ -657,7 +657,7 @@ class GameService(
         // Coup de pouce invisible, au hasard entre le 5e et le 15e combat sur le lieu (GameRules.boostChance) : une
         // espèce pas encore vue s'il en reste, sinon une espèce vue mais pas encore rejointe, avec une chance d'être
         // chromatique. Rien ne l'annonce au joueur.
-        val species = routeSpecies(s.stepIndex)
+        val species = shownSpecies(s, s.stepIndex).map { it.first }.toSet()
         val unseen = pool.filter { !s.hasSeen(it.pokemonId) && it.pokemonId in species }
         val uncaught = pool.filter { s.hasSeen(it.pokemonId) && it.pokemonId !in s.caught && it.pokemonId in species }
         val count = (s.boostCounters[s.stepIndex] ?: 0) + 1
@@ -1639,6 +1639,16 @@ class GameService(
      */
     private suspend fun routeSpecies(step: Int): Set<Int> = pool(step, 0).map { it.pokemonId }.toSet()
 
+    /**
+     * Espèces affichées d'un lieu (et visées par le coup de pouce) : herbes et Canne ; après la Ligue de la région,
+     * aussi Super Canne, Méga Canne et Surf (voir [GameRules.shownSpecies]).
+     */
+    private suspend fun shownSpecies(s: GameState, step: Int): List<Pair<Int, String?>> {
+        val def = GameRules.STEPS[step]
+        if (def.city) return emptyList()
+        return GameRules.shownSpecies(routeSpecies(step), pool(step, 8).map { it.pokemonId to it.method }, s.leagueIn(def.region).wins > 0)
+    }
+
     private fun GameState.hasSeen(species: Int) = species in seen || species in caught
 
     /** Région de l'étape actuelle. */
@@ -1776,12 +1786,14 @@ class GameService(
         val steps = GameRules.STEPS.mapIndexed { i, step ->
             val hasEncounters = pool(i, s.badges.size).isNotEmpty()
             val species = if (step.city) emptySet() else routeSpecies(i)
-            // Espèces de l'étape actuelle, pour savoir lesquelles il reste à voir
-            val list = if (i != s.stepIndex || species.isEmpty()) emptyList() else {
-                val info = pokemonRepository.summaries(species.sorted()).associateBy { it.id }
-                species.sorted().map { n ->
+            // Espèces de l'étape actuelle, pour savoir lesquelles il reste à voir (après la Ligue, aussi à la canne et en surf)
+            val shown = if (i != s.stepIndex) emptyList() else shownSpecies(s, i)
+            val list = if (shown.isEmpty()) emptyList() else {
+                val info = pokemonRepository.summaries(shown.map { it.first }).associateBy { it.id }
+                shown.map { (n, method) ->
                     val p = info[n]
-                    if (s.hasSeen(n)) RouteSpecies(n, true, p?.nameFr ?: p?.name, p?.spriteUrl, caught = n in s.caught) else RouteSpecies(n, false)
+                    if (s.hasSeen(n)) RouteSpecies(n, true, p?.nameFr ?: p?.name, p?.spriteUrl, caught = n in s.caught, method = method)
+                    else RouteSpecies(n, false, method = method)
                 }
             }
             val rare = if (s.leagueIn(step.region).wins == 0 || step.city) emptyList() else {

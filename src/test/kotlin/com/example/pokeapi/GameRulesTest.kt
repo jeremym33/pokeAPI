@@ -426,4 +426,17 @@ class GameRulesTest {
         assertTrue(Achievements.newlyCompleted(ctx(40), setOf("johto-10")).single().rewards.contains("sun-stone"))
         assertTrue(GameRules.ITEMS.any { it.item == "sun-stone" && it.matches("Utiliser Pierre Soleil") })
     }
+
+    @Test
+    fun `especes d'un lieu - canne et surf affiches apres la Ligue`() {
+        // Herbes et Canne : Roucool, Rattata, Magicarpe (ce qui sert à franchir le lieu)
+        val base = setOf(16, 19, 129)
+        val encounters = listOf(16 to "walk", 19 to "walk", 129 to "old-rod", 129 to "good-rod", 118 to "good-rod", 118 to "super-rod", 72 to "surf")
+        assertEquals(listOf(16 to null, 19 to null, 129 to null), GameRules.shownSpecies(base, encounters, leagueWon = false))
+        // Après la Ligue : aussi Super Canne, Méga Canne et Surf, avec la façon de les rencontrer ; Magicarpe reste sans repère
+        assertEquals(
+            listOf(16 to null, 19 to null, 129 to null, 72 to "Surf", 118 to "Super Canne, Méga Canne"),
+            GameRules.shownSpecies(base, encounters, leagueWon = true),
+        )
+    }
 }

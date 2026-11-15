@@ -60,8 +60,10 @@ jour avec chaque route ou champ ajouté.
   (Cristal, niveaux +45) jusqu'au Plateau Indigo de Johto. Chaque lieu n'apparaît qu'une fois par région. Les
   numéros d'étapes sont sauvegardés : ajouter des étapes **à la fin** ; retirer ou déplacer une étape exige une
   migration des numéros (`SaveUpgrade.kt`, voir `remapStepV2`). Une route est franchie avec 10 victoires et toutes
-  ses espèces vues. La vue d'un lieu (`StepView.species`, `RouteSpecies`) indique pour chaque espèce si elle est
-  vue (`seen`) et rejointe (`caught`).
+  ses espèces vues (herbes et Canne : `routeSpecies`). La vue d'un lieu (`StepView.species`, `RouteSpecies`) indique pour
+  chaque espèce si elle est vue (`seen`) et rejointe (`caught`) ; après la Ligue de la région, elle ajoute les espèces de
+  la Super Canne, de la Méga Canne et du Surf (`GameRules.shownSpecies`, champ `method`), visées aussi par le coup de
+  pouce, sans changer la condition pour franchir le lieu.
 - **Jadielle** : une seule fois, au début ; son arène (`gymOpensAfter`) est la 8e de Kanto et n'ouvre qu'avec les 7
   autres badges, sans bloquer la route ; la Route 23 (`requiresBadgeOf`) attend son badge. L'ordre des arènes suit
   `GameRules.gymOrder` / `gymSteps()`, pas l'ordre des étapes.

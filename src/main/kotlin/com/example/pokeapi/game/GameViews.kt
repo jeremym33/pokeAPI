@@ -187,6 +187,8 @@ data class RouteSpecies(
     val spriteUrl: String? = null,
     /** Espèce rejointe (dans le Pokédex du joueur), pas seulement vue. */
     val caught: Boolean = false,
+    /** Façon de la rencontrer, pour les espèces ajoutées après la Ligue (« Super Canne », « Surf »…) ; null sinon. */
+    val method: String? = null,
 )
 
 @Serializable

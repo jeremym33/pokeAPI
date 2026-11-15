@@ -315,6 +315,22 @@ object GameRules {
         "super-rod" to "Pêche à la Méga Canne : encore d'autres Pokémon dans l'eau",
     )
 
+    /** Façons de rencontrer débloquées par les badges, en français (repère dans la liste des espèces d'un lieu). */
+    val METHOD_FR = mapOf("good-rod" to "Super Canne", "super-rod" to "Méga Canne", "surf" to "Surf")
+
+    /**
+     * Espèces affichées d'un lieu, avec la façon de les rencontrer (null : herbes ou Canne). Toujours celles des
+     * herbes et de la Canne ([base], qui servent à franchir le lieu) ; après la Ligue de la région, aussi celles de la
+     * Super Canne, de la Méga Canne et du Surf ([encounters] : espèce et méthode).
+     */
+    fun shownSpecies(base: Set<Int>, encounters: List<Pair<Int, String>>, leagueWon: Boolean): List<Pair<Int, String?>> {
+        val shown: List<Pair<Int, String?>> = base.sorted().map { it to null }
+        if (!leagueWon) return shown
+        val extra = encounters.filter { it.first !in base }.groupBy({ it.first }, { it.second }).toSortedMap()
+            .map { (id, methods) -> id to methods.mapNotNull { METHOD_FR[it] }.distinct().sortedBy { METHOD_FR.values.indexOf(it) }.joinToString(", ").ifEmpty { null } }
+        return shown + extra
+    }
+
     /** Effets du n-ième badge (1 à 8) : niveau maximum relevé, nouvelles façons de rencontrer des Pokémon. */
     fun badgeEffects(n: Int): List<String> = buildList {
         if (levelCap(n - 1) != levelCap(n)) add("Niveau maximum : ${levelCap(n - 1)} → ${levelCap(n)}")

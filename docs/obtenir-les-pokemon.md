@@ -25,6 +25,10 @@ les Pokémon rares ; Johto de même, plus le bonheur, la Pierre Soleil et les œ
   pour Johto (n° 1 à 251, niveaux relevés de 45).
 - **Rencontres débloquées par les badges** : herbes et Canne au début ; Super Canne à 3 badges ; Surf et Méga Canne
   à 5 badges.
+- **Liste des espèces d'un lieu** : elle montre les espèces des herbes et de la Canne (celles qu'il faut voir pour
+  franchir le lieu). Après la victoire contre le Maître de la Ligue de la région, elle montre aussi celles de la Super
+  Canne, de la Méga Canne et du Surf (« 🎣 Après la Ligue : à la canne et en surf »), chacune comme rejointe, vue ou
+  pas encore vue ; le coup de pouce les vise aussi.
 - **Rejoindre** : après une victoire, le Pokémon peut proposer de vous rejoindre. La chance dépend de son taux de
   capture : `15 % + 55 % × taux / 255`.
 
@@ -47,6 +51,8 @@ l'annonce. La rencontre se fait alors avec :
 
 1. une espèce du lieu **pas encore vue**, s'il en reste ;
 2. sinon une espèce du lieu **vue mais pas encore rejointe** ;
+
+(après la Ligue de la région, les espèces de la canne et du surf comptent parmi les espèces du lieu ;)
 3. après la victoire contre le Maître de la Ligue de la région, parfois (une fois sur deux s'il reste des espèces à
    voir ou à rejoindre, toujours sinon) un **Pokémon rare** du lieu (voir 6).
 
