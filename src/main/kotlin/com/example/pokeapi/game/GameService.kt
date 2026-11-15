@@ -868,7 +868,7 @@ class GameService(
         if (b.mustSwitch) throw BadRequestException("Choisissez le Pokémon à envoyer")
         val player = s.team.first { it.uid == b.activeUid }
         val move = player.moves.getOrNull(moveIndex) ?: throw BadRequestException("Attaque inconnue")
-        val enemyMove = GameRules.chooseMove(b.enemy, player, random)
+        val enemyMove = GameRules.chooseMove(b.enemy, player, random, reserve = b.enemyIndex + 1 < b.enemies.size)
         val playerFirst = GameRules.firstToAct(player, move, b.enemy, enemyMove, random)
 
         var state = s
@@ -997,7 +997,7 @@ class GameService(
         )
         if (!b.mustSwitch) {
             // Changement volontaire : l'adversaire attaque le Pokémon qui entre.
-            val enemyMove = GameRules.chooseMove(b.enemy, target, random)
+            val enemyMove = GameRules.chooseMove(b.enemy, target, random, reserve = b.enemyIndex + 1 < b.enemies.size)
             state = takeTurn(state, playerTurn = false, enemyMove, log)
             state = endOfTurn(state, log)
         }

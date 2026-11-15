@@ -337,4 +337,44 @@ class GameRulesTest {
         // Jamais plus que les PV restants
         assertEquals(3, GameRules.selfDamage(user.copy(hp = 3), move("steel-beam", 140), missed = false))
     }
+
+    @Test
+    fun `adversaires - attaques de statut a effets propres, quand elles servent`() {
+        fun move(name: String, damageClass: String = "status", type: String = "normal", power: Int = 0) = FighterMove(name, null, type, damageClass, power, null)
+        val tackle = move("tackle", "physical", power = 40)
+        val full = fighter(50).let { it.copy(hp = it.maxHp, moves = listOf(tackle)) }
+        val low = full.copy(hp = full.maxHp / 5)
+        val foe = fighter(50).let { it.copy(hp = it.maxHp) }
+        fun score(a: com.example.pokeapi.game.Fighter, m: FighterMove, d: com.example.pokeapi.game.Fighter = foe, reserve: Boolean = false) =
+            GameRules.moveScore(a, d, m, reserve)
+
+        // Cognobidon : en pleine forme avec une attaque physique, pas une fois blessé ni déjà boosté
+        assertTrue(score(full, move("belly-drum")) > 0)
+        assertEquals(0.0, score(low, move("belly-drum")))
+        assertEquals(0.0, score(full.copy(stages = mapOf("attack" to 6)), move("belly-drum")))
+        // Malédiction : Spectre sur une cible pas encore maudite ; sinon pour les statistiques
+        assertTrue(score(full.copy(types = listOf("ghost")), move("curse")) > 0)
+        assertEquals(0.0, score(full.copy(types = listOf("ghost")), move("curse"), foe.copy(cursed = true)))
+        assertTrue(score(full, move("curse")) > 0)
+        // Clonage : un seul clone, avec assez de PV
+        assertTrue(score(full, move("substitute")) > 0)
+        assertEquals(0.0, score(full.copy(substituteHp = 10), move("substitute")))
+        assertEquals(0.0, score(low, move("substitute")))
+        // Balance : seulement si elle rend des PV
+        assertTrue(score(low, move("pain-split")) > 0)
+        assertEquals(0.0, score(full, move("pain-split"), foe.copy(hp = 5)))
+        // Souvenir et Vœu Soin : en dernier recours ; Vœu Soin seulement avec un remplaçant
+        assertTrue(score(low, move("memento")) > 0)
+        assertEquals(0.0, score(full, move("memento")))
+        assertTrue(score(low, move("healing-wish"), reserve = true) > 0)
+        assertEquals(0.0, score(low, move("healing-wish"), reserve = false))
+        // Tout ou Rien : K.O. assuré quand ses PV dépassent ceux de la cible (meilleur choix), jamais sur une cible immunisée
+        val gambit = move("final-gambit", "special", "fighting")
+        assertTrue(score(full, gambit, foe.copy(hp = 10)) > score(full, tackle, foe.copy(hp = 10)))
+        assertEquals(0.0, score(full, gambit, foe.copy(hp = 10, defenses = mapOf("fighting" to 0.0))))
+        // Choix réel : un adversaire en pleine forme avec Cognobidon et Charge commence par Cognobidon
+        val drummer = full.copy(moves = listOf(tackle, move("belly-drum")))
+        val picks = (1..50).map { GameRules.chooseMove(drummer, foe, Random(it)).name }
+        assertTrue(picks.count { it == "belly-drum" } > 30, picks.groupingBy { it }.eachCount().toString())
+    }
 }

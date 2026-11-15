@@ -497,8 +497,9 @@ object GameRules {
         else minOf(f.maxHp - f.hp, maxOf(1, f.maxHp * move.healing / 100))
 
     /** Intérêt d'une attaque pour l'adversaire : dégâts attendus, ou statut à infliger. */
-    private fun moveScore(attacker: Fighter, defender: Fighter, m: FighterMove): Double {
+    internal fun moveScore(attacker: Fighter, defender: Fighter, m: FighterMove, reserve: Boolean = false): Double {
         val accuracy = (m.accuracy ?: 100) / 100.0
+        specialScore(attacker, defender, m, reserve, accuracy)?.let { return it }
         if (m.heals) {
             // Se soigner quand il reste moins de la moitié des PV
             return if (attacker.hp * 2 < attacker.maxHp && (m.name != FighterMove.REST || attacker.hp * 4 < attacker.maxHp)) 70.0 else 0.0
@@ -553,11 +554,46 @@ object GameRules {
         else -> 0
     }
 
-    /** Attaque choisie par l'adversaire : la plus intéressante, avec un peu de hasard. */
-    fun chooseMove(attacker: Fighter, defender: Fighter, random: Random): FighterMove {
-        val useful = attacker.moves.filter { moveScore(attacker, defender, it) > 0 }.ifEmpty { attacker.moves }
+    /**
+     * Intérêt pour l'adversaire des attaques à effets propres (Cognobidon, Malédiction, Clonage…) : seulement quand
+     * elles servent, jamais au hasard ; null pour les autres attaques. [reserve] : un autre Pokémon peut prendre le
+     * relais (Vœu Soin).
+     */
+    private fun specialScore(a: Fighter, d: Fighter, m: FighterMove, reserve: Boolean, accuracy: Double): Double? {
+        val hp = a.hp.toDouble() / a.maxHp
+        val attackStage = a.stages["attack"] ?: 0
+        return when (m.name) {
+            // Au début du combat, avec une attaque physique pour en profiter
+            BELLY_DRUM -> if (hp > 0.75 && attackStage < 2 && a.moves.any { it.damageClass == "physical" }) 50.0 else 0.0
+            CURSE -> when {
+                "ghost" in a.types -> if (!d.cursed && hp > 0.6) 40.0 else 0.0
+                else -> if (attackStage < 2 && hp > 0.5) 35.0 else 0.0
+            }
+            SUBSTITUTE -> if (a.substituteHp == 0 && hp > 0.5) 35.0 else 0.0
+            // Quand le partage lui rend nettement des PV
+            PAIN_SPLIT -> if (d.substituteHp == 0 && (a.hp + d.hp) / 2 > a.hp + a.maxHp / 4) 60.0 else 0.0
+            // Dernier recours : affaiblir la cible ou soigner le suivant
+            MEMENTO -> if (hp < 0.25 && d.substituteHp == 0) 40.0 else 0.0
+            in WISH_MOVES -> if (reserve && hp < 0.25) 40.0 else 0.0
+            // K.O. assuré quand ses PV dépassent ceux de la cible ; sinon en dernier recours
+            FINAL_GAMBIT -> when {
+                (d.defenses[m.type] ?: 1.0) == 0.0 || d.substituteHp > 0 -> 0.0
+                a.hp >= d.hp -> 200.0 * accuracy
+                hp < 0.3 -> 30.0
+                else -> 0.0
+            }
+            else -> null
+        }
+    }
+
+    /**
+     * Attaque choisie par l'adversaire : la plus intéressante, avec un peu de hasard parmi les attaques utiles.
+     * [reserve] : un autre Pokémon peut prendre le relais (Vœu Soin).
+     */
+    fun chooseMove(attacker: Fighter, defender: Fighter, random: Random, reserve: Boolean = false): FighterMove {
+        val useful = attacker.moves.filter { moveScore(attacker, defender, it, reserve) > 0 }.ifEmpty { attacker.moves }
         if (random.nextInt(5) == 0) return useful.random(random)
-        return useful.maxBy { moveScore(attacker, defender, it) }
+        return useful.maxBy { moveScore(attacker, defender, it, reserve) }
     }
 
     /** Vitesse effective (divisée par deux par la paralysie). */
