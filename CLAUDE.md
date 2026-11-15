@@ -71,6 +71,9 @@ jour avec chaque route ou champ ajouté.
   coup de pouce ; légendaires à lieu fixe (`RARE_HOMES`). Mewtwo seul dans la Grotte Azurée.
 - **Coup de pouce** invisible : tous les 10 combats sur un lieu, une espèce pas encore vue (ou rare), 10 % de
   chromatique (sinon 1/4096).
+- **Chromatiques** (`shiny`) : gardés à l'évolution (toutes les évolutions passent par `evolve`) ; `shinySeen` /
+  `shinyCaught` pour le Motisdex. Réglage `recruitOnlyNew` : un chromatique reste proposé tant que ce chromatique
+  n'est pas obtenu, même si l'espèce l'est.
 - **Régions** : Johto s'ouvre avec les 151 Pokémon de Kanto obtenus (œuf de starter offert). Chaque Pokémon a une
   région d'origine (`origin`) : seuls ceux de la région en cours combattent, plus **un compagnon** choisi au passage
   de région. Une pension par région, accessible de partout (sauf défi de Ligue) ; zones d'entraînement limitées aux
@@ -85,6 +88,8 @@ jour avec chaque route ou champ ajouté.
   `leftBattle()`. Les adversaires les utilisent quand elles servent (`GameRules.specialScore`, dans `moveScore`).
 - **Pension** : 2 Pokémon compatibles (groupe d'œufs ou Métamorph) → un œuf toutes les 5 min ; l'espèce de l'œuf est
   fixée à son apparition (`eggSpecies`).
+- **Combat** : l'IA des adversaires est `GameRules.chooseMove` / `moveScore` (meilleure attaque utile, 1 fois sur 5
+  au hasard parmi les utiles). Destruction et Explosion seulement sous 25 % des PV.
 
 ## Tests
 
