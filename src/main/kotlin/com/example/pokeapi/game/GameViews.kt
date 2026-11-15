@@ -178,7 +178,14 @@ data class TraineeView(
 )
 
 @Serializable
-data class RouteSpecies(val number: Int, val seen: Boolean, val name: String? = null, val spriteUrl: String? = null)
+data class RouteSpecies(
+    val number: Int,
+    val seen: Boolean,
+    val name: String? = null,
+    val spriteUrl: String? = null,
+    /** Espèce rejointe (dans le Pokédex du joueur), pas seulement vue. */
+    val caught: Boolean = false,
+)
 
 @Serializable
 data class BattleView(

@@ -648,7 +648,8 @@ class ApplicationTest {
         assertEquals(10, v.steps[1].winsNeeded)
         // Route 1 simulée : seulement des Bulbizarre, déjà vus avec le starter
         assertEquals(1 to 1, v.steps[1].speciesSeen to v.steps[1].speciesTotal)
-        assertEquals(listOf(RouteSpecies(1, true, "Bulbizarre", v.team.single().spriteUrl)), v.steps[1].species)
+        // Bulbizarre (le starter) : vu et rejoint
+        assertEquals(listOf(RouteSpecies(1, true, "Bulbizarre", v.team.single().spriteUrl, caught = true)), v.steps[1].species)
 
         // Combats sur la Route 1 jusqu'à la franchir (retour au Centre Pokémon en cas de défaite)
         var battles = 0
@@ -708,6 +709,8 @@ class ApplicationTest {
         client.post("/game/travel") { contentType(ContentType.Application.Json); setBody("""{"step":1}""") }
         v = json.decodeFromString<GameView>(client.post("/game/explore").bodyAsText())
         assertEquals(true, v.steps[1].cleared)
+        // Bulbizarre vu, mais pas rejoint (starter Carapuce)
+        assertEquals(true to false, v.steps[1].species.single().let { it.seen to it.caught })
         assertTrue(v.unlockedStep > 1)
 
         // Partie d'avant la règle : une route franchie avec 3 victoires le reste

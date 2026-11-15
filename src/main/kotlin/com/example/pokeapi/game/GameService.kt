@@ -1768,13 +1768,13 @@ class GameService(
                 val info = pokemonRepository.summaries(species.sorted()).associateBy { it.id }
                 species.sorted().map { n ->
                     val p = info[n]
-                    if (s.hasSeen(n)) RouteSpecies(n, true, p?.nameFr ?: p?.name, p?.spriteUrl) else RouteSpecies(n, false)
+                    if (s.hasSeen(n)) RouteSpecies(n, true, p?.nameFr ?: p?.name, p?.spriteUrl, caught = n in s.caught) else RouteSpecies(n, false)
                 }
             }
             val rare = if (s.leagueIn(step.region).wins == 0 || step.city) emptyList() else {
                 val ids = rareSpecies(step.region).filterValues { it == i }.keys.sorted()
                 val info = pokemonRepository.summaries(ids).associateBy { it.id }
-                ids.map { n -> val p = info[n]; if (s.hasSeen(n)) RouteSpecies(n, true, p?.nameFr ?: p?.name, p?.spriteUrl) else RouteSpecies(n, false) }
+                ids.map { n -> val p = info[n]; if (s.hasSeen(n)) RouteSpecies(n, true, p?.nameFr ?: p?.name, p?.spriteUrl, caught = n in s.caught) else RouteSpecies(n, false) }
             }
             StepView(
                 region = step.region,
