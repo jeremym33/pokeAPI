@@ -1068,7 +1068,10 @@ class GameService(
         var effectiveness = 1.0
         for (i in 0 until hits) {
             val result = GameRules.attack(attacker, defender.copy(hp = hp), move, random, checkAccuracy = i == 0)
-            if (!result.hit) return attacker to defender.also { lines += "Mais l'attaque échoue." }
+            if (!result.hit) {
+                lines += "Mais l'attaque échoue."
+                return selfHarm(attacker, move, missed = true, who, lines) to defender
+            }
             effectiveness = result.effectiveness
             if (result.effectiveness == 0.0) break
             if (result.critical) lines += "Coup critique !"
@@ -1116,7 +1119,20 @@ class GameService(
         if (hp > 0 && dealt > 0 && ailment != null && move.ailmentChance > 0 &&
             GameRules.canReceive(damaged, ailment) && random.nextInt(100) < move.ailmentChance
         ) damaged = inflict(damaged, ailment, target, lines)
-        return user to damaged
+        // Destruction, Métalaser, Pied Voltige sur une cible immunisée…
+        return selfHarm(user, move, missed = landed == 0, who, lines) to damaged
+    }
+
+    /** PV perdus par le lanceur à cause de sa propre attaque (Destruction : K.O. ; Métalaser, Pied Voltige raté : moitié). */
+    private fun selfHarm(user: Fighter, move: FighterMove, missed: Boolean, who: String, lines: MutableList<String>): Fighter {
+        val loss = GameRules.selfDamage(user, move, missed)
+        if (loss <= 0) return user
+        lines += when {
+            move.name in GameRules.SELF_KO_MOVES -> "$who donne toutes ses forces dans l'attaque !"
+            move.name in GameRules.CRASH_MOVES -> "$who s'écrase au sol ! (-$loss PV)"
+            else -> "$who s'épuise en lançant l'attaque ! (-$loss PV)"
+        }
+        return user.copy(hp = user.hp - loss)
     }
 
     private fun inflict(f: Fighter, status: String, who: String, lines: MutableList<String>): Fighter {

@@ -1203,6 +1203,60 @@ class ApplicationTest {
     }
 
     @Test
+    fun `aventure - attaques qui blessent le lanceur`() = appTest {
+        suspend fun game(response: HttpResponse): GameView {
+            assertTrue(response.status.isSuccess(), response.bodyAsText())
+            return json.decodeFromString<GameView>(response.bodyAsText())
+        }
+        suspend fun post(path: String, body: String? = null) = client.post("/game$path") {
+            if (body != null) { contentType(ContentType.Application.Json); setBody(body) }
+        }
+        game(post("/new", """{"starter":"bulbasaur"}"""))
+        game(post("/travel", """{"step":1}"""))
+        /** Bulbizarre niveau 50 avec une seule attaque, et un second Pokémon pour continuer après un K.O. */
+        suspend fun withMove(move: String) = editSave { save ->
+            val first = save["team"]!!.jsonArray[0].jsonObject
+            val user = JsonObject(first + mapOf(
+                "level" to JsonPrimitive(50), "xp" to JsonPrimitive(125000), "hp" to JsonPrimitive(999), "stages" to JsonObject(emptyMap()),
+                "moves" to json.parseToJsonElement("[$move]"), "knownMoves" to JsonArray(emptyList()),
+            ))
+            JsonObject(save + mapOf("battle" to JsonNull, "team" to JsonArray(listOf(user, JsonObject(first + ("uid" to JsonPrimitive("p2")))))))
+        }
+        /** Premier tour du combat : PV du lanceur avant et après, et journal. */
+        suspend fun firstTurn(): Triple<Int, GameView, Int> {
+            var v = game(post("/explore"))
+            val before = v.team.first().hp
+            v = game(post("/battle/attack", """{"move":0}"""))
+            return Triple(before, v, v.team.first().maxHp)
+        }
+
+        // Explosion : la cible est K.O., le lanceur aussi
+        withMove("""{"name":"explosion","nameFr":"Explosion","type":"normal","damageClass":"physical","power":250,"accuracy":100}""")
+        var (before, v, max) = firstTurn()
+        assertTrue(before > 0)
+        assertEquals(0, v.team.first().hp, v.battle!!.log.toString())
+        assertTrue(v.battle!!.log.any { "donne toutes ses forces" in it }, v.battle!!.log.toString())
+        assertEquals(BattleOutcome.WON, v.battle!!.outcome) // le Bulbizarre sauvage est K.O. aussi
+
+        // Damoclès : contrecoup d'un tiers des dégâts infligés
+        withMove("""{"name":"double-edge","nameFr":"Damoclès","type":"normal","damageClass":"physical","power":120,"accuracy":null,"drain":-33}""")
+        val recoil = firstTurn()
+        val dealt = recoil.second.battle!!.log.firstNotNullOf { Regex("perd (\\d+) PV\\.").find(it)?.groupValues?.get(1)?.toInt() }
+        assertTrue(recoil.second.battle!!.log.any { "contrecoup ! (-${maxOf(1, dealt * 33 / 100)} PV)" in it }, recoil.second.battle!!.log.toString())
+
+        // Pied Voltige raté (précision 1 %) : le lanceur perd la moitié de ses PV max
+        var crashed = false
+        repeat(20) {
+            if (crashed) return@repeat
+            withMove("""{"name":"high-jump-kick","nameFr":"Pied Voltige","type":"fighting","damageClass":"physical","power":130,"accuracy":1}""")
+            val (b, view, m) = firstTurn()
+            val log = view.battle!!.log
+            if (log.any { "s'écrase au sol ! (-${minOf(b, (m + 1) / 2)} PV)" in it }) crashed = true
+        }
+        assertTrue(crashed, "Pied Voltige raté doit blesser le lanceur")
+    }
+
+    @Test
     fun `aventure - pas d'evolution hors de Kanto`() = appTest {
         suspend fun game(response: HttpResponse): GameView {
             assertTrue(response.status.isSuccess(), response.bodyAsText())

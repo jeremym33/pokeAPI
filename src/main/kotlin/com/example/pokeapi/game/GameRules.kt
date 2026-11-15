@@ -511,7 +511,30 @@ object GameRules {
             }
             return if (useful) 35.0 * accuracy else 0.0
         }
-        return m.power * averageHits(m) * (if (m.type in attacker.types) 1.5 else 1.0) * (defender.defenses[m.type] ?: 1.0) * accuracy
+        val score = m.power * averageHits(m) * (if (m.type in attacker.types) 1.5 else 1.0) * (defender.defenses[m.type] ?: 1.0) * accuracy
+        // Destruction, Explosion : en dernier recours seulement (moins d'un quart des PV)
+        if (m.name in SELF_KO_MOVES) return if (attacker.hp * 4 < attacker.maxHp) score else 1.0
+        return score
+    }
+
+    /** Attaques qui mettent le lanceur K.O., même si elles ratent : Destruction, Explosion, Explo-Brume. */
+    val SELF_KO_MOVES = setOf("self-destruct", "explosion", "misty-explosion")
+
+    /** Attaques qui coûtent la moitié des PV max du lanceur, touchées ou non : Métalaser, Caboche-Kaboum, Herblast. */
+    val HALF_HP_COST_MOVES = setOf("steel-beam", "mind-blown", "chloroblast")
+
+    /** Attaques qui blessent le lanceur s'il rate (ou si la cible est immunisée) : la moitié de ses PV max. */
+    val CRASH_MOVES = setOf("jump-kick", "high-jump-kick", "axe-kick", "supercell-slam")
+
+    /**
+     * PV que le lanceur perd par sa propre attaque, hors contrecoup proportionnel aux dégâts (géré par `drain`) :
+     * tous ses PV (Destruction…), la moitié de ses PV max (Métalaser ; Pied Voltige s'il rate), sinon 0.
+     */
+    fun selfDamage(user: Fighter, move: FighterMove, missed: Boolean): Int = when {
+        move.name in SELF_KO_MOVES -> user.hp
+        move.name in HALF_HP_COST_MOVES -> min(user.hp, (user.maxHp + 1) / 2)
+        move.name in CRASH_MOVES && missed -> min(user.hp, (user.maxHp + 1) / 2)
+        else -> 0
     }
 
     /** Attaque choisie par l'adversaire : la plus intéressante, avec un peu de hasard. */

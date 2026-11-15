@@ -75,6 +75,10 @@ jour avec chaque route ou champ ajouté.
   région d'origine (`origin`) : seuls ceux de la région en cours combattent, plus **un compagnon** choisi au passage
   de région. Une pension par région, accessible de partout (sauf défi de Ligue) ; zones d'entraînement limitées aux
   Pokémon de leur région. Pas d'évolution vers une espèce d'une région non débloquée.
+- **Attaques qui blessent le lanceur** : contrecoup proportionnel aux dégâts via `drain` < 0 (données PokéAPI) ;
+  les autres effets ne sont pas dans les données et sont listés dans `GameRules` : `SELF_KO_MOVES` (Destruction,
+  Explosion : K.O.), `HALF_HP_COST_MOVES` (Métalaser), `CRASH_MOVES` (Pied Voltige raté). Mêmes listes dans
+  `pokeApp/src/components/game/move-effects.ts` pour l'affichage.
 - **Pension** : 2 Pokémon compatibles (groupe d'œufs ou Métamorph) → un œuf toutes les 5 min ; l'espèce de l'œuf est
   fixée à son apparition (`eggSpecies`).
 

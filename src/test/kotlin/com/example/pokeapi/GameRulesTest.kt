@@ -322,4 +322,19 @@ class GameRulesTest {
         assertEquals(43, u.battle!!.step)
         assertEquals(u, upgradeSave(u))
     }
+
+    @Test
+    fun `degats au lanceur - Destruction, Metalaser, Pied Voltige rate`() {
+        val user = fighter(50).let { it.copy(hp = GameRules.stats(it).hp) }
+        val max = user.maxHp
+        fun move(name: String, power: Int = 100) = FighterMove(name, null, "normal", "physical", power, 100)
+        assertEquals(user.hp, GameRules.selfDamage(user, move("self-destruct", 200), missed = false))
+        assertEquals(user.hp, GameRules.selfDamage(user, move("explosion", 250), missed = true)) // même ratée
+        assertEquals((max + 1) / 2, GameRules.selfDamage(user, move("steel-beam", 140), missed = false))
+        assertEquals((max + 1) / 2, GameRules.selfDamage(user, move("high-jump-kick", 130), missed = true))
+        assertEquals(0, GameRules.selfDamage(user, move("high-jump-kick", 130), missed = false)) // touchée : rien
+        assertEquals(0, GameRules.selfDamage(user, move("tackle", 40), missed = false))
+        // Jamais plus que les PV restants
+        assertEquals(3, GameRules.selfDamage(user.copy(hp = 3), move("steel-beam", 140), missed = false))
+    }
 }
