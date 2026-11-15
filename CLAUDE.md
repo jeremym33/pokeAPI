@@ -92,6 +92,9 @@ jour avec chaque route ou champ ajouté.
 - **Combat** : l'IA des adversaires est `GameRules.chooseMove` / `moveScore` (meilleure attaque utile, 1 fois sur 5
   au hasard parmi les utiles). Destruction et Explosion seulement sous 25 % des PV.
 
+Guide joueur : `docs/obtenir-les-pokemon.md` (façons d'obtenir les Pokémon, Pokémon rares, limites). À tenir à jour
+avec les règles d'obtention (rencontres, évolutions, œufs, rares).
+
 ## Tests
 
 - Toute fonctionnalité du jeu a un test dans `ApplicationTest` (données PokéAPI simulées par `MockEngine`, état de

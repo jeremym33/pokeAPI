@@ -60,6 +60,11 @@ docker compose up --build
 
 Si l'application est lancée avec `./gradlew run`, vérifier qu'elle pointe bien sur le PostgreSQL du compose (`localhost:5433`) et non sur un PostgreSQL local.
 
+## Jeu d'aventure : obtenir les Pokémon
+
+Les règles pour obtenir chaque Pokémon (rencontres, coup de pouce, évolutions, œufs, Pokémon rares, chromatiques) et
+les limites actuelles sont résumées dans [docs/obtenir-les-pokemon.md](docs/obtenir-les-pokemon.md).
+
 ## Déploiement sur Raspberry Pi
 
 Base, API, application web et Caddy (HTTPS automatique) sur un Raspberry Pi 64 bits, avec un script d'installation,
