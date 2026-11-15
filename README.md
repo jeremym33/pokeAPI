@@ -63,7 +63,7 @@ Si l'application est lancée avec `./gradlew run`, vérifier qu'elle pointe bien
 ## Jeu d'aventure : obtenir les Pokémon
 
 Les règles pour obtenir chaque Pokémon (rencontres, coup de pouce, évolutions, œufs, Pokémon rares, chromatiques) et
-les limites actuelles sont résumées dans [docs/obtenir-les-pokemon.md](docs/obtenir-les-pokemon.md).
+les simplifications par rapport aux jeux sont résumées dans [docs/obtenir-les-pokemon.md](docs/obtenir-les-pokemon.md).
 
 ## Déploiement sur Raspberry Pi
 

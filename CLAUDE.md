@@ -93,7 +93,7 @@ jour avec chaque route ou champ ajouté.
   Souvenir, Vœu Soin / Danse Lune (`wish` : remplaçant soigné), Tout ou Rien. Ces états de combat disparaissent avec
   `leftBattle()`. Les adversaires les utilisent quand elles servent (`GameRules.specialScore`, dans `moveScore`).
 - **Pension** : 2 Pokémon compatibles (groupe d'œufs ou Métamorph) → un œuf toutes les 5 min ; l'espèce de l'œuf est
-  fixée à son apparition (`eggSpecies`).
+  fixée à son apparition (`eggSpecies`) ; le bébé éclot avec `HAPPINESS_HATCHED` (10) points de bonheur.
 - **Combat** : l'IA des adversaires est `GameRules.chooseMove` / `moveScore` (meilleure attaque utile, 1 fois sur 5
   au hasard parmi les utiles). Destruction et Explosion seulement sous 25 % des PV.
 
