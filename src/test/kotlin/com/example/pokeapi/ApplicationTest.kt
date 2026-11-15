@@ -1055,7 +1055,7 @@ class ApplicationTest {
     }
 
     @Test
-    fun `aventure - coup de pouce invisible tous les 10 combats, parfois chromatique`() = appTest {
+    fun `aventure - coup de pouce invisible, garanti au 15e combat, parfois chromatique`() = appTest {
         suspend fun game(response: HttpResponse): GameView {
             assertTrue(response.status.isSuccess(), response.bodyAsText())
             return json.decodeFromString<GameView>(response.bodyAsText())
@@ -1065,8 +1065,8 @@ class ApplicationTest {
         }
         game(post("/new", """{"starter":"squirtle"}"""))
         game(post("/travel", """{"step":1}"""))
-        // 10e combat sur la Route 1 : Bulbizarre (jamais vu) garanti, sans aucune annonce
-        editSave { save -> JsonObject(save + ("boostCounters" to json.parseToJsonElement("""{"1": 9}"""))) }
+        // 15e combat sur la Route 1 : coup de pouce garanti, Bulbizarre (jamais vu), sans aucune annonce
+        editSave { save -> JsonObject(save + ("boostCounters" to json.parseToJsonElement("""{"1": 14}"""))) }
         var v = game(post("/explore"))
         assertEquals("Bulbizarre", v.battle!!.enemy.name)
         assertTrue(v.battle!!.log.none { "pouce" in it }, v.battle!!.log.toString())
@@ -1076,7 +1076,7 @@ class ApplicationTest {
         var shiny = 0
         var boosts = 0
         repeat(80) {
-            editSave { save -> JsonObject(save + ("boostCounters" to json.parseToJsonElement("""{"1": 9}"""))) }
+            editSave { save -> JsonObject(save + ("boostCounters" to json.parseToJsonElement("""{"1": 14}"""))) }
             v = game(post("/explore"))
             val counters = transaction(database) { GameSaveTable.selectAll().where { GameSaveTable.id eq 1 }.single()[GameSaveTable.data] }
                 .let { Json.parseToJsonElement(it).jsonObject["boostCounters"].toString() }
@@ -1144,6 +1144,7 @@ class ApplicationTest {
         assertTrue(v.battle!!.log.any { it == "Quoi ? Bulbizarre évolue en Herbizarre !" }, v.battle!!.log.toString())
         val evolved = v.team.single()
         assertEquals(2, evolved.speciesId)
+        assertEquals(1, evolved.happiness) // bonheur : +1 par adversaire vaincu en ayant combattu
         assertTrue(evolved.shiny)
         assertTrue(evolved.spriteUrl!!.contains("/shiny/"), evolved.spriteUrl)
         // Le Motisdex compte Herbizarre chromatique comme obtenu
@@ -1672,7 +1673,7 @@ class ApplicationTest {
         // Ils n'apparaissent que par le coup de pouce
         game(post("/travel", """{"step":1}"""))
         repeat(10) {
-            editSave { save -> JsonObject(save + ("boostCounters" to json.parseToJsonElement("""{"1": 9}"""))) }
+            editSave { save -> JsonObject(save + ("boostCounters" to json.parseToJsonElement("""{"1": 14}"""))) }
             v = game(post("/explore"))
             assertTrue(v.battle!!.enemy.speciesId in rare, v.battle!!.enemy.name)
             assertTrue(v.battle!!.enemy.level >= 50)

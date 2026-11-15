@@ -91,6 +91,8 @@ data class Fighter(
     val substituteHp: Int = 0,
     /** K.O. par Vœu Soin : le Pokémon qui le remplace est entièrement soigné. */
     val wish: Boolean = false,
+    /** Bonheur : +1 par adversaire vaincu en ayant combattu ; au seuil, les évolutions « bonheur élevé » se font. */
+    val happiness: Int = 0,
 ) {
     val displayName: String get() = nameFr ?: name.replaceFirstChar(Char::uppercase)
     val maxHp: Int get() = GameRules.stats(this).hp
@@ -225,7 +227,7 @@ data class GameState(
     val routeRules: Int = 0,
     /** Pokémon à l'entraînement, par étape (un au plus par lieu). */
     val training: Map<Int, Trainee> = emptyMap(),
-    /** Combats sauvages par étape depuis le dernier coup de pouce (il revient à [GameRules.BOOST_EVERY]). */
+    /** Combats sauvages par étape depuis le dernier coup de pouce (voir [GameRules.boostChance]). */
     val boostCounters: Map<Int, Int> = emptyMap(),
     /** Espèces dont la version chromatique a été vue en combat / a rejoint l'équipe (Motisdex). */
     val shinySeen: Set<Int> = emptySet(),

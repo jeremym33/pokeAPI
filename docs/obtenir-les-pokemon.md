@@ -4,8 +4,8 @@ Résumé des façons d'obtenir (« rejoindre ») un Pokémon dans l'aventure, ti
 `game/GameService.kt`) et vérifiées sur les données PokéAPI (Vert Feuille et Cristal). Un Pokémon **rejoint** compte
 dans le Pokédex ; un Pokémon seulement **vu** (rencontré) non.
 
-**Bilan : 243 des 251 Pokémon sont obtenables** (tout Kanto ; 8 espèces de Johto manquent, voir « Limites
-actuelles »).
+**Bilan : les 251 Pokémon sont obtenables** (vérifié sur les données : Kanto par les rencontres, les évolutions et
+les Pokémon rares ; Johto de même, plus le bonheur, la Pierre Soleil et les œufs).
 
 ## Vue d'ensemble
 
@@ -41,20 +41,35 @@ actuelles »).
 
 ## 2. Le coup de pouce (invisible)
 
-Tous les **10 combats sur un même lieu**, la rencontre suivante est :
+Sur chaque lieu, le coup de pouce arrive **au hasard entre le 5e et le 15e combat** depuis le précédent : jamais
+avant le 5e, de plus en plus probable ensuite, garanti au 15e (environ tous les 10 combats en moyenne). Rien ne
+l'annonce. La rencontre se fait alors avec :
 
-- une espèce du lieu **pas encore vue**, s'il en reste ;
-- après la victoire contre le Maître de la Ligue de la région, parfois un **Pokémon rare** du lieu (voir 6).
+1. une espèce du lieu **pas encore vue**, s'il en reste ;
+2. sinon une espèce du lieu **vue mais pas encore rejointe** ;
+3. après la victoire contre le Maître de la Ligue de la région, parfois (une fois sur deux s'il reste des espèces à
+   voir ou à rejoindre, toujours sinon) un **Pokémon rare** du lieu (voir 6).
 
-Le Pokémon du coup de pouce a **10 %** de chances d'être chromatique (contre 1 sur 4 096 normalement).
+Chaque espèce visée a la même chance d'être choisie, même celles qu'on croise rarement sur le lieu. Le Pokémon du
+coup de pouce a **10 %** de chances d'être chromatique (contre 1 sur 4 096 normalement).
 
 ## 3. Évolutions
 
 - **Par niveau** : à la fin d'un combat (gagné ou perdu), les Pokémon de l'équipe qui ont le niveau requis évoluent.
   Un Pokémon à l'entraînement sur un lieu évolue aussi en gagnant des niveaux.
-- **Par objet** (page Sac) : Pierre Feu, Eau, Foudre, Plante et Lune ; le **Câble Link** remplace les évolutions par
-  échange, y compris avec un objet tenu (Tarpaud, Roigada, Steelix, Cizayox, Hyporoi, Porygon2…). Les objets
-  s'obtiennent **uniquement en réussissant des succès**.
+- **Par le bonheur** : chaque Pokémon gagne **1 point de bonheur par adversaire vaincu** en ayant combattu (20 au
+  maximum, visible dans la fiche du Pokémon, page Équipe ; un bébé éclos part de 10). Au maximum, à la fin d'un
+  combat, il évolue s'il évolue par le bonheur : Nosferalto → Nostenfer, Togepi → Togetic, Leveinard → Leuphorie,
+  Pichu → Pikachu, Mélo → Mélofée, Toudoudou → Rondoudou ; Évoli → **Mentali de jour** (6 h à 18 h, heure du
+  serveur) ou **Noctali de nuit**. Attention : un Évoli au bonheur maximum évolue ainsi, utilisez avant une pierre si
+  vous voulez Aquali, Voltali ou Pyroli.
+- **Selon les statistiques** : Debugant au niveau 20 devient Kicklee (Attaque > Défense), Tygnon (Attaque < Défense)
+  ou **Kapoera** (Attaque = Défense, le cas de Debugant dans ce jeu, où les statistiques ne dépendent que de
+  l'espèce et du niveau).
+- **Par objet** (page Sac) : Pierre Feu, Eau, Foudre, Plante, Lune et **Soleil** (Joliflor, Héliatronc) ; le **Câble
+  Link** remplace les évolutions par échange, y compris avec un objet tenu (Tarpaud, Roigada, Steelix, Cizayox,
+  Hyporoi, Porygon2…). Les objets s'obtiennent **uniquement en réussissant des succès** ; la Pierre Soleil, avec les
+  succès de Johto (10 puis 40 espèces de Johto rejointes).
 - **Région** : un Pokémon n'évolue jamais vers une espèce d'une région pas encore ouverte (avant Johto, pas de
   Nostenfer, Joliflor, Tarpaud…).
 - Un chromatique reste chromatique en évoluant.
@@ -70,7 +85,7 @@ Le Pokémon du coup de pouce a **10 %** de chances d'être chromatique (contre 1
   apparaît. Une fois Johto ouvert, l'œuf d'un Pikachu donne un Pichu, celui d'un Élektek un Élekid, etc. : c'est le
   moyen d'obtenir les **bébés** avant la Ligue de Johto.
 - **Éclosion** : après un nombre de combats tiré du cycle d'éclosion de l'espèce (5 à 40 combats). Le bébé est
-  niveau 1, né dans la région de la pension, avec 1 chance sur 4 096 d'être chromatique.
+  niveau 1, né dans la région de la pension, avec 10 points de bonheur et 1 chance sur 4 096 d'être chromatique.
 
 ## 5. Ouverture de Johto
 
@@ -111,20 +126,9 @@ le coup de pouce** seulement. Le parcours affiche « ★ N rares » sur les lieu
 - 1 chance sur 4 096 par rencontre, **10 %** pour le Pokémon du coup de pouce, 1 sur 4 096 à l'éclosion.
 - Un chromatique rejoint compte dans le Motisdex (chromatiques vus / obtenus) ; il reste chromatique en évoluant.
 
-## Limites actuelles
+## Limites
 
-Les **151 Pokémon de Kanto** sont tous obtenables. À Johto, **8 espèces ne le sont pas encore**, car leur évolution
-n'est pas gérée par le jeu :
-
-| Pokémon | Évolue de | Condition (non gérée) |
-|---|---|---|
-| Nostenfer | Nosferalto | Bonheur élevé |
-| Togetic | Togepi | Bonheur élevé |
-| Leuphorie | Leveinard | Bonheur élevé |
-| Mentali | Évoli | Bonheur élevé, de jour |
-| Noctali | Évoli | Bonheur élevé, de nuit |
-| Joliflor | Ortide | Pierre Soleil (absente du jeu) |
-| Héliatronc | Tournegrin | Pierre Soleil (absente du jeu) |
-| Kapoera | Debugant | Niveau 20, Attaque égale à la Défense |
-
-Le Pokédex de Johto (251) ne peut donc pas encore être complété.
+Aucune espèce n'est impossible à obtenir. Les conditions d'évolution des jeux qui n'ont pas d'équivalent ici sont
+simplifiées : le bonheur se gagne en combattant (pas de soins, de promenades ni de baies), « de jour / de nuit »
+suit l'heure du serveur, et les statistiques ne dépendent que de l'espèce et du niveau (pas de variations
+individuelles), d'où Kapoera pour tout Debugant.

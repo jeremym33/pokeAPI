@@ -170,10 +170,63 @@ object GameRules {
     const val ROUTE_WINS = 10
 
     /**
-     * Coup de pouce (invisible, toujours actif) : tous les 10 combats sur une route, la rencontre se fait avec une
-     * espèce pas encore vue s'il en reste, et le Pokémon a une chance d'être chromatique.
+     * Coup de pouce (invisible, toujours actif) : sur un lieu, il arrive au hasard entre le [BOOST_MIN]e et le
+     * [BOOST_MAX]e combat depuis le précédent (jamais avant, de plus en plus probable, garanti au [BOOST_MAX]e) :
+     * environ tous les 10 combats. La rencontre se fait alors avec une espèce du lieu pas encore vue, sinon une
+     * espèce vue mais pas encore rejointe (ou, après la Ligue, un Pokémon rare), avec une chance d'être chromatique.
      */
-    const val BOOST_EVERY = 10
+    const val BOOST_MIN = 5
+    const val BOOST_MAX = 15
+
+    /**
+     * Chance que le coup de pouce arrive au [count]e combat depuis le précédent : 0 avant [BOOST_MIN], puis de plus
+     * en plus forte (au carré, pour une moyenne d'environ 10 combats), 1 à [BOOST_MAX].
+     */
+    fun boostChance(count: Int): Double = when {
+        count < BOOST_MIN -> 0.0
+        count >= BOOST_MAX -> 1.0
+        else -> ((count - BOOST_MIN + 1).toDouble() / (BOOST_MAX - BOOST_MIN + 1)).let { it * it }
+    }
+
+    /**
+     * Bonheur nécessaire aux évolutions « avec un bonheur élevé » (Nosferalto → Nostenfer, Évoli → Mentali / Noctali,
+     * Togepi → Togetic, Leveinard → Leuphorie…) : adversaires vaincus en ayant combattu. Un bébé éclos part de
+     * [HAPPINESS_HATCHED].
+     */
+    const val HAPPINESS_EVOLUTION = 20
+    const val HAPPINESS_HATCHED = 10
+
+    /** « De jour » : de 6 h à 18 h (heure du serveur) ; « de nuit » sinon. */
+    fun isDay(hour: Int): Boolean = hour in 6..17
+
+    private val LEVEL_CONDITION = Regex("^Niveau (\\d+)(?:, si Attaque ([<>=]) Défense)?$")
+    private val HAPPINESS_CONDITION = Regex("^Gagner un niveau, avec un bonheur élevé(?:, (de jour|de nuit))?$")
+
+    /**
+     * Condition d'évolution (texte en français) remplie au combat : niveau atteint (avec comparaison Attaque /
+     * Défense pour Debugant), ou bonheur au maximum (de jour ou de nuit selon l'heure). Les objets sont à part.
+     */
+    fun evolutionConditionMet(f: Fighter, condition: String, hour: Int): Boolean {
+        LEVEL_CONDITION.matchEntire(condition)?.let { m ->
+            if (f.level < m.groupValues[1].toInt()) return false
+            val s = stats(f)
+            return when (m.groupValues[2]) {
+                ">" -> s.attack > s.defense
+                "<" -> s.attack < s.defense
+                "=" -> s.attack == s.defense
+                else -> true
+            }
+        }
+        HAPPINESS_CONDITION.matchEntire(condition)?.let { m ->
+            if (f.happiness < HAPPINESS_EVOLUTION) return false
+            return when (m.groupValues[1]) {
+                "de jour" -> isDay(hour)
+                "de nuit" -> !isDay(hour)
+                else -> true
+            }
+        }
+        return false
+    }
 
     /** Chance qu'un Pokémon du coup de pouce soit chromatique (« shiny »). */
     const val BOOST_SHINY_CHANCE = 0.10
@@ -304,6 +357,7 @@ object GameRules {
         EvolutionItem("thunder-stone", "Pierre Foudre"),
         EvolutionItem("leaf-stone", "Pierre Plante"),
         EvolutionItem("moon-stone", "Pierre Lune"),
+        EvolutionItem("sun-stone", "Pierre Soleil"),
         EvolutionItem("link-cable", "Câble Link", trade = true),
     )
 

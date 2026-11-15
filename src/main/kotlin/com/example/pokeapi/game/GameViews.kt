@@ -27,6 +27,8 @@ data class FighterView(
     val stages: Map<String, Int> = emptyMap(),
     /** Confus (en combat). */
     val confused: Boolean = false,
+    /** Bonheur (0 à [GameRules.HAPPINESS_EVOLUTION]) : les évolutions « bonheur élevé » se font au maximum. */
+    val happiness: Int = 0,
     /** Protégé par un clone (Clonage). */
     val substitute: Boolean = false,
     /** Maudit (Malédiction). */

@@ -14,6 +14,8 @@ data class AchievementContext(
     val caughtByType: Map<String, Int>,
     /** Victoires contre le Maître de la Ligue. */
     val championWins: Int = 0,
+    /** Espèces de Johto (n° 152 à 251) rejointes. */
+    val johtoCaught: Int = 0,
 )
 
 /**
@@ -53,6 +55,7 @@ object Achievements {
     private const val LEAF = "leaf-stone"
     private const val MOON = "moon-stone"
     private const val LINK = "link-cable"
+    private const val SUN = "sun-stone"
 
     private fun victories(id: String, name: String, target: Int, vararg rewards: String) = Achievement(
         id, name, "Gagner $target combat${if (target > 1) "s" else ""}.", "Combats", target, rewards.toList(),
@@ -95,6 +98,9 @@ object Achievements {
         seen("seen-75", "Explorateur", 75, LEAF, MOON),
 
         Achievement("league", "Maître de la Ligue", "Battre le Conseil de la Ligue puis son Maître.", "Ligue", 1, listOf(LINK, MOON, LEAF)) { it.championWins },
+        // Pierre Soleil (Joliflor, Héliatronc) : avec les Pokémon de Johto
+        Achievement("johto-10", "Premiers pas à Johto", "Rejoindre 10 espèces de Johto.", "Johto", 10, listOf(SUN)) { it.johtoCaught },
+        Achievement("johto-40", "Explorateur de Johto", "Rejoindre 40 espèces de Johto.", "Johto", 40, listOf(SUN, LINK)) { it.johtoCaught },
 
         types("type-fire", "Dresseur Feu", "Feu", setOf("fire"), 2, FIRE),
         types("type-water", "Dresseur Eau", "Eau", setOf("water"), 3, WATER),

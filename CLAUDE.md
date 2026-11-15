@@ -70,8 +70,13 @@ jour avec chaque route ou champ ajouté.
   suite. Kanto : niv. 52 à 65 ; Johto : niv. 78 à 100. Légendaires exclus des équipes.
 - **Pokémon rares** : après le Maître d'une région, les espèces introuvables de cette région apparaissent par le
   coup de pouce ; légendaires à lieu fixe (`RARE_HOMES`). Mewtwo seul dans la Grotte Azurée.
-- **Coup de pouce** invisible : tous les 10 combats sur un lieu, une espèce pas encore vue (ou rare), 10 % de
-  chromatique (sinon 1/4096).
+- **Coup de pouce** invisible : au hasard entre le 5e et le 15e combat sur un lieu (`GameRules.boostChance`,
+  moyenne ≈ 10) ; vise une espèce pas encore vue, sinon vue mais pas rejointe (chaque espèce visée à chance égale),
+  ou un Pokémon rare après la Ligue ; 10 % de chromatique (sinon 1/4096).
+- **Évolutions** : `GameRules.evolutionConditionMet` (niveau, Attaque/Défense, bonheur de jour ou de nuit) à la fin
+  des combats ; objets (`GameRules.ITEMS`, dont Pierre Soleil gagnée par les succès de Johto). Bonheur
+  (`Fighter.happiness`) : +1 par adversaire vaincu en ayant combattu, maximum `HAPPINESS_EVOLUTION` (20). Les 251
+  Pokémon sont obtenables : garder `docs/obtenir-les-pokemon.md` à jour si une règle change.
 - **Chromatiques** (`shiny`) : gardés à l'évolution (toutes les évolutions passent par `evolve`) ; `shinySeen` /
   `shinyCaught` pour le Motisdex. Réglage `recruitOnlyNew` : un chromatique reste proposé tant que ce chromatique
   n'est pas obtenu, même si l'espèce l'est.

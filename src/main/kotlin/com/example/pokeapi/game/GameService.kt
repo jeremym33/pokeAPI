@@ -49,7 +49,6 @@ private const val ROUTE_RULES = 1
 private const val GAME_MOVES_VERSION = 4
 
 private val TACKLE = FighterMove("tackle", "Charge", "normal", "physical", 40, 100)
-private val LEVEL_EVOLUTION = Regex("^Niveau (\\d+)$")
 
 /**
  * Jeu d'aventure : progression dans Kanto, combats, recrutement des Pokémon vaincus, arènes et badges.
@@ -270,6 +269,7 @@ class GameService(
             victories = victoryCount(s), badges = s.badges.size, caught = caught.size,
             seen = (s.seen + s.caught).count { it <= s.dexMax() }, caughtByType = byType,
             championWins = s.leagues.values.sumOf { it.wins },
+            johtoCaught = s.caught.count { it in (GameRules.DEX_SIZE + 1)..GameRules.REGION_DEX.getValue(JOHTO) },
         )
     }
 
@@ -477,7 +477,7 @@ class GameService(
         var state = s.copy(eggs = s.eggs.map { it.copy(fightsLeft = it.fightsLeft - 1) })
         state.eggs.filter { it.fightsLeft <= 0 }.forEach { egg ->
             val baby = buildFighter(egg.speciesId.toString(), 1, egg.uid.replace("egg", "p"))
-                .copy(shiny = random.nextDouble() < GameRules.SHINY_CHANCE, origin = egg.origin ?: state.region())
+                .copy(shiny = random.nextDouble() < GameRules.SHINY_CHANCE, origin = egg.origin ?: state.region(), happiness = GameRules.HAPPINESS_HATCHED)
             log += "Oh ? L'œuf éclot ! C'est un ${baby.displayName}${if (baby.shiny) " chromatique ✨" else ""} !"
             state = state.copy(
                 eggs = state.eggs.filter { it.uid != egg.uid },
@@ -654,20 +654,29 @@ class GameService(
         val active = s.firstFighter()
         val pool = pool(s.stepIndex, s.badges.size)
         if (pool.isEmpty()) throw BadRequestException("Aucun Pokémon sauvage ici")
-        // Coup de pouce invisible : tous les 10 combats sur la route, la rencontre se fait avec une espèce pas
-        // encore vue s'il en reste, et le Pokémon a une chance d'être chromatique. Rien ne l'annonce au joueur.
-        val unseen = pool.filter { !s.hasSeen(it.pokemonId) && it.pokemonId in routeSpecies(s.stepIndex) }
+        // Coup de pouce invisible, au hasard entre le 5e et le 15e combat sur le lieu (GameRules.boostChance) : une
+        // espèce pas encore vue s'il en reste, sinon une espèce vue mais pas encore rejointe, avec une chance d'être
+        // chromatique. Rien ne l'annonce au joueur.
+        val species = routeSpecies(s.stepIndex)
+        val unseen = pool.filter { !s.hasSeen(it.pokemonId) && it.pokemonId in species }
+        val uncaught = pool.filter { s.hasSeen(it.pokemonId) && it.pokemonId !in s.caught && it.pokemonId in species }
         val count = (s.boostCounters[s.stepIndex] ?: 0) + 1
-        val boost = count >= GameRules.BOOST_EVERY
+        val boost = random.nextDouble() < GameRules.boostChance(count)
         val counters = s.boostCounters + (s.stepIndex to if (boost) 0 else count)
-        // Après la victoire contre le Maître, le coup de pouce peut aussi amener un Pokémon rare du lieu
+        // Après la victoire contre le Maître, le coup de pouce peut aussi amener un Pokémon rare du lieu (une fois
+        // sur deux quand il reste des espèces à voir ou à rejoindre)
         val rare = if (s.leagueIn(s.region()).wins > 0) rareSpecies(s.region()).filterValues { it == s.stepIndex }.keys.toList() else emptyList()
-        val rarePick = boost && rare.isNotEmpty() && (unseen.isEmpty() || random.nextBoolean())
+        val targets = unseen.ifEmpty { uncaught }
+        val rarePick = boost && rare.isNotEmpty() && (targets.isEmpty() || random.nextBoolean())
         val entry = if (rarePick) {
             val id = rare.random(random)
             val level = GameRules.rareLevel(pool.maxOf { it.maxLevel }, id)
             PoolEntry(id, emptyList(), "rare", level, level, 1)
-        } else weightedPick(if (boost && unseen.isNotEmpty()) unseen else pool)
+        } else if (boost && targets.isNotEmpty()) {
+            // Chaque espèce visée a la même chance, même celles qu'on croise rarement sur le lieu
+            val id = targets.map { it.pokemonId }.distinct().random(random)
+            weightedPick(targets.filter { it.pokemonId == id })
+        } else weightedPick(pool)
         val level = random.nextInt(entry.minLevel, entry.maxLevel + 1)
         // Chromatique : 1 chance sur 4 096 comme dans les jeux, 1 sur 10 pour le Pokémon du coup de pouce
         val shiny = random.nextDouble() < if (boost) GameRules.BOOST_SHINY_CHANCE else GameRules.SHINY_CHANCE
@@ -1289,8 +1298,10 @@ class GameService(
         val b = s.battle!!
         val cap = GameRules.levelCap(s.badges.size)
         val gain = GameRules.xpReward(enemy, b.kind == BattleKind.GYM)
-        val team = s.team.map { f ->
-            if (f.uid !in b.participants || f.fainted) return@map f
+        val team = s.team.map { f0 ->
+            if (f0.uid !in b.participants || f0.fainted) return@map f0
+            // Bonheur : +1 par adversaire vaincu en ayant combattu (évolutions « bonheur élevé »)
+            val f = f0.copy(happiness = minOf(GameRules.HAPPINESS_EVOLUTION, f0.happiness + 1))
             if (f.level >= cap) {
                 log += "${f.displayName} a atteint le niveau maximum ($cap) : obtenez un badge pour progresser."
                 return@map f
@@ -1434,6 +1445,7 @@ class GameService(
             moves = f.moves,
             shiny = f.shiny,
             origin = f.origin,
+            happiness = f.happiness,
             knownMoves = f.allMoves,
         )
     }
@@ -1492,7 +1504,8 @@ class GameService(
             nodes.firstNotNullOfOrNull { n -> if (n.pokemon?.id == f.pokemonId) n else find(n.evolvesTo) }
         val node = find(chain.roots) ?: return null
         return node.evolvesTo.firstOrNull { child ->
-            GameRules.inDex(child.pokemon?.id ?: child.speciesId, maxDex) && child.conditions.any { c -> LEVEL_EVOLUTION.matchEntire(c)?.groupValues?.get(1)?.toInt()?.let { it <= f.level } == true }
+            GameRules.inDex(child.pokemon?.id ?: child.speciesId, maxDex) &&
+                child.conditions.any { c -> GameRules.evolutionConditionMet(f, c, java.time.LocalTime.now().hour) }
         }?.let { it.pokemon?.id ?: it.speciesId }
     }
 
@@ -1888,6 +1901,7 @@ class GameService(
             status = status,
             stages = stages.filterValues { it != 0 },
             confused = confusedTurns > 0,
+            happiness = happiness,
             substitute = substituteHp > 0,
             cursed = cursed,
             shiny = shiny,

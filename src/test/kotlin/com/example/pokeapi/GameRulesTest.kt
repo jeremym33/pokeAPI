@@ -377,4 +377,53 @@ class GameRulesTest {
         val picks = (1..50).map { GameRules.chooseMove(drummer, foe, Random(it)).name }
         assertTrue(picks.count { it == "belly-drum" } > 30, picks.groupingBy { it }.eachCount().toString())
     }
+
+    @Test
+    fun `evolutions - niveau, Attaque et Defense, bonheur de jour ou de nuit`() {
+        val f = fighter(25)
+        assertTrue(GameRules.evolutionConditionMet(f, "Niveau 16", hour = 12))
+        assertTrue(!GameRules.evolutionConditionMet(f, "Niveau 32", hour = 12))
+        // Debugant (Attaque = Défense de base) : Kapoera ; stats comparées au niveau actuel
+        val tyrogue = f.copy(level = 20, base = mapOf("hp" to 35, "attack" to 35, "defense" to 35, "special-attack" to 35, "special-defense" to 35, "speed" to 35))
+        assertTrue(GameRules.evolutionConditionMet(tyrogue, "Niveau 20, si Attaque = Défense", hour = 12))
+        assertTrue(!GameRules.evolutionConditionMet(tyrogue, "Niveau 20, si Attaque > Défense", hour = 12))
+        assertTrue(!GameRules.evolutionConditionMet(tyrogue.copy(level = 19), "Niveau 20, si Attaque = Défense", hour = 12))
+        // Bonheur : au seuil seulement ; de jour (6 h à 18 h) ou de nuit
+        val happy = f.copy(happiness = GameRules.HAPPINESS_EVOLUTION)
+        assertTrue(GameRules.evolutionConditionMet(happy, "Gagner un niveau, avec un bonheur élevé", hour = 3))
+        assertTrue(!GameRules.evolutionConditionMet(f.copy(happiness = GameRules.HAPPINESS_EVOLUTION - 1), "Gagner un niveau, avec un bonheur élevé", hour = 3))
+        assertTrue(GameRules.evolutionConditionMet(happy, "Gagner un niveau, avec un bonheur élevé, de jour", hour = 12))
+        assertTrue(!GameRules.evolutionConditionMet(happy, "Gagner un niveau, avec un bonheur élevé, de jour", hour = 22))
+        assertTrue(GameRules.evolutionConditionMet(happy, "Gagner un niveau, avec un bonheur élevé, de nuit", hour = 22))
+        assertTrue(!GameRules.evolutionConditionMet(happy, "Gagner un niveau, avec un bonheur élevé, de nuit", hour = 12))
+        // Conditions non gérées au combat (objets, échange…) : jamais
+        assertTrue(!GameRules.evolutionConditionMet(happy, "Utiliser Pierre Soleil", hour = 12))
+    }
+
+    @Test
+    fun `coup de pouce - au hasard entre le 5e et le 15e combat`() {
+        assertEquals(0.0, GameRules.boostChance(1))
+        assertEquals(0.0, GameRules.boostChance(4))
+        assertTrue(GameRules.boostChance(5) > 0.0)
+        assertTrue((5 until 15).all { GameRules.boostChance(it) < GameRules.boostChance(it + 1) })
+        assertEquals(1.0, GameRules.boostChance(15))
+        assertEquals(1.0, GameRules.boostChance(40)) // anciens compteurs
+        // En moyenne, environ tous les 10 combats (simulation)
+        val random = Random(42)
+        val waits = (1..2000).map { var n = 1; while (random.nextDouble() >= GameRules.boostChance(n)) n++; n }
+        assertTrue(waits.all { it in 5..15 })
+        assertTrue(waits.average() in 8.0..11.0, "moyenne ${waits.average()}")
+        assertTrue(waits.toSet().size >= 8, "intervalles variés : ${waits.toSet()}")
+    }
+
+    @Test
+    fun `Pierre Soleil - succes de Johto`() {
+        fun ctx(johto: Int) = AchievementContext(victories = 0, badges = 0, caught = 0, seen = 0, caughtByType = emptyMap(), johtoCaught = johto)
+        assertEquals(emptyList(), Achievements.newlyCompleted(ctx(9), emptySet()).map { it.id })
+        val ten = Achievements.newlyCompleted(ctx(10), emptySet())
+        assertEquals(listOf("johto-10"), ten.map { it.id })
+        assertEquals(listOf("Pierre Soleil"), Achievements.rewardNames(ten.single()))
+        assertTrue(Achievements.newlyCompleted(ctx(40), setOf("johto-10")).single().rewards.contains("sun-stone"))
+        assertTrue(GameRules.ITEMS.any { it.item == "sun-stone" && it.matches("Utiliser Pierre Soleil") })
+    }
 }
