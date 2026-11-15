@@ -1117,6 +1117,39 @@ class ApplicationTest {
     }
 
     @Test
+    fun `aventure - un chromatique reste chromatique en evoluant`() = appTest {
+        suspend fun game(response: HttpResponse): GameView {
+            assertTrue(response.status.isSuccess(), response.bodyAsText())
+            return json.decodeFromString<GameView>(response.bodyAsText())
+        }
+        suspend fun post(path: String, body: String? = null) = client.post("/game$path") {
+            if (body != null) { contentType(ContentType.Application.Json); setBody(body) }
+        }
+        client.get("/pokemon/ivysaur")
+        game(post("/new", """{"starter":"bulbasaur"}"""))
+        // Bulbizarre chromatique niveau 40 : il évolue en Herbizarre à la fin du prochain combat
+        editSave { save ->
+            val first = save["team"]!!.jsonArray[0].jsonObject
+            val shiny = JsonObject(first + mapOf(
+                "level" to JsonPrimitive(40), "xp" to JsonPrimitive(64000), "hp" to JsonPrimitive(200), "shiny" to JsonPrimitive(true),
+            ))
+            JsonObject(save + ("team" to JsonArray(listOf(shiny))))
+        }
+        game(post("/travel", """{"step":1}"""))
+        var v = game(post("/explore"))
+        while (v.battle!!.outcome == null) v = game(post("/battle/attack", """{"move":0}"""))
+        assertTrue(v.battle!!.log.any { it == "Quoi ? Bulbizarre évolue en Herbizarre !" }, v.battle!!.log.toString())
+        val evolved = v.team.single()
+        assertEquals(2, evolved.speciesId)
+        assertTrue(evolved.shiny)
+        assertTrue(evolved.spriteUrl!!.contains("/shiny/"), evolved.spriteUrl)
+        // Le Motisdex compte Herbizarre chromatique comme obtenu
+        game(post("/battle/close"))
+        val dex = json.decodeFromString<DexView>(client.get("/game/dex").bodyAsText())
+        assertTrue(dex.entries.single { it.number == 2 }.shinyCaught)
+    }
+
+    @Test
     fun `aventure - pas d'evolution hors de Kanto`() = appTest {
         suspend fun game(response: HttpResponse): GameView {
             assertTrue(response.status.isSuccess(), response.bodyAsText())
