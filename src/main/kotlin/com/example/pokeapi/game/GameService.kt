@@ -1187,13 +1187,19 @@ class GameService(
         if (b.kind == BattleKind.WILD) {
             val enemy = b.enemy
             state = state.copy(wins = state.wins + (b.step to (state.wins[b.step] ?: 0) + 1))
-            val alreadyCaught = enemy.speciesId in state.caught
+            // Un chromatique est nouveau tant que ce chromatique-là n'a pas été obtenu (même si l'espèce l'est)
+            val alreadyCaught = if (enemy.shiny) enemy.speciesId in state.shinyCaught else enemy.speciesId in state.caught
             if (alreadyCaught && state.settings.recruitOnlyNew) {
-                // Réglage « seulement les nouveaux Pokémon » : pas de proposition pour une espèce déjà obtenue.
-                log += "${enemy.displayName} s'éloigne (déjà dans votre Pokédex)."
+                // Réglage « seulement les nouveaux Pokémon » : pas de proposition pour une espèce (ou un chromatique) déjà obtenue.
+                log += "${enemy.displayName} s'éloigne (${if (enemy.shiny) "chromatique déjà obtenu" else "déjà dans votre Pokédex"})."
             } else if (random.nextDouble() < GameRules.joinChance(enemy.captureRate)) {
                 val recruit = enemy.copy(uid = "p${state.uidCounter + 1}", xp = GameRules.xpForLevel(enemy.level), origin = GameRules.STEPS[b.step].region).healed()
-                log += "${enemy.displayName} veut vous rejoindre !" + if (enemy.speciesId in state.caught) " (vous en avez déjà un)" else " (nouveau !)"
+                log += "${enemy.displayName} veut vous rejoindre !" + when {
+                    enemy.shiny && !alreadyCaught -> " (nouveau chromatique !)"
+                    enemy.shiny -> " (vous en avez déjà un chromatique)"
+                    enemy.speciesId in state.caught -> " (vous en avez déjà un)"
+                    else -> " (nouveau !)"
+                }
                 state = state.copy(battle = state.battle!!.copy(recruit = recruit))
             } else {
                 log += "${enemy.displayName} s'éloigne."

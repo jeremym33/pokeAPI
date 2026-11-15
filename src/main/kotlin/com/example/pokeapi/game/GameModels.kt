@@ -176,7 +176,7 @@ data class Egg(
 data class GameSettings(
     /** En fin de combat sur une route, proposer d'enchaîner directement sur le Pokémon suivant. */
     val nextEncounterButton: Boolean = true,
-    /** Ne proposer de rejoindre l'équipe qu'aux espèces pas encore obtenues. */
+    /** Ne proposer de rejoindre l'équipe qu'aux espèces pas encore obtenues (un chromatique : tant que ce chromatique n'est pas obtenu). */
     val recruitOnlyNew: Boolean = false,
     /** Avec 4 attaques équipées, une nouvelle attaque remplace la plus ancienne ; sinon elle rejoint les attaques connues. */
     val autoReplaceMoves: Boolean = true,

@@ -1150,6 +1150,59 @@ class ApplicationTest {
     }
 
     @Test
+    fun `aventure - seulement les nouveaux pokemon, sauf un nouveau chromatique`() = appTest {
+        suspend fun game(response: HttpResponse): GameView {
+            assertTrue(response.status.isSuccess(), response.bodyAsText())
+            return json.decodeFromString<GameView>(response.bodyAsText())
+        }
+        suspend fun post(path: String, body: String? = null) = client.post("/game$path") {
+            if (body != null) { contentType(ContentType.Application.Json); setBody(body) }
+        }
+        game(post("/new", """{"starter":"bulbasaur"}"""))
+        game(client.put("/game/settings") { contentType(ContentType.Application.Json); setBody("""{"recruitOnlyNew":true}""") })
+        // Bulbizarre très fort (l'espèce est déjà obtenue, avec le starter)
+        editSave { save ->
+            val first = save["team"]!!.jsonArray[0].jsonObject
+            JsonObject(save + ("team" to JsonArray(listOf(JsonObject(first + mapOf(
+                "level" to JsonPrimitive(100), "xp" to JsonPrimitive(1_000_000), "hp" to JsonPrimitive(999),
+                "base" to json.parseToJsonElement("""{"hp":255,"attack":255,"defense":255,"special-attack":255,"special-defense":255,"speed":255}"""),
+            ))))))
+        }
+        game(post("/travel", """{"step":1}"""))
+        /** Combat gagné contre un Bulbizarre sauvage chromatique ; renvoie la fin du journal. */
+        suspend fun shinyBattle(): GameView {
+            game(post("/explore"))
+            editSave { save ->
+                val battle = save["battle"]!!.jsonObject
+                val enemy = battle["enemies"]!!.jsonArray[0].jsonObject
+                JsonObject(save + ("battle" to JsonObject(battle + ("enemies" to JsonArray(listOf(JsonObject(enemy + ("shiny" to JsonPrimitive(true)))))))))
+            }
+            var v = game(client.get("/game"))
+            while (v.battle!!.outcome == null) v = game(post("/battle/attack", """{"move":0}"""))
+            return v
+        }
+        // Chromatique jamais obtenu : il peut proposer de rejoindre l'équipe, comme un nouveau Pokémon
+        var proposed: GameView? = null
+        repeat(60) {
+            if (proposed != null) return@repeat
+            val v = shinyBattle()
+            assertTrue(v.battle!!.log.none { "chromatique déjà obtenu" in it }, v.battle!!.log.toString())
+            if (v.battle!!.recruit != null) proposed = v else game(post("/battle/close"))
+        }
+        assertTrue(proposed != null, "un chromatique nouveau doit pouvoir être proposé")
+        assertTrue(proposed!!.battle!!.log.any { "veut vous rejoindre ! (nouveau chromatique !)" in it }, proposed!!.battle!!.log.toString())
+        game(post("/battle/recruit", """{"accept":true}"""))
+        game(post("/battle/close"))
+        // Ce chromatique est maintenant obtenu : les suivants s'éloignent
+        repeat(10) {
+            val v = shinyBattle()
+            assertEquals(null, v.battle!!.recruit)
+            assertTrue(v.battle!!.log.any { "s'éloigne (chromatique déjà obtenu)" in it }, v.battle!!.log.toString())
+            game(post("/battle/close"))
+        }
+    }
+
+    @Test
     fun `aventure - pas d'evolution hors de Kanto`() = appTest {
         suspend fun game(response: HttpResponse): GameView {
             assertTrue(response.status.isSuccess(), response.bodyAsText())
