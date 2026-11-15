@@ -377,6 +377,9 @@ object GameRules {
     }
 
     /** Dégâts de fin de tour : 1/8 des PV pour le poison, 1/16 pour la brûlure. */
+    /** Dégâts de Malédiction à la fin du tour : 1/4 des PV max. */
+    fun curseDamage(f: Fighter): Int = if (f.cursed) maxOf(1, f.maxHp / 4) else 0
+
     fun residualDamage(f: Fighter): Int = when (f.status) {
         "poison" -> maxOf(1, f.maxHp / 8)
         "burn" -> maxOf(1, f.maxHp / 16)
@@ -519,6 +522,19 @@ object GameRules {
 
     /** Attaques qui mettent le lanceur K.O., même si elles ratent : Destruction, Explosion, Explo-Brume. */
     val SELF_KO_MOVES = setOf("self-destruct", "explosion", "misty-explosion")
+
+    /**
+     * Attaques de statut aux effets propres (absents des données PokéAPI), qui coûtent des PV ou mettent le lanceur
+     * K.O. : Cognobidon, Malédiction, Clonage, Balance, Souvenir, Vœu Soin, Danse Lune. Tout ou Rien inflige des
+     * dégâts égaux aux PV du lanceur, qui est K.O.
+     */
+    const val BELLY_DRUM = "belly-drum"
+    const val CURSE = "curse"
+    const val SUBSTITUTE = "substitute"
+    const val PAIN_SPLIT = "pain-split"
+    const val MEMENTO = "memento"
+    val WISH_MOVES = setOf("healing-wish", "lunar-dance")
+    const val FINAL_GAMBIT = "final-gambit"
 
     /** Attaques qui coûtent la moitié des PV max du lanceur, touchées ou non : Métalaser, Caboche-Kaboum, Herblast. */
     val HALF_HP_COST_MOVES = setOf("steel-beam", "mind-blown", "chloroblast")

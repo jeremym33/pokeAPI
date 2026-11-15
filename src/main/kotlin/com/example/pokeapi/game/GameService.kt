@@ -894,7 +894,9 @@ class GameService(
         // Un Pokémon confus peut se mettre K.O. lui-même
         if (!acts) return if (ready.fainted) afterHit(state, log) else state
         val defender = if (playerTurn) e else state.team.first { it.uid == battle.activeUid }
-        val (user, hitDefender) = hit(ready, defender, move, enemy = !playerTurn, log)
+        // Vœu Soin n'a d'effet que si un autre Pokémon peut prendre le relais
+        val reserve = if (playerTurn) state.team.any { it.uid != battle.activeUid && !it.fainted && state.usable(it) } else battle.enemyIndex + 1 < battle.enemies.size
+        val (user, hitDefender) = hit(ready, defender, move, enemy = !playerTurn, log, reserve)
         state = if (playerTurn) state.copy(team = state.team.replaceUid(user)).withEnemy(hitDefender)
         else state.withEnemy(user).copy(team = state.team.replaceUid(hitDefender))
         return afterHit(state, log)
@@ -958,11 +960,13 @@ class GameService(
             val b = state.battle ?: return state
             if (b.outcome != null || b.mustSwitch) return state
             val f = if (playerSide) state.team.first { it.uid == b.activeUid } else b.enemy
-            val damage = GameRules.residualDamage(f)
-            if (damage == 0 || f.fainted) continue
+            val residual = GameRules.residualDamage(f)
+            val curse = GameRules.curseDamage(f)
+            if (residual + curse == 0 || f.fainted) continue
             val who = if (playerSide) f.displayName else "${f.displayName} adverse"
-            log += if (f.status == "poison") "$who souffre du poison." else "$who souffre de sa brûlure."
-            val hurt = f.copy(hp = (f.hp - damage).coerceAtLeast(0))
+            if (residual > 0) log += if (f.status == "poison") "$who souffre du poison." else "$who souffre de sa brûlure."
+            if (curse > 0) log += "$who est blessé par la malédiction !"
+            val hurt = f.copy(hp = (f.hp - residual - curse).coerceAtLeast(0))
             log += "${f.displayName} perd ${f.hp - hurt.hp} PV."
             state = if (playerSide) state.copy(team = state.team.replaceUid(hurt)) else state.withEnemy(hurt)
             state = afterHit(state, log)
@@ -977,9 +981,18 @@ class GameService(
         if (!s.usable(target)) throw BadRequestException("${target.displayName} n'est pas de ${regionName(s.region())} : il ne peut pas combattre ici")
         if (uid == b.activeUid) throw BadRequestException("${target.displayName} est déjà au combat")
         val log = mutableListOf("Go, ${target.displayName} !")
+        // Vœu Soin : le Pokémon qui remplace le lanceur K.O. est entièrement soigné
+        val wished = s.team.first { it.uid == b.activeUid }.wish
+        if (wished) log += "Le vœu se réalise : ${target.displayName} est entièrement soigné !"
         // Le Pokémon qui sort perd ses changements de statistiques.
         var state = s.copy(
-            team = s.team.map { if (it.uid == b.activeUid) it.leftBattle() else it },
+            team = s.team.map {
+                when (it.uid) {
+                    b.activeUid -> it.leftBattle()
+                    uid -> if (wished) it.copy(hp = it.maxHp, status = null, sleepTurns = 0) else it
+                    else -> it
+                }
+            },
             battle = b.copy(activeUid = uid, mustSwitch = false, participants = b.participants + uid),
         )
         if (!b.mustSwitch) {
@@ -1013,7 +1026,7 @@ class GameService(
      * Le lanceur utilise une attaque : soin, statut, ou dégâts (en plusieurs coups pour Combo-Griffe…),
      * avec PV drainés (Vole-Vie…) ou contrecoup (Damoclès…). Renvoie le lanceur et la cible modifiés.
      */
-    private fun hit(attacker: Fighter, defender: Fighter, move: FighterMove, enemy: Boolean, lines: MutableList<String>): Pair<Fighter, Fighter> {
+    private fun hit(attacker: Fighter, defender: Fighter, move: FighterMove, enemy: Boolean, lines: MutableList<String>, reserve: Boolean = false): Pair<Fighter, Fighter> {
         val who = if (enemy) "${attacker.displayName} adverse" else attacker.displayName
         val target = if (enemy) defender.displayName else "${defender.displayName} adverse"
         lines += "$who utilise ${move.nameFr ?: move.name} !"
@@ -1030,8 +1043,14 @@ class GameService(
             return attacker.copy(hp = attacker.hp + heal) to defender
         }
 
+        // Cognobidon, Malédiction, Clonage, Balance, Souvenir, Vœu Soin, Tout ou Rien
+        specialMove(attacker, defender, move, who, target, lines, reserve)?.let { return it }
+
         if (move.damageClass == "status") {
             val ailment = move.ailment
+            // Le clone de la cible bloque les attaques de statut qui la visent
+            val targetsDefender = ailment != null || (move.statChanges.isNotEmpty() && !move.statSelf)
+            if (targetsDefender && defender.substituteHp > 0) return attacker to defender.also { lines += "Mais cela échoue." }
             // Une attaque sur soi (Danse Lames, Reflet…) ne peut pas rater
             if (!(move.statSelf && move.statChanges.isNotEmpty()) && !GameRules.hits(attacker, defender, move, random)) {
                 return attacker to defender.also { lines += "Mais l'attaque échoue." }
@@ -1063,6 +1082,9 @@ class GameService(
         // Coups successifs : la précision n'est vérifiée qu'au premier, l'attaque s'arrête si la cible est K.O.
         val hits = GameRules.hitCount(move, random)
         var hp = defender.hp
+        // Clone (Clonage) : il encaisse les dégâts ; les effets sur la cible sont alors bloqués
+        var substitute = defender.substituteHp
+        val behindSubstitute = substitute > 0
         var dealt = 0
         var landed = 0
         var effectiveness = 1.0
@@ -1075,16 +1097,26 @@ class GameService(
             effectiveness = result.effectiveness
             if (result.effectiveness == 0.0) break
             if (result.critical) lines += "Coup critique !"
-            val damage = minOf(result.damage, hp)
-            hp -= damage
-            dealt += damage
             landed++
-            if (hp <= 0) break
+            if (substitute > 0) {
+                val damage = minOf(result.damage, substitute)
+                substitute -= damage
+                dealt += damage
+                if (substitute == 0) break
+            } else {
+                val damage = minOf(result.damage, hp)
+                hp -= damage
+                dealt += damage
+                if (hp <= 0) break
+            }
         }
         GameRules.effectivenessText(effectiveness)?.let { lines += it }
-        if (dealt > 0) lines += "${defender.displayName} perd $dealt PV."
+        if (dealt > 0) {
+            lines += if (behindSubstitute) "Le clone de $target encaisse les dégâts !" else "${defender.displayName} perd $dealt PV."
+            if (behindSubstitute && substitute == 0) lines += "Le clone de $target disparaît !"
+        }
         if (hits > 1 && landed > 0) lines += "Touché $landed fois !"
-        var damaged = defender.copy(hp = hp)
+        var damaged = defender.copy(hp = hp, substituteHp = substitute)
 
         // PV drainés ou contrecoup, proportionnels aux dégâts infligés
         var user = attacker
@@ -1104,7 +1136,7 @@ class GameService(
                 val (changed, stageLines) = GameRules.applyStages(user, move.statChanges, who)
                 user = changed
                 lines += stageLines
-            } else if (!move.statSelf && hp > 0) {
+            } else if (!move.statSelf && hp > 0 && !behindSubstitute) {
                 val (changed, stageLines) = GameRules.applyStages(damaged, move.statChanges, target)
                 damaged = changed
                 lines += stageLines
@@ -1112,15 +1144,90 @@ class GameService(
         }
 
         // Peur (Morsure 3 fois sur 10…) : sans effet si la cible a déjà attaqué ce tour-ci
-        if (hp > 0 && dealt > 0 && move.flinchChance > 0 && random.nextInt(100) < move.flinchChance) damaged = damaged.copy(flinched = true)
+        if (hp > 0 && dealt > 0 && !behindSubstitute && move.flinchChance > 0 && random.nextInt(100) < move.flinchChance) damaged = damaged.copy(flinched = true)
 
         // Effet secondaire (Flammèche brûle 1 fois sur 10, Rafale Psy rend confus…)
         val ailment = move.ailment
-        if (hp > 0 && dealt > 0 && ailment != null && move.ailmentChance > 0 &&
+        if (hp > 0 && dealt > 0 && !behindSubstitute && ailment != null && move.ailmentChance > 0 &&
             GameRules.canReceive(damaged, ailment) && random.nextInt(100) < move.ailmentChance
         ) damaged = inflict(damaged, ailment, target, lines)
         // Destruction, Métalaser, Pied Voltige sur une cible immunisée…
         return selfHarm(user, move, missed = landed == 0, who, lines) to damaged
+    }
+
+    /**
+     * Attaques aux effets propres, absents des données PokéAPI ; null pour les autres attaques.
+     * - Cognobidon : la moitié des PV max contre l'Attaque au maximum (échoue sans assez de PV).
+     * - Malédiction : lanceur Spectre, la moitié de ses PV pour maudire la cible ; sinon Attaque et Défense +1, Vitesse −1.
+     * - Clonage : un quart des PV max pour un clone qui encaisse les dégâts à sa place.
+     * - Balance : les PV des deux Pokémon sont mis en commun et partagés.
+     * - Souvenir : le lanceur est K.O., Attaque et Attaque Spéciale de la cible −2.
+     * - Vœu Soin, Danse Lune : le lanceur est K.O., le Pokémon qui le remplace est entièrement soigné.
+     * - Tout ou Rien : dégâts égaux aux PV du lanceur, qui est K.O. (sauf si l'attaque rate ou n'a pas d'effet).
+     */
+    private fun specialMove(
+        attacker: Fighter, defender: Fighter, move: FighterMove, who: String, target: String, lines: MutableList<String>, reserve: Boolean,
+    ): Pair<Fighter, Fighter>? {
+        fun fail(): Pair<Fighter, Fighter> = attacker to defender.also { lines += "Mais cela échoue." }
+        when (move.name) {
+            GameRules.BELLY_DRUM -> {
+                val cost = attacker.maxHp / 2
+                if (attacker.hp <= cost || (attacker.stages["attack"] ?: 0) >= 6) return fail()
+                lines += "$who sacrifie la moitié de ses PV et maximise son Attaque ! (-$cost PV)"
+                return attacker.copy(hp = attacker.hp - cost, stages = attacker.stages + ("attack" to 6)) to defender
+            }
+            GameRules.CURSE -> {
+                if ("ghost" !in attacker.types) {
+                    val (changed, stageLines) = GameRules.applyStages(attacker, mapOf("attack" to 1, "defense" to 1, "speed" to -1), who)
+                    lines += stageLines
+                    return changed to defender
+                }
+                if (defender.cursed) return fail()
+                val cost = minOf(attacker.hp, maxOf(1, attacker.maxHp / 2))
+                lines += "$who sacrifie la moitié de ses PV et maudit $target ! (-$cost PV)"
+                return attacker.copy(hp = attacker.hp - cost) to defender.copy(cursed = true)
+            }
+            GameRules.SUBSTITUTE -> {
+                val cost = maxOf(1, attacker.maxHp / 4)
+                if (attacker.substituteHp > 0) return attacker to defender.also { lines += "$who a déjà un clone !" }
+                if (attacker.hp <= cost) return attacker to defender.also { lines += "Trop faible pour créer un clone !" }
+                lines += "$who crée un clone ! (-$cost PV)"
+                return attacker.copy(hp = attacker.hp - cost, substituteHp = cost) to defender
+            }
+            GameRules.PAIN_SPLIT -> {
+                if (defender.substituteHp > 0) return fail()
+                val shared = (attacker.hp + defender.hp) / 2
+                lines += "Les PV des deux Pokémon sont partagés !"
+                return attacker.copy(hp = minOf(shared, attacker.maxHp)) to defender.copy(hp = minOf(shared, defender.maxHp))
+            }
+            GameRules.MEMENTO -> {
+                lines += "$who donne toutes ses forces !"
+                val weakened = if (defender.substituteHp > 0) defender.also { lines += "Mais le clone de $target le protège." }
+                else GameRules.applyStages(defender, mapOf("attack" to -2, "special-attack" to -2), target).let { (changed, stageLines) -> lines += stageLines; changed }
+                return attacker.copy(hp = 0) to weakened
+            }
+            in GameRules.WISH_MOVES -> {
+                if (!reserve) return fail()
+                lines += "$who donne toutes ses forces : son remplaçant sera soigné !"
+                return attacker.copy(hp = 0, wish = true) to defender
+            }
+            GameRules.FINAL_GAMBIT -> {
+                if (!GameRules.hits(attacker, defender, move, random)) return fail()
+                if ((defender.defenses[move.type] ?: 1.0) == 0.0) return attacker to defender.also { lines += "Ça n'affecte pas ${defender.displayName}…" }
+                if (defender.substituteHp > 0) {
+                    lines += "Le clone de $target encaisse les dégâts !"
+                    val left = (defender.substituteHp - attacker.hp).coerceAtLeast(0)
+                    if (left == 0) lines += "Le clone de $target disparaît !"
+                    lines += "$who est K.O. après son attaque !"
+                    return attacker.copy(hp = 0) to defender.copy(substituteHp = left)
+                }
+                val damage = minOf(attacker.hp, defender.hp)
+                lines += "${defender.displayName} perd $damage PV."
+                lines += "$who est K.O. après son attaque !"
+                return attacker.copy(hp = 0) to defender.copy(hp = defender.hp - damage)
+            }
+        }
+        return null
     }
 
     /** PV perdus par le lanceur à cause de sa propre attaque (Destruction : K.O. ; Métalaser, Pied Voltige raté : moitié). */
@@ -1781,6 +1888,8 @@ class GameService(
             status = status,
             stages = stages.filterValues { it != 0 },
             confused = confusedTurns > 0,
+            substitute = substituteHp > 0,
+            cursed = cursed,
             shiny = shiny,
         )
     }

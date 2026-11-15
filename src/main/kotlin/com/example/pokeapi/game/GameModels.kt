@@ -85,12 +85,18 @@ data class Fighter(
     val shiny: Boolean = false,
     /** Région d'origine (capture, cadeau, éclosion) ; null pour un Pokémon d'avant, déduite de son espèce. */
     val origin: String? = null,
+    /** Maudit par Malédiction (lanceur Spectre) : perd 1/4 de ses PV max à chaque fin de tour, jusqu'à sa sortie. */
+    val cursed: Boolean = false,
+    /** PV du clone (Clonage) : il encaisse les dégâts à la place du Pokémon ; 0 sans clone. */
+    val substituteHp: Int = 0,
+    /** K.O. par Vœu Soin : le Pokémon qui le remplace est entièrement soigné. */
+    val wish: Boolean = false,
 ) {
     val displayName: String get() = nameFr ?: name.replaceFirstChar(Char::uppercase)
     val maxHp: Int get() = GameRules.stats(this).hp
     val fainted: Boolean get() = hp <= 0
-    /** Effets qui disparaissent en quittant le combat : niveaux de statistiques, confusion, peur. */
-    fun leftBattle(): Fighter = copy(stages = emptyMap(), confusedTurns = 0, flinched = false, battleTurns = 0)
+    /** Effets qui disparaissent en quittant le combat : niveaux de statistiques, confusion, peur, malédiction, clone. */
+    fun leftBattle(): Fighter = copy(stages = emptyMap(), confusedTurns = 0, flinched = false, battleTurns = 0, cursed = false, substituteHp = 0, wish = false)
 
     /** Attaques équipées et connues, sans doublon. */
     val allMoves: List<FighterMove> get() = (moves + knownMoves).distinctBy { it.name }

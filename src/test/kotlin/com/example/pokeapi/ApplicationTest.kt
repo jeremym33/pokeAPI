@@ -1257,6 +1257,102 @@ class ApplicationTest {
     }
 
     @Test
+    fun `aventure - attaques de statut qui coutent des PV ou mettent le lanceur KO`() = appTest {
+        suspend fun game(response: HttpResponse): GameView {
+            assertTrue(response.status.isSuccess(), response.bodyAsText())
+            return json.decodeFromString<GameView>(response.bodyAsText())
+        }
+        suspend fun post(path: String, body: String? = null) = client.post("/game$path") {
+            if (body != null) { contentType(ContentType.Application.Json); setBody(body) }
+        }
+        game(post("/new", """{"starter":"bulbasaur"}"""))
+        game(post("/travel", """{"step":1}"""))
+        fun move(name: String, type: String = "normal", damageClass: String = "status") =
+            """{"name":"$name","nameFr":"$name","type":"$type","damageClass":"$damageClass","power":0,"accuracy":null}"""
+        /** Bulbizarre niveau 50 (PV au maximum) avec une seule attaque, et un second Pokémon (blessé) en réserve. */
+        suspend fun withMove(move: String, types: String = "[\"grass\", \"poison\"]", hp: Int? = null) {
+            editSave { save ->
+                val first = save["team"]!!.jsonArray[0].jsonObject
+                JsonObject(save + mapOf(
+                    "battle" to JsonNull,
+                    "team" to JsonArray(listOf(
+                        JsonObject(first + mapOf(
+                            "level" to JsonPrimitive(50), "xp" to JsonPrimitive(125000), "hp" to JsonPrimitive(hp ?: 999), "stages" to JsonObject(emptyMap()),
+                            "types" to json.parseToJsonElement(types), "moves" to json.parseToJsonElement("[$move]"), "knownMoves" to JsonArray(emptyList()),
+                        )),
+                        JsonObject(first + mapOf("uid" to JsonPrimitive("p2"), "hp" to JsonPrimitive(1))),
+                    )),
+                ))
+            }
+            // PV ramenés au maximum (999 dépasse le maximum)
+            val max = json.decodeFromString<GameView>(client.get("/game").bodyAsText()).team.first().maxHp
+            editSave { save ->
+                val team = save["team"]!!.jsonArray
+                JsonObject(save + ("team" to JsonArray(listOf(JsonObject(team[0].jsonObject + ("hp" to JsonPrimitive(hp ?: max)))) + team.drop(1))))
+            }
+        }
+        suspend fun turn(): GameView {
+            game(post("/explore"))
+            return game(post("/battle/attack", """{"move":0}"""))
+        }
+        fun GameView.log() = battle!!.log.toString()
+
+        // Cognobidon : la moitié des PV max, Attaque au maximum
+        withMove(move("belly-drum"))
+        var v = turn()
+        val max = v.team.first().maxHp
+        assertTrue(v.battle!!.log.any { "maximise son Attaque ! (-${max / 2} PV)" in it }, v.log())
+        assertEquals(6, v.team.first().stages["attack"])
+
+        // Clonage : un quart des PV max pour un clone
+        withMove(move("substitute"))
+        v = turn()
+        assertTrue(v.battle!!.log.any { "crée un clone ! (-${max / 4} PV)" in it }, v.log())
+
+        // Malédiction (pas Spectre) : Attaque et Défense +1, Vitesse −1
+        withMove(move("curse"))
+        v = turn()
+        assertEquals(mapOf("attack" to 1, "defense" to 1, "speed" to -1), v.team.first().stages)
+
+        // Malédiction (Spectre) : la moitié des PV pour maudire la cible, qui souffre à chaque fin de tour
+        withMove(move("curse", type = "ghost"), types = "[\"ghost\"]")
+        v = turn()
+        assertTrue(v.battle!!.log.any { "maudit Bulbizarre adverse ! (-${max / 2} PV)" in it }, v.log())
+        assertTrue(v.battle!!.enemy.cursed)
+        assertTrue(v.battle!!.log.any { "blessé par la malédiction" in it }, v.log())
+
+        // Souvenir : le lanceur est K.O., Attaque et Attaque Spéciale de la cible −2
+        withMove(move("memento", type = "dark"))
+        v = turn()
+        assertEquals(0, v.team.first().hp)
+        assertEquals(-2, v.battle!!.enemy.stages["attack"])
+        assertEquals(-2, v.battle!!.enemy.stages["special-attack"])
+        assertTrue(v.battle!!.mustSwitch)
+
+        // Vœu Soin : le lanceur est K.O., son remplaçant (1 PV) est entièrement soigné
+        withMove(move("healing-wish", type = "psychic"))
+        v = turn()
+        assertEquals(0, v.team.first().hp)
+        v = game(post("/battle/switch", """{"uid":"p2"}"""))
+        val p2 = v.team.single { it.uid == "p2" }
+        assertTrue(v.battle!!.log.any { "le vœu se réalise" in it.lowercase() }, v.log())
+        assertTrue(p2.hp > 1, "remplaçant soigné : ${p2.hp} PV")
+
+        // Tout ou Rien : dégâts égaux aux PV du lanceur (20 PV), qui est K.O.
+        withMove(move("final-gambit", type = "fighting", damageClass = "special"), hp = 20)
+        v = turn()
+        assertEquals(0, v.team.first().hp)
+        assertTrue(v.battle!!.log.any { Regex("Bulbizarre perd (\\d+) PV").find(it)?.groupValues?.get(1)?.toInt()?.let { d -> d in 1..20 } == true }, v.log())
+        assertTrue(v.battle!!.log.any { "est K.O. après son attaque" in it }, v.log())
+
+        // Balance : les PV sont mis en commun et partagés
+        withMove(move("pain-split"), hp = 1)
+        v = turn()
+        assertTrue(v.battle!!.log.any { "PV des deux Pokémon sont partagés" in it }, v.log())
+        assertTrue(v.team.first().hp > 1 || v.team.first().fainted)
+    }
+
+    @Test
     fun `aventure - pas d'evolution hors de Kanto`() = appTest {
         suspend fun game(response: HttpResponse): GameView {
             assertTrue(response.status.isSuccess(), response.bodyAsText())

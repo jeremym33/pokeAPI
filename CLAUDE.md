@@ -79,6 +79,10 @@ jour avec chaque route ou champ ajouté.
   les autres effets ne sont pas dans les données et sont listés dans `GameRules` : `SELF_KO_MOVES` (Destruction,
   Explosion : K.O.), `HALF_HP_COST_MOVES` (Métalaser), `CRASH_MOVES` (Pied Voltige raté). Mêmes listes dans
   `pokeApp/src/components/game/move-effects.ts` pour l'affichage.
+- **Attaques de statut à effets propres** (`GameService.specialMove`) : Cognobidon, Malédiction (Spectre : malédiction
+  `cursed`), Clonage (`substituteHp` : le clone encaisse les dégâts et bloque les effets sur la cible), Balance,
+  Souvenir, Vœu Soin / Danse Lune (`wish` : remplaçant soigné), Tout ou Rien. Ces états de combat disparaissent avec
+  `leftBattle()`.
 - **Pension** : 2 Pokémon compatibles (groupe d'œufs ou Métamorph) → un œuf toutes les 5 min ; l'espèce de l'œuf est
   fixée à son apparition (`eggSpecies`).
 

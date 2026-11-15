@@ -27,6 +27,10 @@ data class FighterView(
     val stages: Map<String, Int> = emptyMap(),
     /** Confus (en combat). */
     val confused: Boolean = false,
+    /** Protégé par un clone (Clonage). */
+    val substitute: Boolean = false,
+    /** Maudit (Malédiction). */
+    val cursed: Boolean = false,
     /** Chromatique (« shiny ») ; les images sont alors celles de la version chromatique. */
     val shiny: Boolean = false,
     /** Région d'origine (kanto, johto). */
