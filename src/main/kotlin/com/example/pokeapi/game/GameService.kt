@@ -293,7 +293,7 @@ class GameService(
     suspend fun newGame(userId: Int, starter: String): GameView = lock.withLock {
         if (starter !in GameRules.STARTERS) throw BadRequestException("Starter inconnu : '$starter' (${GameRules.STARTERS.joinToString()})")
         val first = buildFighter(starter, GameRules.STARTER_LEVEL, "p1").copy(origin = KANTO)
-        val state = GameState(saveVersion = SAVE_VERSION, movesVersion = GAME_MOVES_VERSION, routeRules = ROUTE_RULES, starter = starter, team = listOf(first), caught = setOf(first.speciesId), seen = setOf(first.speciesId), uidCounter = 1)
+        val state = GameState(saveVersion = SAVE_VERSION, regionStarters = setOf(KANTO), movesVersion = GAME_MOVES_VERSION, routeRules = ROUTE_RULES, starter = starter, team = listOf(first), caught = setOf(first.speciesId), seen = setOf(first.speciesId), uidCounter = 1)
         save(userId, state)
         toView(userId, state)
     }
@@ -302,7 +302,7 @@ class GameService(
         newSuspendedTransaction(Dispatchers.IO, database) { GameSaveTable.deleteWhere { id eq userId } }
     }
 
-    suspend fun travel(userId: Int, step: Int, companion: String? = null): GameView = act(userId) { s ->
+    suspend fun travel(userId: Int, step: Int, starter: String? = null): GameView = act(userId) { s ->
         noBattle(s)
         if (step !in GameRules.STEPS.indices) throw BadRequestException("Étape inconnue : $step")
         if (step > unlockedStep(s)) throw BadRequestException("Cette étape n'est pas encore accessible")
@@ -311,24 +311,34 @@ class GameService(
         if (step != s.stepIndex) noLeagueChallenge(s)
         val moved = s.copy(stepIndex = step, lastCenter = if (city) step else s.lastCenter)
         val target = GameRules.STEPS[step].region
-        if (target == s.region()) return@act moved
-        // Passage d'une région à l'autre : un seul Pokémon venu d'ailleurs peut accompagner le joueur
-        val owned = s.team + s.box
-        if (companion != null) {
-            val f = owned.firstOrNull { it.uid == companion } ?: throw BadRequestException("Pokémon introuvable")
-            if (f.originRegion() == target) throw BadRequestException("${f.displayName} est déjà de ${regionName(target)} : choisissez un Pokémon venu d'ailleurs")
-            // Le compagnon rejoint l'équipe s'il était dans la boîte (et qu'il reste une place)
-            val team = if (moved.team.any { it.uid == f.uid } || moved.team.size >= 6) moved.team else moved.team + f
-            moved.copy(
-                team = team, box = moved.box.filter { b -> team.none { it.uid == b.uid } }, companions = moved.companions + (target to f.uid),
-                lastEvent = "${f.displayName} vous accompagne à ${regionName(target)} : c'est le seul Pokémon venu d'ailleurs qui pourra y combattre.",
-            )
-        } else {
-            if (owned.none { it.originRegion() == target }) {
-                throw BadRequestException("Choisissez le Pokémon qui vous accompagne à ${regionName(target)} : vous n'avez encore aucun Pokémon de cette région")
-            }
-            moved.copy(companions = moved.companions - target)
+        // Première arrivée dans une région : on y choisit son starter (les Pokémon venus d'ailleurs n'y combattent pas)
+        if (target == s.region() || target in s.regionStarters) return@act moved
+        giveRegionStarter(moved, target, starter)
+    }
+
+    /** Starter de la région actuelle, si le joueur ne l'a pas encore (partie d'avant cette règle, déjà sur place). */
+    suspend fun chooseRegionStarter(userId: Int, starter: String): GameView = act(userId) { s ->
+        noBattle(s)
+        if (s.region() in s.regionStarters) throw BadRequestException("Vous avez déjà votre starter de ${regionName(s.region())}")
+        giveRegionStarter(s, s.region(), starter)
+    }
+
+    private suspend fun giveRegionStarter(s: GameState, region: String, starter: String?): GameState {
+        val options = GameRules.REGION_STARTERS[region].orEmpty()
+        if (starter == null || starter !in options) {
+            throw BadRequestException("Choisissez votre starter de ${regionName(region)} : ${options.joinToString(", ")}")
         }
+        val level = GameRules.REGION_STARTER_LEVEL[region] ?: GameRules.STARTER_LEVEL
+        val f = buildFighter(starter, level, "p${s.uidCounter + 1}").copy(origin = region)
+        val inTeam = s.team.size < 6
+        return s.copy(
+            team = if (inTeam) s.team + f else s.team,
+            box = if (inTeam) s.box else s.box + f,
+            caught = s.caught + f.speciesId, seen = s.seen + f.speciesId, uidCounter = s.uidCounter + 1,
+            regionStarters = s.regionStarters + region,
+            lastEvent = "Bienvenue à ${regionName(region)} ! ${f.displayName} (niv. $level) rejoint votre " +
+                (if (inTeam) "équipe" else "boîte") + " : seuls les Pokémon nés à ${regionName(region)} y combattent.",
+        )
     }
 
     suspend fun heal(userId: Int): GameView = act(userId) { s ->
@@ -1657,14 +1667,14 @@ class GameService(
     /** Région d'origine d'un Pokémon (déduite de son espèce pour un Pokémon d'avant les régions). */
     private fun Fighter.originRegion(): String = origin ?: GameRules.speciesRegion(speciesId)
 
-    /** Peut combattre dans la région actuelle : originaire de la région, ou son compagnon de voyage. */
-    private fun GameState.usable(f: Fighter): Boolean = f.originRegion() == region() || companions[region()] == f.uid
+    /** Peut combattre dans la région actuelle : seulement s'il en est originaire. */
+    private fun GameState.usable(f: Fighter): Boolean = f.originRegion() == region()
 
     /** Un Pokémon de l'équipe peut encore combattre ici. */
     private fun GameState.canFight(): Boolean = team.any { !it.fainted && usable(it) }
 
     private fun GameState.firstFighter(): Fighter = team.firstOrNull { !it.fainted && usable(it) } ?: throw BadRequestException(
-        if (team.any { !it.fainted }) "Aucun Pokémon de ${regionName(region())} (ni votre compagnon de voyage) en état de combattre"
+        if (team.any { !it.fainted }) "Aucun Pokémon de ${regionName(region())} en état de combattre"
         else "Votre équipe est K.O. : passez au Centre Pokémon",
     )
 
@@ -1687,15 +1697,9 @@ class GameService(
      */
     private suspend fun unlockJohto(s: GameState): GameState {
         if (s.johtoUnlocked || !(1..GameRules.DEX_SIZE).all { it in s.caught }) return s
-        val starter = GameRules.JOHTO_STARTERS.random(random)
-        val fights = GameRules.hatchFights(breedingInfo(starter).second)
-        val egg = Egg(uid = "egg${s.uidCounter + 1}", speciesId = starter, fightsLeft = fights, fightsTotal = fights, origin = JOHTO)
         val message = "Vous avez obtenu les 151 Pokémon de Kanto : la région de Johto est ouverte ! " +
-            "Un professeur de Bourg Geon vous confie un œuf pour le voyage."
-        return s.copy(
-            johtoUnlocked = true, eggs = s.eggs + egg, uidCounter = s.uidCounter + 1,
-            lastEvent = listOfNotNull(s.lastEvent, message).joinToString(" "),
-        )
+            "À votre arrivée à Bourg Geon, un professeur vous confiera un starter de Johto."
+        return s.copy(johtoUnlocked = true, lastEvent = listOfNotNull(s.lastEvent, message).joinToString(" "))
     }
 
     /**
@@ -1855,6 +1859,7 @@ class GameService(
             levelCap = GameRules.levelCap(s.badges.size),
             caught = s.caught.count { it <= s.dexMax() },
             dexSize = s.dexMax(),
+            starterChoices = GameRules.REGION_STARTERS.filterKeys { it !in s.regionStarters && (it != JOHTO || s.johtoUnlocked) },
             johtoUnlocked = s.johtoUnlocked,
             // Une espèce obtenue (évolution…) compte aussi comme vue
             seen = (s.seen + s.caught).count { it <= GameRules.DEX_SIZE },
@@ -1900,7 +1905,7 @@ class GameService(
 
     /** Vue d'un Pokémon du joueur : région d'origine, et s'il peut combattre dans la région actuelle. */
     private fun Fighter.toViewIn(s: GameState): FighterView =
-        toView().copy(origin = originRegion(), usable = s.usable(this), companion = s.companions[s.region()] == uid)
+        toView().copy(origin = originRegion(), usable = s.usable(this))
 
     private fun Fighter.toView(): FighterView {
         val start = GameRules.xpForLevel(level)

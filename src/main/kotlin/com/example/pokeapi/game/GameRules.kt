@@ -157,8 +157,14 @@ object GameRules {
     /** Dernier numéro du Pokédex de chaque région. */
     val REGION_DEX = mapOf(KANTO to 151, JOHTO to 251)
 
-    /** Starters de Johto : l'un d'eux, en œuf, est offert à l'ouverture de Johto. */
-    val JOHTO_STARTERS = listOf(152, 155, 158)
+    /**
+     * Starters proposés à la première arrivée dans une région (Kanto : au début de la partie). Changer de région ne se
+     * fait pas avec un Pokémon venu d'ailleurs : on y choisit un starter de la région, au niveau de ses premiers lieux.
+     */
+    val REGION_STARTERS = mapOf(JOHTO to listOf("chikorita", "cyndaquil", "totodile"))
+
+    /** Niveau du starter d'une région (Johto : premières rencontres de Cristal aux niveaux 47 à 49). */
+    val REGION_STARTER_LEVEL = mapOf(JOHTO to 50)
 
     /** Région d'une espèce : Kanto (n° 1 à 151) ou Johto (152 à 251). */
     fun speciesRegion(speciesId: Int): String = if (speciesId <= DEX_SIZE) KANTO else JOHTO

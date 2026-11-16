@@ -15,7 +15,7 @@ les Pokémon rares ; Johto de même, plus le bonheur, la Pierre Soleil et les œ
 | Pokémon sauvage | Après chaque victoire contre lui | Il peut proposer de vous rejoindre (voir ci-dessous) |
 | Évolution | Fin de combat, objet, entraînement | L'espèce obtenue compte comme rejointe |
 | Œuf | Pension | Forme de base de l'un des parents |
-| Cadeau | Ouverture de Johto | Un œuf d'un starter de Johto, au hasard |
+| Starter de Johto | Première arrivée à Johto | Germignon, Héricendre ou Kaiminus au choix, niveau 50 |
 | Pokémon rare | Après la Ligue de la région | Apparaît de temps en temps, par le coup de pouce |
 
 ## 1. Pokémon sauvages
@@ -41,7 +41,7 @@ les Pokémon rares ; Johto de même, plus le bonheur, la Pierre Soleil et les œ
   Vous acceptez ou refusez ; il rejoint l'équipe, ou la boîte si l'équipe a déjà 6 Pokémon.
 - **Réglage « Proposer seulement les nouveaux Pokémon »** : une espèce déjà rejointe ne propose plus de vous
   rejoindre (« s'éloigne »), **sauf un chromatique** que vous n'avez pas encore.
-- **Région** : le Pokémon est « né » dans la région du lieu (il ne combat que dans sa région, ou comme compagnon).
+- **Région** : le Pokémon est « né » dans la région du lieu (il ne combat que dans sa région).
 
 ## 2. Le coup de pouce (invisible)
 
@@ -95,7 +95,8 @@ coup de pouce a **10 %** de chances d'être chromatique (contre 1 sur 4 096 norm
 ## 5. Ouverture de Johto
 
 - Johto s'ouvre quand les **151 Pokémon de Kanto** ont rejoint votre Pokédex.
-- Cadeau : un **œuf d'un starter de Johto** (Germignon, Héricendre ou Kaiminus, au hasard).
+- À votre première arrivée à Johto, vous **choisissez votre starter de Johto** : Germignon, Héricendre ou Kaiminus,
+  niveau 50. Les Pokémon de Kanto ne combattent pas à Johto : il est le premier de votre nouvelle équipe.
 - Les deux autres starters de Johto s'obtiennent comme Pokémon rares (voir 6), ou par œuf.
 
 ## 6. Pokémon rares (après la Ligue)

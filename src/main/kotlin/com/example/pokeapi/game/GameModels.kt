@@ -236,8 +236,10 @@ data class GameState(
     val dayCare: DayCare = DayCare(),
     /** Une pension par région. */
     val dayCares: Map<String, DayCare> = emptyMap(),
-    /** Compagnon de voyage de chaque région : le seul Pokémon venu d'ailleurs qui peut y combattre. */
+    /** Ancien compagnon de voyage par région (remplacé par le starter de région) : ignoré, vidé par [upgradeSave]. */
     val companions: Map<String, String> = emptyMap(),
+    /** Régions où le starter a été choisi (Kanto au début de la partie, Johto à la première arrivée). */
+    val regionStarters: Set<String> = emptySet(),
     /** Ancienne Ligue unique (celle de Kanto) : remplacée par [leagues]. */
     val leagueStage: Int = 0,
     val leagueTypes: List<String> = emptyList(),

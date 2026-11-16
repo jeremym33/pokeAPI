@@ -1,7 +1,7 @@
 package com.example.pokeapi.game
 
 /** Version actuelle des sauvegardes (voir [upgradeSave]). */
-const val SAVE_VERSION = 2
+const val SAVE_VERSION = 3
 
 /**
  * Version 2 : Jadielle n'apparaît plus qu'une fois dans le parcours. L'ancienne étape 43 (Jadielle avec son arène,
@@ -21,7 +21,9 @@ internal fun remapStepV2(step: Int): Int = when {
  * Met à jour une sauvegarde d'une version précédente, sans rien perdre de la progression :
  * - version 1 : la Ligue unique d'avant les régions devient la Ligue de Kanto ; la pension unique devient la
  *   pension de Kanto ; chaque Pokémon reçoit sa région d'origine, déduite de son espèce ;
- * - version 2 : les numéros d'étapes suivent le parcours avec une seule Jadielle ([remapStepV2]).
+ * - version 2 : les numéros d'étapes suivent le parcours avec une seule Jadielle ([remapStepV2]) ;
+ * - version 3 : plus de compagnon de voyage ; le starter de Kanto compte comme choisi (celui de Johto se choisit à
+ *   la première arrivée à Johto, ou sur place pour une partie qui y est déjà).
  * Sans effet sur une sauvegarde déjà à jour.
  */
 fun upgradeSave(s: GameState): GameState {
@@ -29,6 +31,7 @@ fun upgradeSave(s: GameState): GameState {
     var u = s
     if (u.saveVersion < 1) u = upgradeV1(u)
     if (u.saveVersion < 2) u = upgradeV2(u)
+    if (u.saveVersion < 3) u = u.copy(regionStarters = u.regionStarters + KANTO, companions = emptyMap(), saveVersion = 3)
     return u.copy(saveVersion = SAVE_VERSION)
 }
 

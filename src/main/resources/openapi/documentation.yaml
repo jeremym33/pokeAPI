@@ -262,9 +262,9 @@ paths:
       security: [{ bearerAuth: [] }]
       summary: Se rendre à une étape déjà accessible
       description: |
-        Dans une région, seuls les Pokémon qui en sont originaires (capturés, offerts ou nés là) peuvent combattre, plus
-        un compagnon de voyage. Au passage d'une région à l'autre, `companion` désigne ce compagnon (un seul, venu d'une
-        autre région) ; il est obligatoire si le joueur n'a encore aucun Pokémon originaire de la région d'arrivée.
+        Dans une région, seuls les Pokémon qui en sont originaires (capturés, offerts ou nés là) peuvent combattre. À la
+        première arrivée dans une région (Johto), `starter` désigne le starter de la région choisi (GameView.starterChoices :
+        chikorita, cyndaquil, totodile), offert au niveau 50 ; il est obligatoire ce jour-là, inutile ensuite.
       requestBody:
         required: true
         content:
@@ -273,7 +273,29 @@ paths:
               type: object
               properties:
                 step: { type: integer, example: 1 }
-                companion: { type: string, nullable: true, example: p1, description: Compagnon de voyage (changement de région) }
+                starter: { type: string, nullable: true, example: chikorita, description: Starter de la région (première arrivée) }
+      responses:
+        "200":
+          description: État de la partie
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /game/region-starter:
+    post:
+      tags: [Aventure]
+      security: [{ bearerAuth: [] }]
+      summary: Choisir le starter de la région actuelle
+      description: Pour une partie arrivée dans la région avant la règle du starter de région (GameView.starterChoices).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                starter: { type: string, example: totodile }
       responses:
         "200":
           description: État de la partie

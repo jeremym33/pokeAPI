@@ -37,10 +37,8 @@ data class FighterView(
     val shiny: Boolean = false,
     /** Région d'origine (kanto, johto). */
     val origin: String = KANTO,
-    /** Peut combattre dans la région actuelle (originaire de la région, ou compagnon de voyage). */
+    /** Peut combattre dans la région actuelle (originaire de la région). */
     val usable: Boolean = true,
-    /** Compagnon de voyage dans la région actuelle. */
-    val companion: Boolean = false,
 )
 
 /** Objet d'évolution du sac : quantité et Pokémon sur lesquels il a un effet. */
@@ -246,6 +244,11 @@ data class GameView(
     /** Défi de la Ligue, quand on est au Plateau Indigo. */
     val league: LeagueView? = null,
     val eggs: List<EggView> = emptyList(),
+    /**
+     * Starters à choisir, par région ouverte où le joueur n'a pas encore le sien (« johto » → Germignon, Héricendre,
+     * Kaiminus) : au voyage vers la région (`starter`), ou sur place (`POST /game/region-starter`).
+     */
+    val starterChoices: Map<String, List<String>> = emptyMap(),
 )
 
 @Serializable

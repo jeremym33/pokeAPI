@@ -83,9 +83,10 @@ jour avec chaque route ou champ ajouté.
 - **Chromatiques** (`shiny`) : gardés à l'évolution (toutes les évolutions passent par `evolve`) ; `shinySeen` /
   `shinyCaught` pour le Motisdex. Réglage `recruitOnlyNew` : un chromatique reste proposé tant que ce chromatique
   n'est pas obtenu, même si l'espèce l'est.
-- **Régions** : Johto s'ouvre avec les 151 Pokémon de Kanto obtenus (œuf de starter offert). Chaque Pokémon a une
-  région d'origine (`origin`) : seuls ceux de la région en cours combattent, plus **un compagnon** choisi au passage
-  de région. Une pension par région, accessible de partout (sauf défi de Ligue) ; zones d'entraînement limitées aux
+- **Régions** : Johto s'ouvre avec les 151 Pokémon de Kanto obtenus. Chaque Pokémon a une région d'origine
+  (`origin`) : seuls ceux de la région en cours combattent (plus de compagnon). À la première arrivée dans une région,
+  on y choisit un **starter de la région** (`REGION_STARTERS`, niveau `REGION_STARTER_LEVEL` : 50 à Johto ;
+  `TravelRequest.starter`, ou `POST /game/region-starter` sur place ; `GameState.regionStarters`). Une pension par région, accessible de partout (sauf défi de Ligue) ; zones d'entraînement limitées aux
   Pokémon de leur région. Pas d'évolution vers une espèce d'une région non débloquée.
 - **Attaques qui blessent le lanceur** : contrecoup proportionnel aux dégâts via `drain` < 0 (données PokéAPI) ;
   les autres effets ne sont pas dans les données et sont listés dans `GameRules` : `SELF_KO_MOVES` (Destruction,

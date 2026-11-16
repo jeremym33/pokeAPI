@@ -15,10 +15,14 @@ import kotlinx.serialization.Serializable
 data class NewGameRequest(val starter: String)
 
 @Serializable
+data class StarterRequest(val starter: String)
+
+@Serializable
 data class TravelRequest(
     val step: Int,
     /** Passage d'une région à l'autre : le Pokémon venu d'ailleurs qui accompagne le joueur. */
-    val companion: String? = null,
+    /** Starter choisi à la première arrivée dans une région (« chikorita »…). */
+    val starter: String? = null,
 )
 
 @Serializable
@@ -75,8 +79,10 @@ fun Route.gameRoutes(service: GameService, auth: AuthService) {
         post("/verify") { call.respond(service.verify(call.user())) }
         post("/travel") {
             val request = call.receive<TravelRequest>()
-            call.respond(service.travel(call.user(), request.step, request.companion))
+            call.respond(service.travel(call.user(), request.step, request.starter))
         }
+        // Starter de la région actuelle (partie arrivée dans la région avant cette règle)
+        post("/region-starter") { call.respond(service.chooseRegionStarter(call.user(), call.receive<StarterRequest>().starter)) }
         post("/heal") { call.respond(service.heal(call.user())) }
         post("/explore") { call.respond(service.explore(call.user())) }
         // Ligue (Plateau Indigo) : prochain membre du Conseil, puis le Maître
