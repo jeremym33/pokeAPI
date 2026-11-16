@@ -35,6 +35,7 @@ jour avec chaque route ou champ ajouté.
 - `auth/AuthService.kt` : comptes (mots de passe PBKDF2, sessions par jeton haché), `confirmPassword`, `deleteAccount`.
 - `service/`, `repository/`, `client/` (appels pokeapi.co), `db/Tables.kt` (dont `game_save` : une partie JSON par utilisateur).
 - `docs/obtenir-les-pokemon.md` : guide joueur (obtention des 386 Pokémon).
+- `docs/idees.md` : idées proposées mais pas encore faites (retirer une idée une fois réalisée).
 - `game/` : le jeu d'aventure (Kanto, Johto, Hoenn).
   - `GameRules.kt` : constantes et règles pures (parcours `STEPS`, niveaux, XP, dégâts, chances, Ligue, Pokémon rares…).
   - `GameModels.kt` : état sauvegardé (`GameState`, `Fighter`, `Battle`, `DayCare`, `LeagueProgress`, `Egg`,
