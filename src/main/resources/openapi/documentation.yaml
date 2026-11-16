@@ -1416,7 +1416,13 @@ components:
         steps: { type: array, items: { type: object } }
         team: { type: array, items: { type: object } }
         box: { type: array, items: { type: object } }
-        battle: { type: object, nullable: true }
+        battle:
+          type: object
+          nullable: true
+          description: |
+            Combat en cours (adversaire, Pokémon actif, journal, issue, recrue…). moveEffectiveness : efficacité de
+            chaque attaque équipée du Pokémon actif sur l'adversaire (4, 2, 1, 0.5, 0.25 ou 0 ; null pour une attaque
+            de statut).
     RegionLocations:
       type: object
       properties:

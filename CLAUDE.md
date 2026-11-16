@@ -120,7 +120,8 @@ jour avec chaque route ou champ ajouté.
   `/withdraw`, `/egg` (par défaut la région actuelle) ; vue : `GameView.dayCares` (et `dayCare`, la région actuelle) ;
   2 Pokémon compatibles (groupe d'œufs ou Métamorph) → un œuf toutes les 5 min ; l'espèce de l'œuf est
   fixée à son apparition (`eggSpecies`) ; le bébé éclot avec `HAPPINESS_HATCHED` (10) points de bonheur.
-- **Combat** : l'IA des adversaires est `GameRules.chooseMove` / `moveScore` (meilleure attaque utile, 1 fois sur 5
+- **Combat** : `BattleView.moveEffectiveness` donne l'efficacité de chaque attaque équipée sur l'adversaire (défenses
+  de l'adversaire, null pour une attaque de statut), affichée par l'application. L'IA des adversaires est `GameRules.chooseMove` / `moveScore` (meilleure attaque utile, 1 fois sur 5
   au hasard parmi les utiles). Destruction et Explosion seulement sous 25 % des PV.
 
 Guide joueur : `docs/obtenir-les-pokemon.md` (façons d'obtenir les Pokémon, coup de pouce, Pokémon rares, liste des

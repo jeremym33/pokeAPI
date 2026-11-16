@@ -1926,6 +1926,9 @@ class GameService(
                 recruit = b.recruit?.toView(),
                 recruitIsNew = b.recruit?.let { it.speciesId !in s.caught } ?: false,
                 recruitNewInRegion = b.recruit?.let { it.speciesId in s.caught && !s.ownsBornIn(it.speciesId, GameRules.STEPS[b.step].region) } ?: false,
+                moveEffectiveness = s.team.first { it.uid == b.activeUid }.moves.map { m ->
+                    if (m.damageClass == "status") null else b.enemy.defenses[m.type] ?: 1.0
+                },
                 canContinue = b.kind == BattleKind.WILD && b.outcome in setOf(BattleOutcome.WON, BattleOutcome.FLED) &&
                     s.settings.nextEncounterButton && s.canFight() && pool(s.stepIndex, s.regionBadges(s.region())).isNotEmpty(),
             )

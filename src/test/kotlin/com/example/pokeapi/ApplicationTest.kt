@@ -663,6 +663,8 @@ class ApplicationTest {
             if (v.team.all { it.fainted }) { v = game(post("/travel", """{"step":0}""")); v = game(post("/heal")); continue }
             v = game(post("/explore"))
             assertEquals(BattleKind.WILD, v.battle!!.kind)
+            // Efficacité de chaque attaque équipée sur l'adversaire (null : attaque de statut)
+            assertEquals(v.battle!!.active.moves.map { it.damageClass == "status" }, v.battle!!.moveEffectiveness.map { it == null })
             while (v.battle!!.outcome == null) {
                 val b = v.battle!!
                 v = if (b.mustSwitch) game(post("/battle/switch", """{"uid":"${v.team.first { !it.fainted }.uid}"}"""))

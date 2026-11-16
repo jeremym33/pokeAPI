@@ -209,6 +209,11 @@ data class BattleView(
     val recruitNewInRegion: Boolean = false,
     /** Combat terminé sur un lieu avec des Pokémon sauvages : « Pokémon suivant » possible (selon les réglages). */
     val canContinue: Boolean,
+    /**
+     * Efficacité de chaque attaque équipée du Pokémon actif sur l'adversaire, dans l'ordre des attaques : ×4, ×2, ×1,
+     * ×0,5, ×0,25 ou 0 (sans effet) ; null pour une attaque de statut.
+     */
+    val moveEffectiveness: List<Double?> = emptyList(),
 )
 
 @Serializable
