@@ -51,12 +51,11 @@ l'annonce. La rencontre se fait alors avec :
 
 1. une espèce du lieu **pas encore vue**, s'il en reste ;
 2. sinon une espèce du lieu **vue mais pas encore rejointe** ;
-
-(après la Ligue de la région, les espèces de la canne et du surf comptent parmi les espèces du lieu ;)
 3. après la victoire contre le Maître de la Ligue de la région, parfois (une fois sur deux s'il reste des espèces à
    voir ou à rejoindre, toujours sinon) un **Pokémon rare** du lieu (voir 6).
 
-Chaque espèce visée a la même chance d'être choisie, même celles qu'on croise rarement sur le lieu. Le Pokémon du
+Après la Ligue de la région, les espèces de la canne et du surf comptent parmi les espèces du lieu. Chaque espèce
+visée a la même chance d'être choisie, même celles qu'on croise rarement sur le lieu. Le Pokémon du
 coup de pouce a **10 %** de chances d'être chromatique (contre 1 sur 4 096 normalement).
 
 ## 3. Évolutions
