@@ -41,3 +41,17 @@ réalisée, la retirer de cette liste.
 18. **Notifications** sur mobile : œuf prêt, Pokémon à l'entraînement au niveau maximum.
 19. **Sons** désactivables (coup, K.O., capture, évolution).
 20. **Squelettes de chargement** à la place de la roue, et vérification des contrastes en mode sombre.
+
+## Ergonomie (UX)
+
+21. **Retour au bon endroit** : à la fin d'un combat, revenir sur le lieu et ses boutons, pas au milieu de la page.
+22. **Défis du jour repliés** en une ligne (« Défis 1 / 3 ▸ ») qu'on déplie.
+23. **Doublons à retirer** : « Continuer vers… » fait la même chose que « Que faire maintenant ? » quand c'est la
+    prochaine étape.
+24. **Textes d'aide repliés** derrière un bouton « ? » (entraînement, pension, paramètres, bonheur…).
+25. **Erreurs en notification** près de l'action, plutôt qu'un bandeau en haut de page parfois hors de l'écran.
+26. **Retour visuel sur le bouton touché** pendant une action, au lieu de griser tous les boutons.
+27. **Échange plus clair** dans l'Équipe : bannière « Touchez le Pokémon à échanger avec … » et bouton « Annuler ».
+28. **Recherche et saut rapide** dans le Motisdex (nom ou n°, région).
+29. **Glisser pour actualiser** sur mobile (Aventure, Pension, Journal).
+30. **Zones tactiles** d'au moins 44 px (petits « ✕ », pastilles) et ordre de lecture au lecteur d'écran.
