@@ -16,9 +16,9 @@ tags:
       sont propres à chaque compte ; le Pokédex et les régions restent publics.
   - name: Aventure
     description: |
-      Jeu d'aventure dans Kanto (rencontres de Vert Feuille), puis Johto (rencontres de Cristal, aux niveaux d'origine :
-      chaque région repart des niveaux les plus bas, avec ses propres badges),
-      ouvert une fois les 151 Pokémon de Kanto obtenus. Chaque action renvoie l'état complet de la partie (GameView).
+      Jeu d'aventure dans Kanto (rencontres de Vert Feuille), puis Johto (rencontres de Cristal), ouvert une fois les
+      151 Pokémon de Kanto obtenus, puis Hoenn (rencontres d'Émeraude), ouvert une fois les 251 premiers obtenus ; chaque
+      région repart des niveaux les plus bas, avec ses propres badges (GameView.unlockedRegions). Chaque action renvoie l'état complet de la partie (GameView).
       Une route se franchit avec au moins 10 victoires et toutes ses espèces vues (rencontres disponibles dès le départ),
       rencontrées selon leurs chances habituelles.
       Un Pokémon sauvage vaincu peut rejoindre l'équipe selon son taux
@@ -264,8 +264,8 @@ paths:
       summary: Se rendre à une étape déjà accessible
       description: |
         Dans une région, seuls les Pokémon qui en sont originaires (capturés, offerts ou nés là) peuvent combattre. À la
-        première arrivée dans une région (Johto), `starter` désigne le starter de la région choisi (GameView.starterChoices :
-        chikorita, cyndaquil, totodile), offert au niveau 5 ; il est obligatoire ce jour-là, inutile ensuite.
+        première arrivée dans une région (Johto, Hoenn), `starter` désigne le starter de la région choisi
+        (GameView.starterChoices : chikorita, cyndaquil, totodile ; treecko, torchic, mudkip), offert au niveau 5 ; il est obligatoire ce jour-là, inutile ensuite.
       requestBody:
         required: true
         content:
@@ -486,10 +486,11 @@ paths:
     post:
       tags: [Aventure]
       security: [{ bearerAuth: [] }]
-      summary: Défier le prochain adversaire de la Ligue de la région (Plateau Indigo)
+      summary: Défier le prochain adversaire de la Ligue de la région (Plateau Indigo, Éternara)
       description: |
-        Une Ligue par région, au Plateau Indigo : celui de Kanto (après la Route Victoire de Kanto), puis celui de
-        Johto (dernière étape, après la Route 27, les Chutes Tohjo, la Route 26 et la Route Victoire). Avec les 8 badges
+        Une Ligue par région : au Plateau Indigo pour Kanto (après la Route Victoire de Kanto) et pour Johto (après la
+        Route 27, les Chutes Tohjo, la Route 26 et la Route Victoire), à Éternara pour Hoenn (après la Route Victoire de
+        Hoenn). Avec les 8 badges
         de la région : 4 membres du Conseil (un type chacun, différent des arènes de la région) puis le Maître (équipe
         mixte, sans légendaires), à battre à la suite, sans Centre Pokémon entre les combats. Une défaite, ou quitter le
         défi (/game/league/abandon, seule autre action possible pendant le défi), le fait reprendre depuis le début. Chaque Ligue a ses propres victoires (league.region,
@@ -498,7 +499,10 @@ paths:
         Azurée. La Ligue de Johto (6 Pokémon par adversaire, mêmes niveaux que celle de Kanto : 38 à 55) fait de même pour les Pokémon de Johto
         introuvables dans Cristal (n° 152 à 251 : starters, bébés, fossiles…) ; légendaires à lieu fixe : Raikou, Entei
         et Suicune dans la Tour Cendrée, Lugia sur le Chenal 41, Ho-Oh (niv. 90) sur la Route 37, Celebi dans le Bois aux
-        Chênes.
+        Chênes. La Ligue de Hoenn ouvre le Pilier Céleste, la Voie du Désert et la Grotte Atelier et fait de même pour les
+        n° 252 à 386 introuvables dans Émeraude ; légendaires à lieu fixe : Regirock (Route 111), Regice (Chenal 105),
+        Registeel (Route 120), Latias et Latios (Chenal 134), Kyogre (Caverne Fondmer), Groudon (Planque Magma),
+        Rayquaza seul au Pilier Céleste (Kyogre, Groudon, Rayquaza : niv. 70).
 
         Les parties enregistrées avant les Ligues par région sont mises à jour au démarrage du serveur et à leur
         chargement : l'ancienne Ligue devient celle de Kanto, sans perte de progression.
@@ -1358,8 +1362,14 @@ components:
         unlockedStep: { type: integer, description: Étape la plus lointaine accessible }
         badges: { type: integer }
         levelCap: { type: integer, description: Niveau maximum selon les badges }
-        caught: { type: integer, description: Espèces de Kanto obtenues }
-        dexSize: { type: integer, example: 151 }
+        caught: { type: integer, description: Espèces des régions ouvertes obtenues }
+        dexSize: { type: integer, example: 151, description: "151, 251 avec Johto, 386 avec Hoenn" }
+        hoennUnlocked: { type: boolean, description: "Hoenn ouvert (les 251 premiers Pokémon obtenus)" }
+        unlockedRegions:
+          type: array
+          items: { type: string }
+          example: [kanto, johto]
+          description: Régions ouvertes, dans l'ordre
         steps: { type: array, items: { type: object } }
         team: { type: array, items: { type: object } }
         box: { type: array, items: { type: object } }

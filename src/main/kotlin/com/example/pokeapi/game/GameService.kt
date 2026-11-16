@@ -270,7 +270,8 @@ class GameService(
             victories = victoryCount(s), badges = s.badges.size, caught = caught.size,
             seen = (s.seen + s.caught).count { it <= s.dexMax() }, caughtByType = byType,
             championWins = s.leagues.values.sumOf { it.wins },
-            johtoCaught = s.caught.count { it in (GameRules.DEX_SIZE + 1)..GameRules.REGION_DEX.getValue(JOHTO) },
+            johtoCaught = s.caught.count { it in GameRules.regionIds(JOHTO) },
+            hoennCaught = s.caught.count { it in GameRules.regionIds(HOENN) },
         )
     }
 
@@ -356,7 +357,7 @@ class GameService(
         val evolutionItem = GameRules.ITEMS.firstOrNull { it.item == item } ?: throw BadRequestException("Objet inconnu : '$item'")
         if ((s.items[item] ?: 0) <= 0) throw BadRequestException("Vous n'avez pas de ${evolutionItem.nameFr}")
         val f = (s.team + s.box).firstOrNull { it.uid == uid } ?: throw BadRequestException("Pokémon introuvable")
-        val target = itemEvolutions(f, s.dexMax())[item] ?: throw BadRequestException("${evolutionItem.nameFr} n'a aucun effet sur ${f.displayName}")
+        val target = itemEvolutions(f, s.dexMax(), s.caught)[item] ?: throw BadRequestException("${evolutionItem.nameFr} n'a aucun effet sur ${f.displayName}")
         val form = evolve(f, target)
         val log = mutableListOf("Quoi ? ${f.displayName} évolue en ${form.displayName} !")
         // Attaques apprises à l'évolution (Raichu : Poing Éclair…)
@@ -474,7 +475,7 @@ class GameService(
     /** Le prochain œuf est prêt ? (temps réel, même partie fermée) */
     private suspend fun syncDayCare(s: GameState, now: Long = System.currentTimeMillis()): GameState {
         var state = s
-        for (region in listOf(KANTO, JOHTO)) {
+        for (region in GameRules.REGIONS) {
             val d = state.dayCareIn(region)
             if (d.eggWaiting || d.nextEggAt == null || now < d.nextEggAt || !compatiblePair(d)) continue
             state = state.withDayCare(region, d.copy(eggWaiting = true, nextEggAt = null, eggSpecies = eggSpecies(d, state.dexMax())))
@@ -598,7 +599,7 @@ class GameService(
             levelEvolution(f, state.dexMax())?.let { target ->
                 val evolved = evolve(f, target)
                 log += "Quoi ? ${f.displayName} évolue en ${evolved.displayName} !"
-                state = state.copy(caught = state.caught + evolved.speciesId)
+                state = withShed(state.copy(caught = state.caught + evolved.speciesId), f, log)
                 f = learnNewMoves(evolved, sinceLevel = f.level - 1, state.settings, log, evolved = true)
             }
             state = state.copy(
@@ -740,18 +741,24 @@ class GameService(
     private fun gymOpen(s: GameState, step: Int): Boolean {
         if (GameRules.STEPS[step].gymOpensAfter == null) return true
         val region = GameRules.STEPS[step].region
-        return GameRules.STEPS.indices.filter { it != step && GameRules.STEPS[it].gym && GameRules.STEPS[it].region == region }.all { it in s.badges }
+        val order = GameRules.gymOrder(step)
+        // Les arènes qui la précèdent dans l'ordre des arènes (Jadielle : les 7 autres ; Clémenti-Ville : les 4 premières)
+        return GameRules.STEPS.indices.filter { it != step && GameRules.STEPS[it].gym && GameRules.STEPS[it].region == region && GameRules.gymOrder(it) < order }
+            .all { it in s.badges }
     }
 
         /** Badges obtenus dans une région. */
     private fun GameState.regionBadges(region: String): Int = badges.count { GameRules.STEPS[it].region == region }
 
-    /** Pokémon que la Ligue d'une région peut aligner : ceux de la région (Kanto, ou Kanto et Johto), sans légendaires. */
+    /**
+     * Pokémon que la Ligue d'une région peut aligner : ceux de la région et des précédentes (Kanto ; Kanto et Johto ;
+     * Kanto, Johto et Hoenn), sans légendaires.
+     */
     private suspend fun leagueCandidates(region: String, type: String? = null): List<com.example.pokeapi.model.PokemonSummary> {
         val maxDex = GameRules.REGION_DEX.getValue(region)
+        val regions = GameRules.regionsUpTo(maxDex)
         // Pokémon rares exclus : ils restent la récompense de la Ligue
-        val rare = if (region == KANTO) rareSpecies(KANTO).keys else rareSpecies(KANTO).keys + rareSpecies(JOHTO).keys
-        val regions = if (region == KANTO) listOf(KANTO) else listOf(KANTO, JOHTO)
+        val rare = regions.flatMap { rareSpecies(it).keys }.toSet()
         return regions.flatMap { r -> pokemonService.list(PokemonQuery(limit = 200, types = listOfNotNull(type), region = r)).items }
             .filter { it.regionalForm == null && GameRules.inDex(it.id, maxDex) && it.id !in rare && it.id !in GameRules.LEGENDARIES }
     }
@@ -771,7 +778,7 @@ class GameService(
     suspend fun challengeLeague(userId: Int): GameView = act(userId) { s0 ->
         noBattle(s0)
         val step = GameRules.STEPS[s0.stepIndex]
-        if (!step.league) throw BadRequestException("La Ligue se trouve au Plateau Indigo")
+        if (!step.league) throw BadRequestException("Pas de Ligue ici : elle se trouve au bout du parcours de la région")
         val region = step.region
         if (s0.regionBadges(region) < 8) throw BadRequestException("Il faut les 8 badges de ${regionName(region)} pour défier la Ligue")
         val active = s0.firstFighter()
@@ -783,7 +790,7 @@ class GameService(
         val enemies = when {
             type == null -> championTeam(top, region)
             region == KANTO -> gymTeam(type, top, size = 5, targetStat = 470)
-            // Johto : équipes complètes, du niveau de fin de Cristal
+            // Johto et Hoenn : équipes complètes
             else -> gymTeam(type, top, size = 6, targetStat = 500, maxDex = GameRules.REGION_DEX.getValue(region))
         }
         val name = leagueOpponentName(stage, type)
@@ -818,14 +825,14 @@ class GameService(
     /**
      * Pokémon d'une région introuvables à l'état sauvage dans ses lieux (starters, fossiles, bébés, légendaires…),
      * sans ceux qu'on obtient en faisant évoluer un Pokémon trouvable. Kanto : n° 1 à 151 (Vert Feuille) ; Johto :
-     * n° 152 à 251 (Cristal). Les légendaires ont un lieu fixe ([GameRules.RARE_HOMES]) ; les autres sont placés
+     * n° 152 à 251 (Cristal) ; Hoenn : n° 252 à 386 (Émeraude). Les légendaires ont un lieu fixe ([GameRules.RARE_HOMES]) ; les autres sont placés
      * sur le lieu de la région dont les Pokémon partagent le plus leurs types, le moins chargé d'abord. Ils
      * apparaissent par le coup de pouce une fois le Maître de la Ligue de la région battu.
      */
     private suspend fun rareSpecies(region: String = KANTO): Map<Int, Int> {
         rareCache[region]?.let { return it }
         val maxDex = GameRules.REGION_DEX.getValue(region)
-        val ids = (if (region == KANTO) 1..GameRules.DEX_SIZE else (GameRules.DEX_SIZE + 1)..maxDex).toList()
+        val ids = GameRules.regionIds(region).toList()
         val places = GameRules.STEPS.indices.filter { GameRules.STEPS[it].region == region && !GameRules.STEPS[it].city && pool(it, 8).isNotEmpty() }
         val encounters = places.associateWith { pool(it, 8) }
         val wild = encounters.values.flatten().map { it.pokemonId }.toSet()
@@ -845,8 +852,9 @@ class GameService(
             val own = types[id].orEmpty()
             fun overlap(step: Int) = encounters.getValue(step).map { it.pokemonId }.distinct()
                 .count { other -> types[other].orEmpty().any { it in own } }
-            // Mewtwo est seul dans la Grotte Azurée
-            val options = places.filter { it != homes[GameRules.MEWTWO] }
+            // Mewtwo est seul dans la Grotte Azurée, Rayquaza au Pilier Céleste
+            val solo = GameRules.SOLO_RARES.mapNotNull { homes[it] }
+            val options = places.filter { it !in solo }
             val matching = options.filter { overlap(it) > 0 }.ifEmpty { options }
             val best = matching.minWithOrNull(
                 compareBy<Int> { step -> placed.values.count { it == step } }
@@ -865,7 +873,7 @@ class GameService(
         val step = GameRules.STEPS[s0.stepIndex]
         if (!step.gym) throw BadRequestException("Pas d'arène ici")
         if (!gymOpen(s0, s0.stepIndex)) {
-            throw BadRequestException("L'arène est fermée : son champion n'acceptera votre défi qu'avec les ${GameRules.gymNumber(s0.stepIndex)} autres badges de ${regionName(step.region)}")
+            throw BadRequestException("L'arène est fermée : son champion n'acceptera votre défi qu'avec les ${GameRules.gymNumber(s0.stepIndex)} badges précédents de ${regionName(step.region)}")
         }
         if (s0.stepIndex in s0.badges) throw BadRequestException("Vous avez déjà le badge de cette arène")
         val active = s0.firstFighter()
@@ -1370,6 +1378,7 @@ class GameService(
                 if (first) {
                     log += "Des Pokémon rares, introuvables jusqu'ici, se cachent désormais dans ${regionName(region)} : ils n'apparaissent que par chance, de temps en temps."
                     if (region == KANTO) log += "La Grotte Azurée est maintenant accessible."
+                    if (region == HOENN) log += "Le Pilier Céleste, la Voie du Désert et la Grotte Atelier sont maintenant accessibles."
                 }
                 state = state.withLeague(region, league.copy(stage = 0, wins = league.wins + 1))
             }
@@ -1398,14 +1407,18 @@ class GameService(
      */
     private suspend fun evolveTeam(s: GameState, log: MutableList<String>): GameState {
         var caught = s.caught
+        val evolvedFrom = mutableListOf<Fighter>()
         val team = s.team.map { f ->
             val target = levelEvolution(f, s.dexMax()) ?: return@map f
             val evolved = evolve(f, target)
             log += "Quoi ? ${f.displayName} évolue en ${evolved.displayName} !"
             caught = caught + evolved.speciesId
+            evolvedFrom += f
             learnNewMoves(evolved, sinceLevel = f.level - 1, s.settings, log, evolved = true)
         }
-        return s.copy(team = team, caught = caught)
+        var state = s.copy(team = team, caught = caught)
+        evolvedFrom.forEach { state = withShed(state, it, log) }
+        return state
     }
 
     /**
@@ -1468,13 +1481,14 @@ class GameService(
     }
 
     /** Objets qui font évoluer ce Pokémon : objet -> id du Pokémon obtenu. */
-    private suspend fun itemEvolutions(f: Fighter, maxDex: Int = GameRules.DEX_SIZE): Map<String, Int> {
-        val chain = evolutionService.evolutions(f.pokemonId.toString()) ?: return emptyMap()
-        fun find(nodes: List<EvolutionNode>): EvolutionNode? =
-            nodes.firstNotNullOfOrNull { n -> if (n.pokemon?.id == f.pokemonId) n else find(n.evolvesTo) }
-        val children = find(chain.roots)?.evolvesTo.orEmpty().map { (it.pokemon?.id ?: it.speciesId) to it.conditions }
+    /**
+     * Objets qui font évoluer ce Pokémon : objet -> id du Pokémon obtenu. Si un objet permet plusieurs évolutions
+     * (Coquiperl au Câble Link), une espèce pas encore rejointe ([caught]) d'abord.
+     */
+    private suspend fun itemEvolutions(f: Fighter, maxDex: Int = GameRules.DEX_SIZE, caught: Set<Int> = emptySet()): Map<String, Int> {
+        val children = evolutionNode(f)?.evolvesTo.orEmpty().map { (it.pokemon?.id ?: it.speciesId) to it.conditions }
             .filter { (id, _) -> GameRules.inDex(id, maxDex) }
-        return GameRules.ITEMS.mapNotNull { item -> GameRules.itemEvolution(children, item)?.let { item.item to it } }.toMap()
+        return GameRules.ITEMS.mapNotNull { item -> GameRules.itemEvolution(children, item) { it !in caught }?.let { item.item to it } }.toMap()
     }
 
     private fun decideRecruit(s: GameState, recruit: Fighter, accept: Boolean): GameState {
@@ -1499,9 +1513,9 @@ class GameService(
     private suspend fun speciesName(f: Fighter): String =
         pokemonService.getPokemon(f.pokemonId.toString())?.let { it.nameFr ?: it.name.replaceFirstChar(Char::uppercase) } ?: f.displayName
 
-    /** Noms français des lieux du parcours (Kanto et Johto). */
+    /** Noms français des lieux du parcours (Kanto, Johto et Hoenn). */
     private suspend fun locationNames(): Map<String, String?> =
-        listOf(KANTO, JOHTO).flatMap { r -> locationService.regionLocations(r)?.locations.orEmpty() }.associate { it.name to it.nameFr }
+        GameRules.REGIONS.flatMap { r -> locationService.regionLocations(r)?.locations.orEmpty() }.associate { it.name to it.nameFr }
 
     /** Pré-évolution des régions débloquées la plus proche (Phyllali → Évoli, Raichu d'Alola → Pikachu), null s'il n'y en a pas. */
     private suspend fun kantoAncestor(pokemonId: Int, maxDex: Int = GameRules.DEX_SIZE): Int? {
@@ -1514,16 +1528,44 @@ class GameService(
         return ancestors.reversed().map { it.pokemon?.id ?: it.speciesId }.firstOrNull { GameRules.inDex(it, maxDex) }
     }
 
-    /** Évolution par niveau atteinte (« Niveau 16 » sans autre condition), id du Pokémon obtenu. */
+    /**
+     * Évolution par niveau atteinte (« Niveau 16 », bonheur…), id du Pokémon obtenu. Si plusieurs conviennent
+     * (Chenipotte : Armulys ou Blindalys), l'une au hasard.
+     */
     private suspend fun levelEvolution(f: Fighter, maxDex: Int = GameRules.DEX_SIZE): Int? {
+        val node = evolutionNode(f) ?: return null
+        return node.evolvesTo.filter { child ->
+            GameRules.inDex(child.pokemon?.id ?: child.speciesId, maxDex) &&
+                child.conditions.any { c -> GameRules.evolutionConditionMet(f, c, java.time.LocalTime.now().hour) }
+        }.randomOrNull(random)?.let { it.pokemon?.id ?: it.speciesId }
+    }
+
+    private suspend fun evolutionNode(f: Fighter): EvolutionNode? {
         val chain = evolutionService.evolutions(f.pokemonId.toString()) ?: return null
         fun find(nodes: List<EvolutionNode>): EvolutionNode? =
             nodes.firstNotNullOfOrNull { n -> if (n.pokemon?.id == f.pokemonId) n else find(n.evolvesTo) }
-        val node = find(chain.roots) ?: return null
-        return node.evolvesTo.firstOrNull { child ->
-            GameRules.inDex(child.pokemon?.id ?: child.speciesId, maxDex) &&
-                child.conditions.any { c -> GameRules.evolutionConditionMet(f, c, java.time.LocalTime.now().hour) }
+        return find(chain.roots)
+    }
+
+    /** Pokémon qui apparaît en plus d'une évolution par niveau (Ningale → Ninjask : Munja), id, ou null. */
+    private suspend fun shedEvolution(f: Fighter, maxDex: Int): Int? =
+        evolutionNode(f)?.evolvesTo?.firstOrNull { child ->
+            GameRules.inDex(child.pokemon?.id ?: child.speciesId, maxDex) && child.conditions.any(GameRules::isShedCondition)
         }?.let { it.pokemon?.id ?: it.speciesId }
+
+    /**
+     * Après l'évolution par niveau de [before] : le Pokémon « en plus » (Munja), dans l'équipe s'il y a une place, sinon
+     * dans la boîte, né dans la même région.
+     */
+    private suspend fun withShed(s: GameState, before: Fighter, log: MutableList<String>): GameState {
+        val id = shedEvolution(before, s.dexMax()) ?: return s
+        val extra = buildFighter(id.toString(), before.level, "p${s.uidCounter + 1}").copy(origin = before.originRegion())
+        val inTeam = s.team.size < 6
+        log += "${extra.displayName} apparaît et rejoint votre " + (if (inTeam) "équipe !" else "boîte !")
+        return s.copy(
+            team = if (inTeam) s.team + extra else s.team, box = if (inTeam) s.box else s.box + extra,
+            caught = s.caught + extra.speciesId, seen = s.seen + extra.speciesId, uidCounter = s.uidCounter + 1,
+        )
     }
 
     // ---------- Construction des Pokémon ----------
@@ -1602,8 +1644,8 @@ class GameService(
     private suspend fun gymTeam(type: String, topLevel: Int, size: Int, targetStat: Int, maxDex: Int = GameRules.DEX_SIZE): List<Fighter> {
         val rare = if (size >= 5 && maxDex == GameRules.DEX_SIZE) rareSpecies().keys else emptySet()
         val target = targetStat
-        // Kanto, ou Kanto et Johto pour les arènes de Johto
-        val regions = if (maxDex > GameRules.DEX_SIZE) listOf("kanto", "johto") else listOf("kanto")
+        // Kanto ; Kanto et Johto pour les arènes de Johto ; les trois pour celles de Hoenn
+        val regions = GameRules.regionsUpTo(maxDex)
         val candidates = regions.flatMap { r -> pokemonService.list(PokemonQuery(limit = 100, types = listOf(type), region = r)).items }
             .filter { it.regionalForm == null && GameRules.inDex(it.id, maxDex) && it.id !in rare && it.id !in GameRules.LEGENDARIES }
             .sortedBy { abs(it.statTotal - target) }
@@ -1688,7 +1730,7 @@ class GameService(
         else "Votre équipe est K.O. : passez au Centre Pokémon",
     )
 
-    private fun regionName(region: String) = if (region == JOHTO) "Johto" else "Kanto"
+    private fun regionName(region: String) = GameRules.REGION_NAMES[region] ?: region
 
     /** Pension de la région (l'ancienne pension unique est celle de Kanto). */
     private fun GameState.dayCareIn(region: String): DayCare = dayCares[region] ?: if (region == KANTO) dayCare else DayCare()
@@ -1696,20 +1738,40 @@ class GameService(
     private fun GameState.withDayCare(region: String, d: DayCare): GameState =
         copy(dayCares = dayCares + (region to d), dayCare = if (region == KANTO) DayCare() else dayCare)
 
-    private fun GameState.allDayCarePokemon(): List<Fighter> = listOf(KANTO, JOHTO).flatMap { dayCareIn(it).pokemon }
+    private fun GameState.allDayCarePokemon(): List<Fighter> = GameRules.REGIONS.flatMap { dayCareIn(it).pokemon }
 
-    /** Dernier numéro des régions débloquées : 151 (Kanto), puis 251 une fois Johto ouvert. */
-    private fun GameState.dexMax(): Int = if (johtoUnlocked) GameRules.REGION_DEX.getValue(JOHTO) else GameRules.DEX_SIZE
+    /** Région ouverte (Kanto toujours ; Johto, puis Hoenn, une fois tous les Pokémon des régions précédentes obtenus). */
+    private fun GameState.regionUnlocked(region: String): Boolean = when (region) {
+        KANTO -> true
+        JOHTO -> johtoUnlocked
+        HOENN -> hoennUnlocked
+        else -> false
+    }
+
+    /** Dernier numéro des régions débloquées : 151 (Kanto), 251 une fois Johto ouvert, 386 une fois Hoenn ouvert. */
+    private fun GameState.dexMax(): Int = GameRules.REGION_DEX.getValue(GameRules.REGIONS.last { regionUnlocked(it) })
 
     /**
-     * Johto s'ouvre quand les 151 Pokémon de Kanto ont rejoint l'équipe (une fois pour toutes) ; le professeur
-     * offre alors un œuf d'un des starters de Johto, introuvables à l'état sauvage.
+     * Une région s'ouvre quand tous les Pokémon des régions précédentes ont rejoint l'équipe (une fois pour toutes) :
+     * Johto avec les 151 de Kanto, Hoenn avec les 251 de Kanto et Johto. Le starter de la région se choisit à la
+     * première arrivée.
      */
-    private suspend fun unlockJohto(s: GameState): GameState {
-        if (s.johtoUnlocked || !(1..GameRules.DEX_SIZE).all { it in s.caught }) return s
-        val message = "Vous avez obtenu les 151 Pokémon de Kanto : la région de Johto est ouverte ! " +
-            "À votre arrivée à Bourg Geon, un professeur vous confiera un starter de Johto."
-        return s.copy(johtoUnlocked = true, lastEvent = listOfNotNull(s.lastEvent, message).joinToString(" "))
+    private suspend fun unlockRegions(s: GameState): GameState {
+        var state = s
+        for (region in GameRules.REGIONS.drop(1)) {
+            if (state.regionUnlocked(region)) continue
+            val previous = GameRules.REGION_DEX.getValue(GameRules.previousRegion(region)!!)
+            if (!(1..previous).all { it in state.caught }) break
+            val first = GameRules.STEPS.first { it.region == region }.location
+            val town = locationNames()[first] ?: first
+            val message = "Vous avez obtenu les $previous premiers Pokémon : la région de ${regionName(region)} est ouverte ! " +
+                "À votre arrivée à $town, un professeur vous confiera un starter de ${regionName(region)}."
+            state = when (region) {
+                JOHTO -> state.copy(johtoUnlocked = true)
+                else -> state.copy(hoennUnlocked = true)
+            }.copy(lastEvent = listOfNotNull(state.lastEvent, message).joinToString(" "))
+        }
+        return state
     }
 
     /**
@@ -1758,8 +1820,8 @@ class GameService(
     /** Étape la plus lointaine accessible : la première qui n'est pas encore franchie. */
     private suspend fun unlockedStep(s: GameState): Int {
         for (i in GameRules.STEPS.indices) {
-            // Johto reste fermé tant que les 151 Pokémon de Kanto n'ont pas été obtenus
-            if (GameRules.STEPS[i].region == JOHTO && !s.johtoUnlocked) return i - 1
+            // Une région reste fermée tant que les Pokémon des précédentes n'ont pas tous été obtenus
+            if (!s.regionUnlocked(GameRules.STEPS[i].region)) return i - 1
             // Route 23 : il faut le badge de Jadielle
             if (GameRules.badgeStepFor(i)?.let { it !in s.badges } == true) return i - 1
             if (!cleared(s, i)) return i
@@ -1771,16 +1833,19 @@ class GameService(
     private suspend fun withGymType(s: GameState, step: Int): GameState {
         if (step in s.gymTypes) return s
         // Lieux depuis l'arène précédente (dans l'ordre des arènes) jusqu'à celle-ci (Jadielle : jusqu'à la Route 21)
+        // Dans la région de l'arène seulement : chaque région a ses 8 types d'arène (18 types ne suffiraient pas à trois
+        // régions sans répétition)
+        val region = GameRules.STEPS[step].region
         val order = GameRules.gymOrder(step)
-        val previousGym = GameRules.STEPS.indices.filter { GameRules.STEPS[it].gym && GameRules.gymOrder(it) < order }
-            .maxOfOrNull { GameRules.gymOrder(it) } ?: -1
+        val previousGym = GameRules.STEPS.indices.filter { GameRules.STEPS[it].gym && GameRules.STEPS[it].region == region && GameRules.gymOrder(it) < order }
+            .maxOfOrNull { GameRules.gymOrder(it) } ?: (GameRules.STEPS.indexOfFirst { it.region == region } - 1)
         val end = if (order != step) order + 1 else step
         val counts = mutableMapOf<String, Int>()
         for (i in (previousGym + 1) until end) {
             if (GameRules.STEPS[i].city) continue
             pool(i, 8).distinctBy { it.pokemonId }.flatMap { it.types }.forEach { counts[it] = (counts[it] ?: 0) + 1 }
         }
-        val used = s.gymTypes.values.toSet() + "normal"
+        val used = s.gymTypes.filterKeys { GameRules.STEPS[it].region == region }.values.toSet() + "normal"
         val type = counts.entries.filter { it.key !in used }.sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
             .firstOrNull()?.key ?: (FALLBACK_GYM_TYPES + TYPES_FR.keys).firstOrNull { it !in used } ?: FALLBACK_GYM_TYPES.first()
         return s.copy(gymTypes = s.gymTypes + (step to type))
@@ -1870,10 +1935,12 @@ class GameService(
             levelCap = GameRules.levelCap(s.regionBadges(s.region())),
             caught = s.caught.count { it <= s.dexMax() },
             dexSize = s.dexMax(),
-            starterChoices = GameRules.REGION_STARTERS.filterKeys { it !in s.regionStarters && (it != JOHTO || s.johtoUnlocked) },
+            starterChoices = GameRules.REGION_STARTERS.filterKeys { it !in s.regionStarters && s.regionUnlocked(it) },
             johtoUnlocked = s.johtoUnlocked,
+            hoennUnlocked = s.hoennUnlocked,
+            unlockedRegions = GameRules.REGIONS.filter { s.regionUnlocked(it) },
             // Une espèce obtenue (évolution…) compte aussi comme vue
-            seen = (s.seen + s.caught).count { it <= GameRules.DEX_SIZE },
+            seen = (s.seen + s.caught).count { it <= s.dexMax() },
             steps = steps,
             team = s.team.map { it.toViewIn(s) },
             box = s.box.map { it.toViewIn(s) },
@@ -1939,7 +2006,7 @@ class GameService(
     private suspend fun act(userId: Int, change: suspend (GameState) -> GameState): GameView = lock.withLock {
         val state = syncDayCare(syncTraining(loadMigrated(userId) ?: throw NotFoundException("Aucune partie en cours")))
         // Le message d'évènement ne vaut que pour l'action qui l'a produit.
-        val updated = unlockJohto(rememberShiny(rememberCleared(unlockAchievements(change(state.copy(lastEvent = null))))))
+        val updated = unlockRegions(rememberShiny(rememberCleared(unlockAchievements(change(state.copy(lastEvent = null))))))
         save(userId, updated)
         // Succès débloqués par cette action : seule sa réponse les signale (notification affichée une fois).
         val unlocked = Achievements.ALL.filter { it.id in updated.achievements && it.id !in state.achievements }

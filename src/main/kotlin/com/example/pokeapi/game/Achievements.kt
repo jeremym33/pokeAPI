@@ -16,6 +16,8 @@ data class AchievementContext(
     val championWins: Int = 0,
     /** Espèces de Johto (n° 152 à 251) rejointes. */
     val johtoCaught: Int = 0,
+    /** Espèces de Hoenn (n° 252 à 386) rejointes. */
+    val hoennCaught: Int = 0,
 )
 
 /**
@@ -101,6 +103,11 @@ object Achievements {
         // Pierre Soleil (Joliflor, Héliatronc) : avec les Pokémon de Johto
         Achievement("johto-10", "Premiers pas à Johto", "Rejoindre 10 espèces de Johto.", "Johto", 10, listOf(SUN)) { it.johtoCaught },
         Achievement("johto-40", "Explorateur de Johto", "Rejoindre 40 espèces de Johto.", "Johto", 40, listOf(SUN, LINK)) { it.johtoCaught },
+        // Hoenn : Ludicolo (Pierre Eau), Tengalice (Pierre Plante), Delcatty (Pierre Lune), Milobellus, Serpang et
+        // Rosabyss (Câble Link)
+        Achievement("hoenn-10", "Premiers pas à Hoenn", "Rejoindre 10 espèces de Hoenn.", "Hoenn", 10, listOf(WATER, LEAF)) { it.hoennCaught },
+        Achievement("hoenn-40", "Explorateur de Hoenn", "Rejoindre 40 espèces de Hoenn.", "Hoenn", 40, listOf(MOON, LINK)) { it.hoennCaught },
+        Achievement("hoenn-80", "Expert de Hoenn", "Rejoindre 80 espèces de Hoenn.", "Hoenn", 80, listOf(LINK, LINK)) { it.hoennCaught },
 
         types("type-fire", "Dresseur Feu", "Feu", setOf("fire"), 2, FIRE),
         types("type-water", "Dresseur Eau", "Eau", setOf("water"), 3, WATER),

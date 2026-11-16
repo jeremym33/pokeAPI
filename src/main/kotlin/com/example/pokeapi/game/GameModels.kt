@@ -241,18 +241,20 @@ data class GameState(
     val dayCares: Map<String, DayCare> = emptyMap(),
     /** Ancien compagnon de voyage par région (remplacé par le starter de région) : ignoré, vidé par [upgradeSave]. */
     val companions: Map<String, String> = emptyMap(),
-    /** Régions où le starter a été choisi (Kanto au début de la partie, Johto à la première arrivée). */
+    /** Régions où le starter a été choisi (Kanto au début de la partie, les autres à la première arrivée). */
     val regionStarters: Set<String> = emptySet(),
     /** Ancienne Ligue unique (celle de Kanto) : remplacée par [leagues]. */
     val leagueStage: Int = 0,
     val leagueTypes: List<String> = emptyList(),
     val championWins: Int = 0,
-    /** Une Ligue par région (Kanto, Johto). */
+    /** Une Ligue par région (Kanto, Johto, Hoenn). */
     val leagues: Map<String, LeagueProgress> = emptyMap(),
     /** Version de la sauvegarde : les plus anciennes sont mises à jour au chargement ([upgradeSave]). */
     val saveVersion: Int = 0,
     /** Johto ouvert (les 151 Pokémon de Kanto obtenus) : acquis une fois pour toutes. */
     val johtoUnlocked: Boolean = false,
+    /** Hoenn ouvert (les 251 premiers Pokémon obtenus) : acquis une fois pour toutes. */
+    val hoennUnlocked: Boolean = false,
     val eggs: List<Egg> = emptyList(),
     /** Version des attaques enregistrées dans la partie (2 : drain, soin, coups multiples ; 3 : statistiques ; 4 : peur). */
     val movesVersion: Int = 0,

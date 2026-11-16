@@ -44,7 +44,7 @@ jour avec chaque route ou champ ajouté.
 ### Mécanique de `GameService`
 
 - Toute action passe par `act(userId) { s -> … }` (verrou, chargement migré, `syncTraining`/`syncDayCare`, puis
-  `unlockAchievements`, `rememberCleared`, `rememberShiny`, `unlockJohto`, sauvegarde, vue).
+  `unlockAchievements`, `rememberCleared`, `rememberShiny`, `unlockRegions`, sauvegarde, vue).
 - `loadMigrated` : `upgradeSave` (version de sauvegarde), `migrateRoutes`, `migrateMoves`. **Toute évolution du
   format de `GameState` doit rester compatible** : champs nouveaux avec valeur par défaut, et migration dans
   `upgradeSave` (incrémenter `SAVE_VERSION`) si des données existantes doivent changer. Au démarrage,
@@ -58,8 +58,10 @@ jour avec chaque route ou champ ajouté.
 - **Pas de contenu original recréé** : pas de noms ni d'équipes de champions, du Conseil des 4 ou de Maîtres des jeux
   officiels. Tout est généré depuis les données (types les plus fréquents des routes, statistiques…).
 - **Parcours** (`GameRules.STEPS`) : villes, routes et lieux de Kanto (rencontres de Vert Feuille), puis Johto
-  (Cristal, niveaux d'origine : chaque région repart de zéro, `REGION_LEVEL_OFFSET` vide) jusqu'au Plateau Indigo de
-  Johto. Chaque lieu n'apparaît qu'une fois par région. Les
+  (Cristal) jusqu'au Plateau Indigo de Johto, puis Hoenn (Émeraude) de Bourg-en-Vol à Éternara (Ligue), suivi du
+  Pilier Céleste, de la Voie du Désert et de la Grotte Atelier. Niveaux d'origine : chaque région repart de zéro
+  (`REGION_LEVEL_OFFSET` vide). Régions : `GameRules.REGIONS`, `REGION_DEX`, `REGION_VERSIONS`, `REGION_NAMES`,
+  `regionIds`, `regionsUpTo`. Chaque lieu n'apparaît qu'une fois par région. Les
   numéros d'étapes sont sauvegardés : ajouter des étapes **à la fin** ; retirer ou déplacer une étape exige une
   migration des numéros (`SaveUpgrade.kt`, voir `remapStepV2`). Une route est franchie avec 10 victoires et toutes
   ses espèces vues (herbes et Canne : `routeSpecies`). La vue d'un lieu (`StepView.species`, `RouteSpecies`) indique pour
@@ -67,27 +69,33 @@ jour avec chaque route ou champ ajouté.
   la Super Canne, de la Méga Canne et du Surf (`GameRules.shownSpecies`, champ `method`), visées aussi par le coup de
   pouce, sans changer la condition pour franchir le lieu.
 - **Jadielle** : une seule fois, au début ; son arène (`gymOpensAfter`) est la 8e de Kanto et n'ouvre qu'avec les 7
-  autres badges, sans bloquer la route ; la Route 23 (`requiresBadgeOf`) attend son badge. L'ordre des arènes suit
+  autres badges, sans bloquer la route ; la Route 23 (`requiresBadgeOf`) attend son badge. De même **Clémenti-Ville**
+  (Hoenn) : 5e arène (`gymOpensAfter = "mirage-tower"`), ouverte avec les 4 badges qui la précèdent (`gymOpen`). L'ordre des arènes suit
   `GameRules.gymOrder` / `gymSteps()`, pas l'ordre des étapes.
-- **Arènes** : 8 par région, type tiré des Pokémon rencontrés avant, même progression dans chaque région ; les badges
+- **Arènes** : 8 par région, type tiré des Pokémon rencontrés avant (dans la région, sans répéter un type de la région),
+  même progression dans chaque région ; les badges
   **de la région en cours** (`regionBadges`) fixent la limite de niveau (`LEVEL_CAPS`) et les rencontres (cannes, surf).
-- **Ligues** : une par région au Plateau Indigo (`leagues[région]`) : 4 membres du Conseil puis le Maître, à la
-  suite. Kanto et Johto : niv. 38 à 55 (meilleur Pokémon
+- **Ligues** : une par région (`leagues[région]`), au Plateau Indigo pour Kanto et Johto, à Éternara pour Hoenn :
+  4 membres du Conseil puis le Maître, à la suite. Toutes : niv. 38 à 55 (meilleur Pokémon
   de chaque adversaire : `REGION_LEAGUE_TOP_LEVELS`). Légendaires exclus des équipes.
 - **Pokémon rares** : après le Maître d'une région, les espèces introuvables de cette région apparaissent par le
-  coup de pouce ; légendaires à lieu fixe (`RARE_HOMES`). Mewtwo seul dans la Grotte Azurée.
+  coup de pouce ; légendaires à lieu fixe (`RARE_HOMES`). Mewtwo seul dans la Grotte Azurée, Rayquaza au Pilier
+  Céleste (`SOLO_RARES`).
 - **Coup de pouce** invisible : au hasard entre le 5e et le 15e combat sur un lieu (`GameRules.boostChance`,
   moyenne ≈ 10) ; vise une espèce pas encore vue, sinon vue mais pas rejointe (chaque espèce visée à chance égale),
   ou un Pokémon rare après la Ligue ; 10 % de chromatique (sinon 1/4096).
 - **Évolutions** : `GameRules.evolutionConditionMet` (niveau, Attaque/Défense, bonheur de jour ou de nuit) à la fin
-  des combats ; objets (`GameRules.ITEMS`, dont Pierre Soleil gagnée par les succès de Johto). Bonheur
-  (`Fighter.happiness`) : +1 par adversaire vaincu en ayant combattu, maximum `HAPPINESS_EVOLUTION` (20). Les 251
+  des combats ; plusieurs évolutions possibles au niveau : une au hasard (Chenipotte) ; Munja apparaît en plus de
+  Ninjask (`isShedCondition`, `withShed`) ; un objet à plusieurs évolutions (Coquiperl) vise d'abord une espèce pas
+  encore rejointe ; objets (`GameRules.ITEMS`, dont Pierre Soleil gagnée par les succès de Johto ; succès de Hoenn). Bonheur
+  (`Fighter.happiness`) : +1 par adversaire vaincu en ayant combattu, maximum `HAPPINESS_EVOLUTION` (20). Les 386
   Pokémon sont obtenables : garder `docs/obtenir-les-pokemon.md` à jour si une règle change.
 - **Chromatiques** (`shiny`) : gardés à l'évolution (toutes les évolutions passent par `evolve`) ; `shinySeen` /
   `shinyCaught` pour le Motisdex. Réglage `recruitOnlyNew` : un chromatique reste proposé tant que ce chromatique
   n'est pas obtenu, même si l'espèce l'est ; une espèce aussi, tant qu'aucun exemplaire né dans la région en cours n'est
   possédé (`ownsBornIn`, `BattleView.recruitNewInRegion`).
-- **Régions** : Johto s'ouvre avec les 151 Pokémon de Kanto obtenus. Chaque Pokémon a une région d'origine
+- **Régions** : Johto s'ouvre avec les 151 Pokémon de Kanto obtenus, Hoenn avec les 251 premiers (`unlockRegions`,
+  `GameState.johtoUnlocked` / `hoennUnlocked`, `regionUnlocked`, vue : `GameView.unlockedRegions`). Chaque Pokémon a une région d'origine
   (`origin`) : seuls ceux de la région en cours combattent (plus de compagnon). À la première arrivée dans une région,
   on y choisit un **starter de la région** (`REGION_STARTERS`, niveau `REGION_STARTER_LEVEL` : 5 ;
   `TravelRequest.starter`, ou `POST /game/region-starter` sur place ; `GameState.regionStarters` ; vue :

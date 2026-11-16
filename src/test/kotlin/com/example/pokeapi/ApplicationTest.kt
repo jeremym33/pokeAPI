@@ -1,5 +1,6 @@
 package com.example.pokeapi
 
+import com.example.pokeapi.game.GameRules
 import com.example.pokeapi.game.BadgesView
 import com.example.pokeapi.game.RouteSpecies
 import com.example.pokeapi.game.UnlockedAchievement
@@ -175,6 +176,8 @@ class ApplicationTest {
         """.trimIndent()),
         // Formes fictives de Germignon : une forme régionale (importée avec l'espèce) et une méga (ignorée)
         "bayleef" to pokemonJson(153, "bayleef", listOf("grass"), hp = 60),
+        // Starter de Hoenn
+        "mudkip" to pokemonJson(258, "mudkip", listOf("water"), hp = 50),
         "chikorita-hisui" to pokemonJson(10999, "chikorita-hisui", listOf("water"), hp = 10, species = "chikorita" to 152, isDefault = false),
         "chikorita-mega" to pokemonJson(10998, "chikorita-mega", listOf("grass"), hp = 90, species = "chikorita" to 152, isDefault = false),
         // Famille d'Évoli : Aquali (Kanto) et Phyllali (Sinnoh)
@@ -190,6 +193,7 @@ class ApplicationTest {
         "squirtle" to speciesJson(7, "squirtle", "Carapuce", "generation-i"),
         "chikorita" to speciesJson(152, "chikorita", "Germignon", "generation-ii", chainId = 2, forms = listOf("chikorita-hisui", "chikorita-mega")),
         "bayleef" to speciesJson(153, "bayleef", "Macronium", "generation-ii", chainId = 2),
+        "mudkip" to speciesJson(258, "mudkip", "Gobou", "generation-iii"),
         "eevee" to speciesJson(133, "eevee", "Évoli", "generation-i", chainId = 3),
         "vaporeon" to speciesJson(134, "vaporeon", "Aquali", "generation-i", chainId = 3),
         "leafeon" to speciesJson(470, "leafeon", "Phyllali", "generation-iv", chainId = 3),
@@ -197,7 +201,7 @@ class ApplicationTest {
     private val byId = mapOf(
         "1" to "bulbasaur", "2" to "ivysaur", "3" to "venusaur", "4" to "charmander", "7" to "squirtle", "152" to "chikorita",
         "10999" to "chikorita-hisui", "10998" to "chikorita-mega", "153" to "bayleef",
-        "133" to "eevee", "134" to "vaporeon", "470" to "leafeon",
+        "133" to "eevee", "134" to "vaporeon", "470" to "leafeon", "258" to "mudkip",
     )
 
     /**
@@ -685,7 +689,7 @@ class ApplicationTest {
 
         // Profil : badges (aucun obtenu), premier badge : type connu car l'arène est accessible
         val badges = json.decodeFromString<BadgesView>(client.get("/game/badges").bodyAsText())
-        assertEquals(16, badges.total) // 8 arènes de Kanto, 8 de Johto
+        assertEquals(24, badges.total) // 8 arènes de Kanto, 8 de Johto, 8 de Hoenn
         assertEquals(0, badges.obtained)
         assertEquals("Badge Plante", badges.badges.first().name)
         assertEquals(false, badges.badges.first().obtained)
@@ -1786,7 +1790,7 @@ class ApplicationTest {
         val kantoLeague = v.steps.indexOfFirst { it.location == "indigo-plateau" }
         val johtoLeague = v.steps.indexOfLast { it.location == "indigo-plateau" }
         assertEquals("johto", v.steps[johtoLeague].region)
-        assertEquals(v.steps.lastIndex, johtoLeague)
+        assertEquals(v.steps.indexOfFirst { it.region == "hoenn" } - 1, johtoLeague)
         assertTrue(johtoLeague > kantoLeague)
         val kantoGyms = v.steps.filter { it.gym != null && it.region == "kanto" }.map { it.index }
         val johtoGyms = v.steps.filter { it.gym != null && it.region == "johto" }.map { it.index }
@@ -1883,6 +1887,67 @@ class ApplicationTest {
         game(client.post("/game/travel") { contentType(ContentType.Application.Json); setBody("""{"step":0}""") })
         v = game(client.post("/game/travel") { contentType(ContentType.Application.Json); setBody("""{"step":$newBark}""") })
         assertEquals(1, v.team.count { it.speciesId == 152 })
+    }
+
+    @Test
+    fun `aventure - hoenn s'ouvre avec les 251 premiers pokemon`() = appTest {
+        suspend fun game(response: HttpResponse): GameView {
+            assertTrue(response.status.isSuccess(), response.bodyAsText())
+            return json.decodeFromString<GameView>(response.bodyAsText())
+        }
+        suspend fun travel(body: String) = client.post("/game/travel") { contentType(ContentType.Application.Json); setBody(body) }
+        var v = game(client.post("/game/new") { contentType(ContentType.Application.Json); setBody("""{"starter":"bulbasaur"}""") })
+        val littleroot = v.steps.indexOfFirst { it.location == "littleroot-town" }
+        assertEquals("hoenn", v.steps[littleroot].region)
+        assertEquals(littleroot, v.steps.indexOfFirst { it.region == "hoenn" })
+        assertEquals(listOf("kanto"), v.unlockedRegions)
+        // Kanto et Johto franchis (arènes, Ligues), starter de Johto choisi, mais 250 Pokémon : Hoenn reste fermé
+        val gyms = v.steps.filter { it.gym != null && it.region != "hoenn" }.map { it.index }
+        editSave { save ->
+            JsonObject(save + mapOf(
+                "badges" to json.parseToJsonElement(gyms.toString()), "johtoUnlocked" to JsonPrimitive(true),
+                "leagues" to json.parseToJsonElement("""{"kanto":{"wins":1},"johto":{"wins":1}}"""),
+                "regionStarters" to json.parseToJsonElement("""["kanto","johto"]"""), "clearedSteps" to json.parseToJsonElement("[1]"),
+                "caught" to json.parseToJsonElement((1..250).toList().toString()),
+            ))
+        }
+        v = game(travel("""{"step":0}"""))
+        assertEquals(false, v.hoennUnlocked)
+        assertEquals(listOf("kanto", "johto"), v.unlockedRegions)
+        assertEquals(littleroot - 1, v.unlockedStep)
+        assertEquals(HttpStatusCode.BadRequest, travel("""{"step":$littleroot,"starter":"mudkip"}""").status)
+        // Le 251e : Hoenn s'ouvre, Pokédex jusqu'au n° 386
+        editSave { save -> JsonObject(save + ("caught" to json.parseToJsonElement((1..251).toList().toString()))) }
+        v = game(travel("""{"step":0}"""))
+        assertEquals(true, v.hoennUnlocked)
+        assertEquals(listOf("kanto", "johto", "hoenn"), v.unlockedRegions)
+        assertEquals(386, v.dexSize)
+        assertTrue(v.lastEvent!!.contains("Hoenn est ouverte"), v.lastEvent)
+        assertEquals(mapOf("hoenn" to listOf("treecko", "torchic", "mudkip")), v.starterChoices)
+        assertTrue(v.unlockedStep >= littleroot)
+        // Arrivée à Hoenn : choix du starter (Gobou), qui y repart des niveaux les plus bas
+        val noStarter = travel("""{"step":$littleroot}""")
+        assertTrue(noStarter.bodyAsText().contains("Choisissez votre starter de Hoenn"), noStarter.bodyAsText())
+        assertEquals(HttpStatusCode.BadRequest, travel("""{"step":$littleroot,"starter":"chikorita"}""").status)
+        v = game(travel("""{"step":$littleroot,"starter":"mudkip"}"""))
+        assertEquals("hoenn", v.region)
+        val mudkip = v.team.single { it.speciesId == 258 }
+        assertEquals("hoenn", mudkip.origin)
+        assertEquals(5, mudkip.level)
+        assertEquals(true, mudkip.usable)
+        assertEquals(15, v.levelCap) // aucun badge de Hoenn
+        assertTrue(v.lastEvent!!.contains("Bienvenue à Hoenn"), v.lastEvent)
+        assertEquals(emptyMap(), v.starterChoices)
+        // Clémenti-Ville : 5e arène, fermée jusqu'aux 4 premiers badges de Hoenn (qui suffisent)
+        val hoennGyms = v.steps.filter { it.gym != null && it.region == "hoenn" }.sortedBy { it.gym!!.number }
+        val petalburg = v.steps.single { it.location == "petalburg-city" }
+        assertEquals(5, petalburg.gym!!.number)
+        assertEquals(false, petalburg.gym!!.open)
+        val firstFour = hoennGyms.filter { it.gym!!.number <= 4 }.map { it.index }
+        editSave { save -> JsonObject(save + ("badges" to json.parseToJsonElement((gyms + firstFour).toString()))) }
+        v = game(travel("""{"step":$littleroot}"""))
+        assertEquals(true, v.steps.single { it.location == "petalburg-city" }.gym!!.open)
+        assertEquals(GameRules.levelCap(4), v.levelCap) // seuls les badges de Hoenn comptent
     }
 
     @Test

@@ -462,4 +462,68 @@ class GameRulesTest {
         val johtoGyms = GameRules.gymSteps().filter { GameRules.STEPS[it].region == "johto" }
         assertEquals((0..7).toList(), johtoGyms.map { GameRules.gymNumber(it) })
     }
+
+    @Test
+    fun `Hoenn - region, parcours d'Emeraude et arene de Clementi-Ville en 5e`() {
+        assertEquals(listOf("kanto", "johto", "hoenn"), GameRules.REGIONS)
+        assertEquals(386, GameRules.REGION_DEX["hoenn"])
+        assertEquals("emerald", GameRules.REGION_VERSIONS["hoenn"])
+        assertEquals(252..386, GameRules.regionIds("hoenn"))
+        assertEquals(152..251, GameRules.regionIds("johto"))
+        assertEquals("kanto", GameRules.speciesRegion(151))
+        assertEquals("johto", GameRules.speciesRegion(251))
+        assertEquals("hoenn", GameRules.speciesRegion(252))
+        assertEquals(listOf("kanto", "johto"), GameRules.regionsUpTo(251))
+        assertEquals(listOf("treecko", "torchic", "mudkip"), GameRules.REGION_STARTERS["hoenn"])
+        assertEquals(GameRules.STARTER_LEVEL, GameRules.REGION_STARTER_LEVEL["hoenn"])
+        // Hoenn après Johto (étapes ajoutées à la fin) : Bourg-en-Vol, puis la Ligue à Éternara
+        val first = GameRules.STEPS.indexOfFirst { it.region == "hoenn" }
+        assertEquals("littleroot-town", GameRules.STEPS[first].location)
+        assertEquals("indigo-plateau", GameRules.STEPS[first - 1].location)
+        assertTrue(GameRules.STEPS.drop(first).all { it.region == "hoenn" })
+        val league = GameRules.STEPS.indexOfFirst { it.league && it.region == "hoenn" }
+        assertEquals("ever-grande-city", GameRules.STEPS[league].location)
+        // 8 arènes, dans l'ordre d'Émeraude : Clémenti-Ville (au début du parcours) est la 5e, après Vermilava
+        val gyms = GameRules.gymSteps().filter { GameRules.STEPS[it].region == "hoenn" }
+        assertEquals(
+            listOf("rustboro-city", "dewford-town", "mauville-city", "lavaridge-town", "petalburg-city", "fortree-city", "mossdeep-city", "sootopolis-city"),
+            gyms.map { GameRules.STEPS[it].location },
+        )
+        assertEquals((0..7).toList(), gyms.map { GameRules.gymNumber(it) })
+        // Légendaires : lieux fixes de Hoenn, Rayquaza seul au Pilier Céleste ; jamais dans les équipes
+        assertEquals("sky-pillar", GameRules.RARE_HOMES[GameRules.RAYQUAZA])
+        assertTrue(GameRules.RAYQUAZA in GameRules.SOLO_RARES)
+        assertTrue((377..386).all { it in GameRules.LEGENDARIES })
+        GameRules.RARE_HOMES.forEach { (id, loc) ->
+            assertTrue(GameRules.STEPS.any { it.location == loc && it.region == GameRules.speciesRegion(id) && !it.city }, "lieu de $id : $loc")
+        }
+    }
+
+    @Test
+    fun `Hoenn - evolutions de Chenipotte, Ningale et Coquiperl`() {
+        val f = fighter(7)
+        // Chenipotte : « Niveau 7 (50 % de chance) » vers Armulys comme vers Blindalys (le hasard est dans GameService)
+        assertTrue(GameRules.evolutionConditionMet(f, "Niveau 7 (50 % de chance)", hour = 12))
+        assertTrue(!GameRules.evolutionConditionMet(f.copy(level = 6), "Niveau 7 (50 % de chance)", hour = 12))
+        // Ningale : Munja apparaît en plus de Ninjask (pas une évolution à part entière)
+        val shed = "Niveau 20, avec une place libre dans l'équipe et une Poké Ball dans le Sac"
+        assertTrue(GameRules.isShedCondition(shed))
+        assertTrue(!GameRules.evolutionConditionMet(f.copy(level = 30), shed, hour = 12))
+        assertTrue(!GameRules.isShedCondition("Niveau 20"))
+        // Coquiperl : Serpang ou Rosabyss au Câble Link, une espèce pas encore rejointe d'abord
+        val link = GameRules.ITEMS.single { it.trade }
+        val children = listOf(367 to listOf("Échange, en tenant Dent Océan"), 368 to listOf("Échange, en tenant Écaille Océan"))
+        assertEquals(367, GameRules.itemEvolution(children, link))
+        assertEquals(368, GameRules.itemEvolution(children, link) { it != 367 })
+        assertEquals(367, GameRules.itemEvolution(children, link) { false })
+    }
+
+    @Test
+    fun `Hoenn - succes, pierres et Cable Link`() {
+        fun ctx(hoenn: Int) = AchievementContext(victories = 0, badges = 0, caught = 0, seen = 0, caughtByType = emptyMap(), hoennCaught = hoenn)
+        assertEquals(emptyList(), Achievements.newlyCompleted(ctx(9), emptySet()).map { it.id })
+        assertEquals(listOf("hoenn-10"), Achievements.newlyCompleted(ctx(10), emptySet()).map { it.id })
+        assertEquals(listOf("hoenn-10", "hoenn-40", "hoenn-80"), Achievements.newlyCompleted(ctx(80), emptySet()).map { it.id })
+        assertEquals(listOf("Câble Link", "Câble Link"), Achievements.rewardNames(Achievements.ALL.single { it.id == "hoenn-80" }))
+    }
 }

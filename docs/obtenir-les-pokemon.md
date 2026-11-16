@@ -1,11 +1,12 @@
 # Obtenir les Pokémon — règles du jeu d'aventure
 
 Résumé des façons d'obtenir (« rejoindre ») un Pokémon dans l'aventure, tirées du code du jeu (`game/GameRules.kt`,
-`game/GameService.kt`) et vérifiées sur les données PokéAPI (Vert Feuille et Cristal). Un Pokémon **rejoint** compte
+`game/GameService.kt`) et vérifiées sur les données PokéAPI (Vert Feuille, Cristal et Émeraude). Un Pokémon **rejoint** compte
 dans le Pokédex ; un Pokémon seulement **vu** (rencontré) non.
 
-**Bilan : les 251 Pokémon sont obtenables** (vérifié sur les données : Kanto par les rencontres, les évolutions et
-les Pokémon rares ; Johto de même, plus le bonheur, la Pierre Soleil et les œufs).
+**Bilan : les 386 Pokémon sont obtenables** (vérifié sur les données : Kanto par les rencontres, les évolutions et
+les Pokémon rares ; Johto de même, plus le bonheur, la Pierre Soleil et les œufs ; Hoenn de même, plus les évolutions
+particulières de Chenipotte, Ningale et Coquiperl).
 
 ## Vue d'ensemble
 
@@ -16,14 +17,18 @@ les Pokémon rares ; Johto de même, plus le bonheur, la Pierre Soleil et les œ
 | Évolution | Fin de combat, objet, entraînement | L'espèce obtenue compte comme rejointe |
 | Œuf | Pension | Forme de base de l'un des parents |
 | Starter de Johto | Première arrivée à Johto | Germignon, Héricendre ou Kaiminus au choix, niveau 5 |
+| Starter de Hoenn | Première arrivée à Hoenn | Arcko, Poussifeu ou Gobou au choix, niveau 5 |
 | Pokémon rare | Après la Ligue de la région | Apparaît de temps en temps, par le coup de pouce |
 
 ## 1. Pokémon sauvages
 
 - **Où** : sur les lieux du parcours qui ont des Pokémon sauvages (routes, grottes, forêts…), avec « Chercher un
-  Pokémon sauvage ». Les rencontres viennent de **Vert Feuille** pour Kanto (n° 1 à 151 seulement) et de **Cristal**
-  pour Johto (n° 1 à 251). **Chaque région repart des niveaux les plus bas** (niveau 2 sur la Route 29), avec ses
-  propres badges : à Johto, le niveau maximum et les cannes ou le surf dépendent des badges de Johto.
+  Pokémon sauvage ». Les rencontres viennent de **Vert Feuille** pour Kanto (n° 1 à 151 seulement), de **Cristal**
+  pour Johto (n° 1 à 251) et d'**Émeraude** pour Hoenn (n° 1 à 386 : le Parc Safari y a aussi des Pokémon de Johto).
+  **Chaque région repart des niveaux les plus bas** (niveau 2 sur la Route 29 ou la Route 101), avec ses propres
+  badges : à Johto, le niveau maximum et les cannes ou le surf dépendent des badges de Johto (de même à Hoenn).
+  Les chenaux de Hoenn n'ont, au départ, que les Pokémon de la Canne (Magicarpe, Tentacool) ; le Surf et les autres
+  cannes y viennent avec les badges.
 - **Rencontres débloquées par les badges de la région** : herbes et Canne au début ; Super Canne à 3 badges ; Surf et
   Méga Canne à 5 badges.
 - **Liste des espèces d'un lieu** : elle montre les espèces des herbes et de la Canne (celles qu'il faut voir pour
@@ -78,8 +83,14 @@ coup de pouce a **10 %** de chances d'être chromatique (contre 1 sur 4 096 norm
   Link** remplace les évolutions par échange, y compris avec un objet tenu (Tarpaud, Roigada, Steelix, Cizayox,
   Hyporoi, Porygon2…). Les objets s'obtiennent **uniquement en réussissant des succès** ; la Pierre Soleil, avec les
   succès de Johto (10 puis 40 espèces de Johto rejointes).
+- **Hoenn** : Chenipotte (niveau 7) devient **au hasard** Armulys ou Blindalys ; quand Ningale devient Ninjask
+  (niveau 20), **Munja** apparaît en plus (dans l'équipe s'il y a une place, sinon dans la boîte) ; au Câble Link,
+  Coquiperl devient Serpang ou Rosabyss, **celui que vous n'avez pas encore** d'abord ; Barpau devient Milobellus au
+  Câble Link. Pierres de Hoenn : Pierre Eau (Ludicolo), Pierre Plante (Tengalice), Pierre Lune (Delcatty), données
+  aussi par les succès de Hoenn (10, 40 et 80 espèces de Hoenn rejointes : Pierre Eau et Pierre Plante, puis Pierre
+  Lune et Câble Link, puis deux Câbles Link).
 - **Région** : un Pokémon n'évolue jamais vers une espèce d'une région pas encore ouverte (avant Johto, pas de
-  Nostenfer, Joliflor, Tarpaud…).
+  Nostenfer, Joliflor, Tarpaud… ; avant Hoenn, pas d'Azurill par œuf de Marill).
 - Un chromatique reste chromatique en évoluant.
 
 ## 4. Œufs (pension)
@@ -103,13 +114,23 @@ coup de pouce a **10 %** de chances d'être chromatique (contre 1 sur 4 096 norm
   joue comme un nouveau départ (Pokémon sauvages de niveau 2, niveau maximum 15 jusqu'au premier badge de Johto).
 - Les deux autres starters de Johto s'obtiennent comme Pokémon rares (voir 6), ou par œuf.
 
+## 5 bis. Ouverture de Hoenn
+
+- Hoenn s'ouvre quand les **251 premiers Pokémon** (Kanto et Johto) ont rejoint votre Pokédex.
+- À votre première arrivée à Bourg-en-Vol, vous **choisissez votre starter de Hoenn** : Arcko, Poussifeu ou Gobou,
+  niveau 5 ; seuls les Pokémon nés à Hoenn y combattent (nouveau départ, niveau maximum 15 jusqu'au premier badge).
+- Parcours dans l'ordre d'Émeraude ; l'arène de Clémenti-Ville, rencontrée dès le début, est la **5e** : elle n'ouvre
+  qu'avec les 4 premiers badges de Hoenn. La Ligue est à Éternara, après la Route Victoire ; elle ouvre ensuite le
+  Pilier Céleste, la Voie du Désert (Métamorph) et la Grotte Atelier (Queulorior).
+
 ## 6. Pokémon rares (après la Ligue)
 
 Après la **première victoire contre le Maître de la Ligue d'une région**, les espèces de cette région introuvables à
 l'état sauvage (et qui ne s'obtiennent pas en faisant évoluer un Pokémon trouvable) apparaissent sur ses lieux, **par
 le coup de pouce** seulement. Le parcours affiche « ★ N rares » sur les lieux concernés.
 
-- **Niveau** : celui des Pokémon du lieu + 5 (au moins 50) ; Mewtwo niveau 70 ; Lugia et Ho-Oh niveau 90.
+- **Niveau** : celui des Pokémon du lieu + 5 (au moins 50) ; Mewtwo, Kyogre, Groudon et Rayquaza niveau 70 ; Lugia et
+  Ho-Oh niveau 90.
 - **Kanto** (31 espèces, après la Ligue de Kanto, qui ouvre aussi la Grotte Azurée) : starters, fossiles (Amonita,
   Kabuto, Ptéra), Évoli, Lokhlass, Porygon, Ronflex, Kicklee, Tygnon, M. Mime, Insécateur, Mew… Légendaires à lieu
   fixe :
@@ -131,6 +152,20 @@ le coup de pouce** seulement. Le parcours affiche « ★ N rares » sur les lieu
   | Ho-Oh | Route 37 |
   | Celebi | Bois aux Chênes |
 
+- **Hoenn** (27 espèces, après la Ligue de Hoenn) : starters de Hoenn, Arakdo, Azurill, Tarinor, Méditikka, Rosélia,
+  Mangriff, Séléroc, fossiles (Lilia, Anorith), Barpau, Morphéo, Coquiperl, Relicanth, Terhal, Jirachi, Deoxys…
+  Légendaires à lieu fixe (Kyogre, Groudon et Rayquaza niveau 70) :
+
+  | Pokémon | Lieu |
+  |---|---|
+  | Regirock | Route 111 |
+  | Regice | Chenal 105 |
+  | Registeel | Route 120 |
+  | Latias, Latios | Chenal 134 |
+  | Kyogre | Caverne Fondmer |
+  | Groudon | Planque Magma |
+  | Rayquaza | Pilier Céleste (seul Pokémon rare de ce lieu) |
+
 ## 7. Chromatiques
 
 - 1 chance sur 4 096 par rencontre, **10 %** pour le Pokémon du coup de pouce, 1 sur 4 096 à l'éclosion.
@@ -141,4 +176,6 @@ le coup de pouce** seulement. Le parcours affiche « ★ N rares » sur les lieu
 Aucune espèce n'est impossible à obtenir. Les conditions d'évolution des jeux qui n'ont pas d'équivalent ici sont
 simplifiées : le bonheur se gagne en combattant (pas de soins, de promenades ni de baies), « de jour / de nuit »
 suit l'heure du serveur, et les statistiques ne dépendent que de l'espèce et du niveau (pas de variations
-individuelles), d'où Kapoera pour tout Debugant.
+individuelles), d'où Kapoera pour tout Debugant. À Hoenn : la Beauté de Barpau, la personnalité de Chenipotte (ici
+le hasard) et la Poké Ball de Munja n'existent pas ; les rencontres en plongée, à l'Éclate-Roc, les dons et les
+Pokémon fixes ne sont pas reprises (ces espèces sont des Pokémon rares).

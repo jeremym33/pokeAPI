@@ -35,7 +35,7 @@ data class FighterView(
     val cursed: Boolean = false,
     /** Chromatique (« shiny ») ; les images sont alors celles de la version chromatique. */
     val shiny: Boolean = false,
-    /** Région d'origine (kanto, johto). */
+    /** Région d'origine (kanto, johto, hoenn). */
     val origin: String = KANTO,
     /** Peut combattre dans la région actuelle (originaire de la région). */
     val usable: Boolean = true,
@@ -95,7 +95,7 @@ data class GymView(
 @Serializable
 data class StepView(
     val index: Int,
-    /** kanto ou johto */
+    /** kanto, johto ou hoenn */
     val region: String = KANTO,
     val location: String,
     val nameFr: String?,
@@ -137,7 +137,7 @@ data class BadgesView(val obtained: Int, val total: Int, val levelCap: Int, val 
 /** Défi de la Ligue (Plateau Indigo). */
 @Serializable
 data class LeagueView(
-    /** Région de la Ligue (Kanto, Johto). */
+    /** Région de la Ligue (Kanto, Johto, Hoenn). */
     val region: String = KANTO,
     /** 8 badges de la région obtenus : le défi est ouvert. */
     val open: Boolean,
@@ -224,6 +224,10 @@ data class GameView(
     val dexSize: Int = GameRules.DEX_SIZE,
     /** Johto ouvert (les 151 Pokémon de Kanto obtenus). */
     val johtoUnlocked: Boolean = false,
+    /** Hoenn ouvert (les 251 premiers Pokémon obtenus). */
+    val hoennUnlocked: Boolean = false,
+    /** Régions ouvertes, dans l'ordre (kanto, johto, hoenn). */
+    val unlockedRegions: List<String> = listOf(KANTO),
     /** Région de l'étape actuelle. */
     val region: String = KANTO,
     val steps: List<StepView> = emptyList(),

@@ -13,11 +13,15 @@ data class Step(
     val city: Boolean = false,
     val gym: Boolean = false,
     val league: Boolean = false,
-    /** Région de l'étape : Kanto (Vert Feuille), puis Johto (Cristal), ouvert une fois les 151 Pokémon de Kanto obtenus. */
+    /**
+     * Région de l'étape : Kanto (Vert Feuille), puis Johto (Cristal), ouvert une fois les 151 Pokémon de Kanto obtenus,
+     * puis Hoenn (Émeraude), ouvert une fois les 251 premiers Pokémon obtenus.
+     */
     val region: String = KANTO,
     /**
-     * Arène qui n'ouvre qu'après les autres (Jadielle) : elle prend place, dans l'ordre des arènes, après ce lieu.
-     * Elle ne bloque pas la route en attendant.
+     * Arène qui ouvre plus tard (Jadielle, Clémenti-Ville) : elle prend place, dans l'ordre des arènes, après ce lieu
+     * (qui n'est pas une arène), et ouvre avec les badges des arènes qui la précèdent dans cet ordre. Elle ne bloque
+     * pas la route en attendant.
      */
     val gymOpensAfter: String? = null,
     /** Étape fermée tant que le badge de l'arène de ce lieu n'est pas obtenu (Route 23 : badge de Jadielle). */
@@ -26,6 +30,7 @@ data class Step(
 
 const val KANTO = "kanto"
 const val JOHTO = "johto"
+const val HOENN = "hoenn"
 
 
 data class Stats(val hp: Int, val attack: Int, val defense: Int, val spAttack: Int, val spDefense: Int, val speed: Int)
@@ -140,13 +145,100 @@ object GameRules {
         Step("kanto-route-26", region = JOHTO),
         Step("kanto-victory-road-1", region = JOHTO),
         Step("indigo-plateau", city = true, league = true, region = JOHTO),
+        // Hoenn (ordre d'Émeraude), ouvert une fois les 251 premiers Pokémon obtenus. Clémenti-Ville, une seule fois :
+        // son arène est la 5e (elle prend place après Vermilava et la Tour Mirage et ouvre avec les 4 premiers
+        // badges), sans bloquer la route.
+        Step("littleroot-town", city = true, region = HOENN),
+        Step("hoenn-route-101", region = HOENN),
+        Step("oldale-town", city = true, region = HOENN),
+        Step("hoenn-route-103", region = HOENN),
+        Step("hoenn-route-102", region = HOENN),
+        Step("petalburg-city", city = true, gym = true, gymOpensAfter = "mirage-tower", region = HOENN),
+        Step("hoenn-route-104", region = HOENN),
+        Step("petalburg-woods", region = HOENN),
+        Step("rustboro-city", city = true, gym = true, region = HOENN),
+        Step("hoenn-route-116", region = HOENN),
+        Step("rusturf-tunnel", region = HOENN),
+        Step("hoenn-route-115", region = HOENN),
+        Step("dewford-town", city = true, gym = true, region = HOENN),
+        Step("granite-cave", region = HOENN),
+        Step("hoenn-route-106", region = HOENN),
+        Step("hoenn-route-107", region = HOENN),
+        Step("hoenn-route-108", region = HOENN),
+        Step("abandoned-ship", region = HOENN),
+        Step("hoenn-route-109", region = HOENN),
+        Step("slateport-city", city = true, region = HOENN),
+        Step("hoenn-route-110", region = HOENN),
+        Step("mauville-city", city = true, gym = true, region = HOENN),
+        Step("hoenn-route-117", region = HOENN),
+        Step("verdanturf-town", city = true, region = HOENN),
+        Step("hoenn-route-111", region = HOENN),
+        Step("hoenn-route-112", region = HOENN),
+        Step("fiery-path", region = HOENN),
+        Step("hoenn-route-113", region = HOENN),
+        Step("fallarbor-town", city = true, region = HOENN),
+        Step("hoenn-route-114", region = HOENN),
+        Step("meteor-falls", region = HOENN),
+        Step("jagged-pass", region = HOENN),
+        Step("lavaridge-town", city = true, gym = true, region = HOENN),
+        Step("mirage-tower", region = HOENN),
+        Step("hoenn-route-105", region = HOENN),
+        Step("hoenn-route-118", region = HOENN),
+        Step("new-mauville", region = HOENN),
+        Step("hoenn-route-119", region = HOENN),
+        Step("fortree-city", city = true, gym = true, region = HOENN),
+        Step("hoenn-route-120", region = HOENN),
+        Step("hoenn-route-121", region = HOENN),
+        Step("hoenn-safari-zone", region = HOENN),
+        Step("lilycove-city", city = true, region = HOENN),
+        Step("hoenn-route-122", region = HOENN),
+        Step("mt-pyre", region = HOENN),
+        Step("hoenn-route-123", region = HOENN),
+        Step("magma-hideout", region = HOENN),
+        Step("hoenn-route-124", region = HOENN),
+        Step("mossdeep-city", city = true, gym = true, region = HOENN),
+        Step("hoenn-route-125", region = HOENN),
+        Step("shoal-cave", region = HOENN),
+        Step("hoenn-route-127", region = HOENN),
+        Step("hoenn-route-128", region = HOENN),
+        Step("seafloor-cavern", region = HOENN),
+        Step("hoenn-route-126", region = HOENN),
+        Step("sootopolis-city", city = true, gym = true, region = HOENN),
+        Step("cave-of-origin", region = HOENN),
+        Step("hoenn-route-129", region = HOENN),
+        Step("hoenn-route-130", region = HOENN),
+        Step("hoenn-route-131", region = HOENN),
+        Step("pacifidlog-town", city = true, region = HOENN),
+        Step("hoenn-route-132", region = HOENN),
+        Step("hoenn-route-133", region = HOENN),
+        Step("hoenn-route-134", region = HOENN),
+        Step("hoenn-victory-road", region = HOENN),
+        // Éternara : la Ligue de Hoenn ; après elle, le Pilier Céleste, la Voie du Désert et la Grotte Atelier
+        Step("ever-grande-city", city = true, league = true, region = HOENN),
+        Step("sky-pillar", region = HOENN),
+        Step("desert-underpass", region = HOENN),
+        Step("artisan-cave", region = HOENN),
     )
 
     /** Version de jeu dont viennent les rencontres de Kanto. */
     const val VERSION = "leafgreen"
 
     /** Version de jeu des rencontres de chaque région. */
-    val REGION_VERSIONS = mapOf(KANTO to VERSION, JOHTO to "crystal")
+    val REGION_VERSIONS = mapOf(KANTO to VERSION, JOHTO to "crystal", HOENN to "emerald")
+
+    /** Régions, dans l'ordre où elles s'ouvrent (chacune une fois tous les Pokémon des précédentes obtenus). */
+    val REGIONS = listOf(KANTO, JOHTO, HOENN)
+
+    val REGION_NAMES = mapOf(KANTO to "Kanto", JOHTO to "Johto", HOENN to "Hoenn")
+
+    /** Région qui précède [region] (null pour Kanto). */
+    fun previousRegion(region: String): String? = REGIONS.getOrNull(REGIONS.indexOf(region) - 1)
+
+    /** Numéros du Pokédex propres à une région : Kanto 1 à 151, Johto 152 à 251, Hoenn 252 à 386. */
+    fun regionIds(region: String): IntRange = ((previousRegion(region)?.let { REGION_DEX.getValue(it) } ?: 0) + 1)..REGION_DEX.getValue(region)
+
+    /** Régions dont les Pokémon ont un numéro jusqu'à [maxDex] (Kanto ; Kanto et Johto ; …). */
+    fun regionsUpTo(maxDex: Int): List<String> = REGIONS.filter { regionIds(it).first <= maxDex }
 
     /**
      * Décalage des niveaux des Pokémon sauvages par région : aucun. Chaque région commence aux niveaux les plus bas
@@ -156,19 +248,22 @@ object GameRules {
     val REGION_LEVEL_OFFSET: Map<String, Int> = emptyMap()
 
     /** Dernier numéro du Pokédex de chaque région. */
-    val REGION_DEX = mapOf(KANTO to 151, JOHTO to 251)
+    val REGION_DEX = mapOf(KANTO to 151, JOHTO to 251, HOENN to 386)
 
     /**
      * Starters proposés à la première arrivée dans une région (Kanto : au début de la partie). Changer de région ne se
      * fait pas avec un Pokémon venu d'ailleurs : on y choisit un starter de la région, au niveau de ses premiers lieux.
      */
-    val REGION_STARTERS = mapOf(JOHTO to listOf("chikorita", "cyndaquil", "totodile"))
+    val REGION_STARTERS = mapOf(
+        JOHTO to listOf("chikorita", "cyndaquil", "totodile"),
+        HOENN to listOf("treecko", "torchic", "mudkip"),
+    )
 
     /** Niveau du starter d'une région : comme au début de l'aventure (premières rencontres de Cristal aux niveaux 2 à 4). */
-    val REGION_STARTER_LEVEL = mapOf(JOHTO to STARTER_LEVEL)
+    val REGION_STARTER_LEVEL = mapOf(JOHTO to STARTER_LEVEL, HOENN to STARTER_LEVEL)
 
-    /** Région d'une espèce : Kanto (n° 1 à 151) ou Johto (152 à 251). */
-    fun speciesRegion(speciesId: Int): String = if (speciesId <= DEX_SIZE) KANTO else JOHTO
+    /** Région d'une espèce : Kanto (n° 1 à 151), Johto (152 à 251) ou Hoenn (252 à 386). */
+    fun speciesRegion(speciesId: Int): String = REGIONS.firstOrNull { speciesId <= REGION_DEX.getValue(it) } ?: REGIONS.last()
 
     /** Pokémon des régions débloquées (n° 1 à [maxDex]). */
     fun inDex(pokemonId: Int, maxDex: Int): Boolean = pokemonId in 1..maxDex
@@ -206,7 +301,14 @@ object GameRules {
     /** « De jour » : de 6 h à 18 h (heure du serveur) ; « de nuit » sinon. */
     fun isDay(hour: Int): Boolean = hour in 6..17
 
-    private val LEVEL_CONDITION = Regex("^Niveau (\\d+)(?:, si Attaque ([<>=]) Défense)?$")
+    // « Niveau 7 (50 % de chance) » : Chenipotte, qui devient Armulys ou Blindalys au hasard
+    private val LEVEL_CONDITION = Regex("^Niveau (\\d+)(?:, si Attaque ([<>=]) Défense)?(?: \\(\\d+ % de chance\\))?$")
+
+    /**
+     * Évolution « en plus » (Ningale → Munja) : quand Ningale devient Ninjask, Munja apparaît aussi, dans l'équipe
+     * s'il y a une place, sinon dans la boîte (pas de Poké Ball à avoir dans ce jeu).
+     */
+    fun isShedCondition(condition: String): Boolean = condition.startsWith("Niveau") && "place libre dans l'équipe" in condition
     private val HAPPINESS_CONDITION = Regex("^Gagner un niveau, avec un bonheur élevé(?:, (de jour|de nuit))?$")
 
     /**
@@ -248,28 +350,36 @@ object GameRules {
     val LEAGUE_TOP_LEVELS = listOf(46, 48, 50, 52, 55)
 
     /** Niveaux de la Ligue de chaque région : chaque région repartant de zéro, les mêmes (Route Victoire ≈ 40 à 45). */
-    val REGION_LEAGUE_TOP_LEVELS = mapOf(KANTO to LEAGUE_TOP_LEVELS, JOHTO to LEAGUE_TOP_LEVELS)
+    val REGION_LEAGUE_TOP_LEVELS = mapOf(KANTO to LEAGUE_TOP_LEVELS, JOHTO to LEAGUE_TOP_LEVELS, HOENN to LEAGUE_TOP_LEVELS)
 
-    /** Légendaires et fabuleux de Kanto et Johto : jamais dans les équipes des arènes ni de la Ligue. */
-    val LEGENDARIES = setOf(144, 145, 146, 150, 151, 243, 244, 245, 249, 250, 251)
+    /** Légendaires et fabuleux de Kanto, Johto et Hoenn : jamais dans les équipes des arènes ni de la Ligue. */
+    val LEGENDARIES = setOf(144, 145, 146, 150, 151, 243, 244, 245, 249, 250, 251) + (377..386)
 
     /** Niveau des Pokémon rares (coup de pouce, après la Ligue) ; Mewtwo, Lugia et Ho-Oh sont plus forts. */
     fun rareLevel(routeMaxLevel: Int, pokemonId: Int): Int = LEGENDARY_LEVELS[pokemonId] ?: maxOf(routeMaxLevel + 5, 50)
 
     const val MEWTWO = 150
+    const val RAYQUAZA = 384
 
-    /** Niveaux fixes des légendaires les plus puissants : Mewtwo, Lugia et Ho-Oh. */
-    val LEGENDARY_LEVELS = mapOf(MEWTWO to 70, 249 to 90, 250 to 90)
+    /** Pokémon rares seuls sur leur lieu : Mewtwo dans la Grotte Azurée, Rayquaza au Pilier Céleste. */
+    val SOLO_RARES = setOf(MEWTWO, RAYQUAZA)
+
+    /** Niveaux fixes des légendaires les plus puissants : Mewtwo, Lugia, Ho-Oh, Kyogre, Groudon et Rayquaza. */
+    val LEGENDARY_LEVELS = mapOf(MEWTWO to 70, 249 to 90, 250 to 90, 382 to 70, 383 to 70, RAYQUAZA to 70)
 
     /**
      * Lieux fixes des Pokémon rares légendaires. Kanto : Artikodin, Électhor, Sulfura et Mewtwo. Johto : Raikou,
      * Entei et Suicune dans la Tour Cendrée, Lugia sur la Route 41 (Îles Tourbillon), Ho-Oh sur la Route 37 (vers la
-     * Tour Carillon), Celebi dans le Bois aux Chênes.
+     * Tour Carillon), Celebi dans le Bois aux Chênes. Hoenn : Regirock (Route 111, désert), Regice (Route 105),
+     * Registeel (Route 120), Latias et Latios (Route 134), Kyogre (Caverne Fondmer), Groudon (Planque Magma),
+     * Rayquaza (Pilier Céleste). Jirachi et Deoxys n'ont pas de lieu fixe.
      */
     val RARE_HOMES = mapOf(
         144 to "seafoam-islands", 145 to "kanto-power-plant", 146 to "kanto-victory-road-2", MEWTWO to "cerulean-cave",
         243 to "burned-tower", 244 to "burned-tower", 245 to "burned-tower", 249 to "johto-sea-route-41", 250 to "johto-route-37",
         251 to "ilex-forest",
+        377 to "hoenn-route-111", 378 to "hoenn-route-105", 379 to "hoenn-route-120", 380 to "hoenn-route-134",
+        381 to "hoenn-route-134", 382 to "seafloor-cavern", 383 to "magma-hideout", RAYQUAZA to "sky-pillar",
     )
 
     /** Pension : un couple compatible produit un œuf toutes les 5 minutes (un seul attend à la pension). */
@@ -466,9 +576,14 @@ object GameRules {
         else -> 0
     }
 
-    /** Évolution déclenchée par un objet, parmi les évolutions possibles (conditions décrites en français). */
-    fun <T> itemEvolution(children: List<Pair<T, List<String>>>, item: EvolutionItem): T? =
-        children.firstOrNull { (_, conditions) -> conditions.any(item::matches) }?.first
+    /**
+     * Évolution déclenchée par un objet, parmi les évolutions possibles (conditions décrites en français). Si plusieurs
+     * conviennent (Coquiperl : Serpang ou Rosabyss au Câble Link), celle que [prefer] désigne d'abord.
+     */
+    fun <T> itemEvolution(children: List<Pair<T, List<String>>>, item: EvolutionItem, prefer: (T) -> Boolean = { false }): T? {
+        val matching = children.filter { (_, conditions) -> conditions.any(item::matches) }.map { it.first }
+        return matching.firstOrNull(prefer) ?: matching.firstOrNull()
+    }
 
     fun stats(f: Fighter): Stats = stats(f.base, f.level)
 
