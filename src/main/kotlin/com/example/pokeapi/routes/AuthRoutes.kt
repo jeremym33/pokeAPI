@@ -12,6 +12,10 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class CredentialsRequest(val username: String, val password: String)
 
+/** Confirmation d'une action sensible par le mot de passe du compte. */
+@Serializable
+data class PasswordRequest(val password: String)
+
 /** Comptes : inscription, connexion (jeton de session), déconnexion, compte connecté. */
 fun Route.authRoutes(auth: AuthService) {
     route("/auth") {
@@ -28,5 +32,11 @@ fun Route.authRoutes(auth: AuthService) {
             call.respond(HttpStatusCode.NoContent)
         }
         get("/me") { call.respond(call.requireUser(auth)) }
+        // Suppression du compte (avec sa partie et ses équipes), confirmée par le mot de passe
+        delete("/account") {
+            val user = call.requireUser(auth)
+            auth.deleteAccount(user.id, call.receive<PasswordRequest>().password)
+            call.respond(HttpStatusCode.NoContent)
+        }
     }
 }

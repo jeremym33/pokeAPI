@@ -695,8 +695,29 @@ class ApplicationTest {
         assertEquals(false, badges.badges.first().obtained)
         assertEquals("Niveau maximum : 15 → 22", badges.badges.first().effects.first())
 
-        assertEquals(HttpStatusCode.NoContent, client.delete("/game").status)
+        // Recommencer : mot de passe du compte obligatoire
+        assertEquals(HttpStatusCode.BadRequest, client.delete("/game") { contentType(ContentType.Application.Json); setBody("{}") }.status)
+        val wrong = client.delete("/game") { contentType(ContentType.Application.Json); setBody("""{"password":"mauvais123"}""") }
+        assertEquals(HttpStatusCode.BadRequest, wrong.status)
+        assertTrue(wrong.bodyAsText().contains("Mot de passe incorrect"), wrong.bodyAsText())
+        assertEquals(true, game(client.get("/game")).started)
+        assertEquals(HttpStatusCode.NoContent, client.delete("/game") { contentType(ContentType.Application.Json); setBody("""{"password":"pikachu123"}""") }.status)
         assertEquals(false, game(client.get("/game")).started)
+    }
+
+    @Test
+    fun `compte - suppression confirmee par le mot de passe`() = appTest {
+        client.post("/game/new") { contentType(ContentType.Application.Json); setBody("""{"starter":"bulbasaur"}""") }
+        val wrong = client.delete("/auth/account") { contentType(ContentType.Application.Json); setBody("""{"password":"mauvais123"}""") }
+        assertEquals(HttpStatusCode.BadRequest, wrong.status)
+        assertTrue(wrong.bodyAsText().contains("Mot de passe incorrect"), wrong.bodyAsText())
+        assertEquals(HttpStatusCode.OK, client.get("/auth/me").status)
+        assertEquals(HttpStatusCode.NoContent, client.delete("/auth/account") { contentType(ContentType.Application.Json); setBody("""{"password":"pikachu123"}""") }.status)
+        // Session terminée, compte et partie supprimés : le nom est de nouveau libre, sans ancienne partie
+        assertEquals(HttpStatusCode.Unauthorized, client.get("/auth/me").status)
+        val again = register(anonymous, "sacha")
+        val view = anonymous.get("/game") { header(HttpHeaders.Authorization, "Bearer ${again.token}") }
+        assertEquals(false, json.decodeFromString<GameView>(view.bodyAsText()).started)
     }
 
     @Test
@@ -2003,8 +2024,19 @@ class ApplicationTest {
         v = game(post("/travel", """{"step":$newBark,"starter":"chikorita"}"""))
         assertEquals(false, v.team.single { it.uid == "p1" }.usable)
         assertEquals(true, v.box.single { it.uid == "p3" }.usable)
-        // Pension de Johto : vide (celle de Kanto garde p2)
+        // Pension de Johto : vide (celle de Kanto garde p2) ; les deux sont dans la vue
         assertEquals(emptyList(), v.dayCare!!.pokemon)
+        assertEquals(setOf("kanto", "johto"), v.dayCares.keys)
+        assertEquals(listOf("p2"), v.dayCares.getValue("kanto").pokemon.map { it.uid })
+        // Depuis Johto, la pension de Kanto se gère avec ?region=kanto : p2 revient, puis y retourne
+        v = game(post("/daycare/withdraw?region=kanto", """{"uid":"p2"}"""))
+        assertEquals(emptyList(), v.dayCares.getValue("kanto").pokemon)
+        assertTrue(v.team.any { it.uid == "p2" } || v.box.any { it.uid == "p2" })
+        v = game(post("/daycare/deposit?region=kanto", """{"uid":"p2"}"""))
+        assertEquals(listOf("p2"), v.dayCares.getValue("kanto").pokemon.map { it.uid })
+        assertEquals(emptyList(), v.dayCare!!.pokemon)
+        // Région pas encore ouverte : refusée
+        assertEquals(HttpStatusCode.BadRequest, post("/daycare/egg?region=hoenn").status)
         // Repartir à Kanto (pension de Kanto retrouvée), puis revenir à Johto sans nouveau choix
         game(post("/travel", """{"step":0}"""))
         assertEquals(listOf("p2"), game(client.get("/game")).dayCare!!.pokemon.map { it.uid })

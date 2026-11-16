@@ -93,6 +93,21 @@ paths:
               schema: { $ref: "#/components/schemas/User" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /auth/account:
+    delete:
+      tags: [Comptes]
+      summary: Supprime le compte connecté, avec sa partie, ses équipes et ses sessions (mot de passe obligatoire)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [password], properties: { password: { type: string, description: Mot de passe du compte } } }
+      responses:
+        "204": { description: Compte supprimé }
+        "400": { description: "Mot de passe incorrect" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
   /health:
     get:
       tags: [Divers]
@@ -235,9 +250,15 @@ paths:
     delete:
       tags: [Aventure]
       security: [{ bearerAuth: [] }]
-      summary: Supprime la partie
+      summary: Supprime la partie (pour recommencer), après confirmation par le mot de passe du compte
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [password], properties: { password: { type: string, description: Mot de passe du compte } } }
       responses:
         "204": { description: Partie supprimée }
+        "400": { description: "Mot de passe incorrect" }
 
   /game/new:
     post:
@@ -353,6 +374,12 @@ paths:
       security: [{ bearerAuth: [] }]
       summary: Déposer un Pokémon à la pension de la région (depuis n'importe quel lieu)
       description: "2 Pokémon au plus. Un couple compatible (groupe d'œufs en commun, ou Métamorph avec un autre ; jamais le groupe no-eggs) produit un œuf toutes les 5 minutes, même partie fermée."
+      parameters:
+        - name: region
+          in: query
+          required: false
+          description: Pension d'une autre région ouverte (kanto, johto, hoenn) ; par défaut, celle de la région actuelle
+          schema: { type: string, example: johto }
       requestBody:
         required: true
         content:
@@ -372,6 +399,12 @@ paths:
       security: [{ bearerAuth: [] }]
       summary: Reprendre un Pokémon de la pension de la région (depuis n'importe quel lieu)
       description: Il rejoint l'équipe, ou la boîte si elle est complète.
+      parameters:
+        - name: region
+          in: query
+          required: false
+          description: Pension d'une autre région ouverte (kanto, johto, hoenn) ; par défaut, celle de la région actuelle
+          schema: { type: string, example: johto }
       requestBody:
         required: true
         content:
@@ -390,7 +423,13 @@ paths:
       tags: [Aventure]
       security: [{ bearerAuth: [] }]
       summary: Prendre l'œuf qui attend à la pension de la région (depuis n'importe quel lieu)
-      description: "6 œufs transportés au plus. L'œuf éclot après quelques combats (cycles d'éclosion de l'espèce / 2, entre 5 et 40) : forme de base de Kanto, niveau 1, 1 chance sur 4 096 d'être chromatique."
+      description: "6 œufs transportés au plus. L'œuf éclot après quelques combats (cycles d'éclosion de l'espèce / 2, entre 5 et 40) : forme de base dans les régions ouvertes, niveau 1, née dans la région de la pension, 1 chance sur 4 096 d'être chromatique."
+      parameters:
+        - name: region
+          in: query
+          required: false
+          description: Pension d'une autre région ouverte (kanto, johto, hoenn) ; par défaut, celle de la région actuelle
+          schema: { type: string, example: johto }
       responses:
         "200":
           description: État de la partie (dayCare, eggs)
@@ -1364,6 +1403,10 @@ components:
         levelCap: { type: integer, description: Niveau maximum selon les badges }
         caught: { type: integer, description: Espèces des régions ouvertes obtenues }
         dexSize: { type: integer, example: 151, description: "151, 251 avec Johto, 386 avec Hoenn" }
+        dayCares:
+          type: object
+          additionalProperties: { type: object }
+          description: Pension de chaque région ouverte (clé kanto, johto, hoenn) ; dayCare est celle de la région actuelle
         hoennUnlocked: { type: boolean, description: "Hoenn ouvert (les 251 premiers Pokémon obtenus)" }
         unlockedRegions:
           type: array

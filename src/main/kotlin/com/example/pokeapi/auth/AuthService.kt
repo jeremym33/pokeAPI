@@ -1,5 +1,6 @@
 package com.example.pokeapi.auth
 
+import com.example.pokeapi.db.GameSaveTable
 import com.example.pokeapi.db.SessionTable
 import com.example.pokeapi.db.TeamTable
 import com.example.pokeapi.db.UserTable
@@ -72,6 +73,25 @@ class AuthService(private val database: Database, private val sessionDuration: D
         val valid = verifyPassword(password, row?.get(UserTable.passwordHash) ?: DUMMY_HASH)
         if (row == null || !valid) throw UnauthorizedException("Nom d'utilisateur ou mot de passe incorrect")
         return AuthResponse(createSession(row[UserTable.id].value), row.toView())
+    }
+
+    /**
+     * Confirme une action sensible (recommencer la partie, supprimer le compte) : le mot de passe du compte connecté
+     * doit être saisi. Réponse 400 (pas 401 : la session reste valide).
+     */
+    suspend fun confirmPassword(userId: Int, password: String) {
+        val stored = dbQuery { UserTable.selectAll().where { UserTable.id eq userId }.singleOrNull()?.get(UserTable.passwordHash) }
+        if (stored == null || !verifyPassword(password, stored)) throw BadRequestException("Mot de passe incorrect")
+    }
+
+    /** Supprime le compte (après le mot de passe) : sa partie, ses équipes et ses sessions avec lui. */
+    suspend fun deleteAccount(userId: Int, password: String) {
+        confirmPassword(userId, password)
+        dbQuery {
+            GameSaveTable.deleteWhere { id eq userId }
+            // Équipes et sessions : supprimées en cascade avec le compte
+            UserTable.deleteWhere { id eq userId }
+        }
     }
 
     suspend fun logout(token: String) {

@@ -246,7 +246,10 @@ data class GameView(
     val training: List<TraineeView> = emptyList(),
     /** Secondes entre deux combats d'entraînement. */
     val trainingSeconds: Int = (GameRules.TRAINING_FIGHT_MS / 1000).toInt(),
+    /** Pension de la région actuelle. */
     val dayCare: DayCareView? = null,
+    /** Pension de chaque région ouverte (kanto, johto, hoenn), gérable depuis n'importe quel lieu. */
+    val dayCares: Map<String, DayCareView> = emptyMap(),
     /** Défi de la Ligue, quand on est au Plateau Indigo. */
     val league: LeagueView? = null,
     val eggs: List<EggView> = emptyList(),

@@ -403,31 +403,43 @@ class GameService(
         d.pokemon.size == 2 && GameRules.compatible(breedingInfo(d.pokemon[0].speciesId).first, breedingInfo(d.pokemon[1].speciesId).first)
 
     /** Dépose un Pokémon (équipe ou boîte) à la pension de la région, 2 au plus, depuis n'importe quel lieu. */
-    suspend fun depositDayCare(userId: Int, uid: String): GameView = act(userId) { s ->
+    suspend fun depositDayCare(userId: Int, uid: String, region: String? = null): GameView = act(userId) { s ->
         noBattle(s)
         noLeagueChallenge(s)
-        val here = s.dayCareIn(s.region())
+        val r = dayCareRegion(s, region)
+        val here = s.dayCareIn(r)
         if (here.pokemon.size >= 2) throw BadRequestException("La pension garde déjà 2 Pokémon")
         val f = (s.team + s.box).firstOrNull { it.uid == uid } ?: throw BadRequestException("Pokémon introuvable")
         if (s.team.size == 1 && s.team.single().uid == uid) throw BadRequestException("Gardez au moins un Pokémon dans l'équipe")
         val dayCare = here.copy(pokemon = here.pokemon + f.healed().leftBattle())
         val compatible = compatiblePair(dayCare)
-        s.copy(team = s.team.filter { it.uid != uid }, box = s.box.filter { it.uid != uid }, lastEvent = "${f.displayName} est confié à la pension de ${regionName(s.region())}.")
-            .withDayCare(s.region(), dayCare.copy(nextEggAt = if (compatible) System.currentTimeMillis() + GameRules.EGG_INTERVAL_MS else null))
+        s.copy(team = s.team.filter { it.uid != uid }, box = s.box.filter { it.uid != uid }, lastEvent = "${f.displayName} est confié à la pension de ${regionName(r)}.")
+            .withDayCare(r, dayCare.copy(nextEggAt = if (compatible) System.currentTimeMillis() + GameRules.EGG_INTERVAL_MS else null))
     }
 
     /** Reprend un Pokémon de la pension : il rejoint l'équipe (ou la boîte si elle est complète). */
-    suspend fun withdrawDayCare(userId: Int, uid: String): GameView = act(userId) { s ->
+    suspend fun withdrawDayCare(userId: Int, uid: String, region: String? = null): GameView = act(userId) { s ->
         noBattle(s)
         noLeagueChallenge(s)
-        val here = s.dayCareIn(s.region())
+        val r = dayCareRegion(s, region)
+        val here = s.dayCareIn(r)
         val f = here.pokemon.firstOrNull { it.uid == uid }
-            ?: throw BadRequestException("Ce Pokémon n'est pas à la pension de ${regionName(s.region())}")
+            ?: throw BadRequestException("Ce Pokémon n'est pas à la pension de ${regionName(r)}")
         // Un œuf qui attend reste à prendre : son espèce est fixée avant le départ du parent
         val species = if (here.eggWaiting) here.eggSpecies ?: eggSpecies(here, s.dexMax()) else null
         val back = s.copy(lastEvent = "${f.displayName} revient de la pension.")
-            .withDayCare(s.region(), here.copy(pokemon = here.pokemon - f, nextEggAt = null, eggSpecies = species))
+            .withDayCare(r, here.copy(pokemon = here.pokemon - f, nextEggAt = null, eggSpecies = species))
         if (back.team.size < 6) back.copy(team = back.team + f) else back.copy(box = back.box + f)
+    }
+
+    /**
+     * Pension visée par une action : celle de la région demandée (une région ouverte, depuis n'importe quel lieu), ou
+     * celle de la région actuelle.
+     */
+    private fun dayCareRegion(s: GameState, region: String?): String {
+        if (region == null) return s.region()
+        if (region !in GameRules.REGIONS || !s.regionUnlocked(region)) throw BadRequestException("Pension inconnue ou région pas encore ouverte : '$region'")
+        return region
     }
 
     /** Espèce d'un œuf : la première forme de la lignée d'un des parents (pas Métamorph) ; null sans parent possible. */
@@ -437,10 +449,11 @@ class GameService(
     }
 
     /** Prend l'œuf qui attend à la pension : il éclora après quelques combats. */
-    suspend fun takeEgg(userId: Int): GameView = act(userId) { s ->
+    suspend fun takeEgg(userId: Int, region: String? = null): GameView = act(userId) { s ->
         noBattle(s)
         noLeagueChallenge(s)
-        val here = s.dayCareIn(s.region())
+        val r = dayCareRegion(s, region)
+        val here = s.dayCareIn(r)
         if (!here.eggWaiting) throw BadRequestException("Aucun œuf n'attend à la pension")
         if (s.eggs.size >= GameRules.MAX_EGGS) throw BadRequestException("Vous portez déjà ${GameRules.MAX_EGGS} œufs")
         // Espèce fixée à l'apparition de l'œuf (sauvegardes plus anciennes : d'après les parents encore présents)
@@ -448,16 +461,16 @@ class GameService(
         if (species == null) {
             // Œuf d'avant ce suivi, dont les parents sont partis : il ne peut plus être retrouvé
             return@act s.copy(lastEvent = "Les parents ont quitté la pension : l'œuf n'a pas pu être retrouvé.")
-                .withDayCare(s.region(), here.copy(eggWaiting = false, eggSpecies = null))
+                .withDayCare(r, here.copy(eggWaiting = false, eggSpecies = null))
         }
         val fights = GameRules.hatchFights(breedingInfo(species).second)
         // Le Pokémon qui en sortira sera « né » dans la région de la pension
-        val egg = Egg(uid = "egg${s.uidCounter + 1}", speciesId = species, fightsLeft = fights, fightsTotal = fights, origin = s.region())
+        val egg = Egg(uid = "egg${s.uidCounter + 1}", speciesId = species, fightsLeft = fights, fightsTotal = fights, origin = r)
         s.copy(
             eggs = s.eggs + egg, uidCounter = s.uidCounter + 1,
             lastEvent = "Vous prenez l'œuf. Il éclora après environ $fights combats.",
         ).withDayCare(
-            s.region(),
+            r,
             here.copy(eggWaiting = false, eggSpecies = null, nextEggAt = if (compatiblePair(here)) System.currentTimeMillis() + GameRules.EGG_INTERVAL_MS else null),
         )
     }
@@ -1950,6 +1963,7 @@ class GameService(
             lastEvent = s.lastEvent,
             settings = s.settings,
             dayCare = dayCareView(s),
+            dayCares = GameRules.REGIONS.filter { s.regionUnlocked(it) }.associateWith { dayCareView(s, it) },
             league = if (!GameRules.STEPS[s.stepIndex].league) null else s.leagueIn(s.region()).let { l ->
                 LeagueView(
                     region = s.region(),
@@ -1969,8 +1983,8 @@ class GameService(
         )
     }
 
-    private suspend fun dayCareView(s: GameState): DayCareView {
-        val d = s.dayCareIn(s.region())
+    private suspend fun dayCareView(s: GameState, region: String = s.region()): DayCareView {
+        val d = s.dayCareIn(region)
         val compatible = compatiblePair(d)
         val message = when {
             d.pokemon.size < 2 -> null

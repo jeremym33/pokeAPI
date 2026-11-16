@@ -109,7 +109,12 @@ jour avec chaque route ou champ ajouté.
   `cursed`), Clonage (`substituteHp` : le clone encaisse les dégâts et bloque les effets sur la cible), Balance,
   Souvenir, Vœu Soin / Danse Lune (`wish` : remplaçant soigné), Tout ou Rien. Ces états de combat disparaissent avec
   `leftBattle()`. Les adversaires les utilisent quand elles servent (`GameRules.specialScore`, dans `moveScore`).
-- **Pension** : 2 Pokémon compatibles (groupe d'œufs ou Métamorph) → un œuf toutes les 5 min ; l'espèce de l'œuf est
+- **Comptes** : recommencer la partie (`DELETE /game`) et supprimer le compte (`DELETE /auth/account`, avec la partie
+  et les équipes) demandent le mot de passe du compte (`{"password": …}`, `AuthService.confirmPassword` : 400 si
+  incorrect, pas 401, la session restant valide).
+- **Pension** : une par région ouverte, gérable depuis n'importe où : `?region=` sur `/game/daycare/deposit`,
+  `/withdraw`, `/egg` (par défaut la région actuelle) ; vue : `GameView.dayCares` (et `dayCare`, la région actuelle) ;
+  2 Pokémon compatibles (groupe d'œufs ou Métamorph) → un œuf toutes les 5 min ; l'espèce de l'œuf est
   fixée à son apparition (`eggSpecies`) ; le bébé éclot avec `HAPPINESS_HATCHED` (10) points de bonheur.
 - **Combat** : l'IA des adversaires est `GameRules.chooseMove` / `moveScore` (meilleure attaque utile, 1 fois sur 5
   au hasard parmi les utiles). Destruction et Explosion seulement sous 25 % des PV.

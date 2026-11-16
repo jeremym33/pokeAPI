@@ -52,16 +52,24 @@ fun Route.gameRoutes(service: GameService, auth: AuthService) {
         // Nouvelle partie (remplace la partie en cours)
         post("/new") { call.respond(HttpStatusCode.Created, service.newGame(call.user(), call.receive<NewGameRequest>().starter)) }
 
+        // Recommencer : la partie est supprimée, après confirmation par le mot de passe du compte
         delete {
-            service.reset(call.user())
+            val user = call.user()
+            auth.confirmPassword(user, call.receive<PasswordRequest>().password)
+            service.reset(user)
             call.respond(HttpStatusCode.NoContent)
         }
 
-        // Pension (villes) : déposer / reprendre un Pokémon, prendre l'œuf
+        // Pension : déposer / reprendre un Pokémon, prendre l'œuf ; ?region= vise la pension d'une autre région ouverte
+        // (par défaut, celle de la région actuelle)
         route("/daycare") {
-            post("/deposit") { call.respond(service.depositDayCare(call.user(), call.receive<SwitchRequest>().uid)) }
-            post("/withdraw") { call.respond(service.withdrawDayCare(call.user(), call.receive<SwitchRequest>().uid)) }
-            post("/egg") { call.respond(service.takeEgg(call.user())) }
+            post("/deposit") {
+                call.respond(service.depositDayCare(call.user(), call.receive<SwitchRequest>().uid, call.request.queryParameters["region"]))
+            }
+            post("/withdraw") {
+                call.respond(service.withdrawDayCare(call.user(), call.receive<SwitchRequest>().uid, call.request.queryParameters["region"]))
+            }
+            post("/egg") { call.respond(service.takeEgg(call.user(), call.request.queryParameters["region"])) }
         }
         // Entraînement : laisser un Pokémon sur le lieu actuel, le reprendre ou l'échanger
         route("/training") {

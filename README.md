@@ -105,6 +105,7 @@ L'aventure et les équipes demandent un compte ; le Pokédex, les régions et la
 | `POST` | `/auth/login` | Se connecte, renvoie un jeton de session (valable 30 jours) |
 | `POST` | `/auth/logout` | Révoque le jeton |
 | `GET` | `/auth/me` | Compte connecté |
+| `DELETE` | `/auth/account` | Supprime le compte connecté, avec sa partie et ses équipes : `{"password": "…"}` (mot de passe du compte) |
 
 Le jeton s'envoie dans l'en-tête `Authorization: Bearer <jeton>` (bouton « Authorize » dans Swagger). Les mots de passe sont hachés (PBKDF2-SHA256, sel aléatoire) et seul le hachage SHA-256 des jetons est enregistré. Le **premier compte créé** reprend la partie et les équipes qui existaient avant l'ajout des comptes.
 
