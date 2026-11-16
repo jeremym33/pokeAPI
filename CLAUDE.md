@@ -38,7 +38,8 @@ jour avec chaque route ou champ ajouté.
   - `GameViews.kt` : ce que l'API renvoie (`GameView`, `FighterView`, `StepView`, `LeagueView`…).
   - `GameService.kt` : toutes les actions (gros fichier : chercher par section `// ---------- … ----------`).
   - `Achievements.kt` : succès (récompenses : pierres d'évolution, Câble Link).
-  - `SaveUpgrade.kt` : mise à jour des anciennes sauvegardes (`SAVE_VERSION`).
+  - `SaveUpgrade.kt` : mise à jour des anciennes sauvegardes (`SAVE_VERSION` 3 : v1 Ligues et pensions par région,
+    origines ; v2 une seule Jadielle, numéros d'étapes décalés ; v3 starter de région, plus de compagnon).
 
 ### Mécanique de `GameService`
 
@@ -89,8 +90,9 @@ jour avec chaque route ou champ ajouté.
 - **Régions** : Johto s'ouvre avec les 151 Pokémon de Kanto obtenus. Chaque Pokémon a une région d'origine
   (`origin`) : seuls ceux de la région en cours combattent (plus de compagnon). À la première arrivée dans une région,
   on y choisit un **starter de la région** (`REGION_STARTERS`, niveau `REGION_STARTER_LEVEL` : 5 ;
-  `TravelRequest.starter`, ou `POST /game/region-starter` sur place ; `GameState.regionStarters`). Une pension par région, accessible de partout (sauf défi de Ligue) ; zones d'entraînement limitées aux
-  Pokémon de leur région. Pas d'évolution vers une espèce d'une région non débloquée.
+  `TravelRequest.starter`, ou `POST /game/region-starter` sur place ; `GameState.regionStarters` ; vue :
+  `GameView.starterChoices`). Une pension par région, accessible de partout (sauf défi de Ligue) ; zones
+  d'entraînement limitées aux Pokémon de leur région. Pas d'évolution vers une espèce d'une région non débloquée.
 - **Attaques qui blessent le lanceur** : contrecoup proportionnel aux dégâts via `drain` < 0 (données PokéAPI) ;
   les autres effets ne sont pas dans les données et sont listés dans `GameRules` : `SELF_KO_MOVES` (Destruction,
   Explosion : K.O.), `HALF_HP_COST_MOVES` (Métalaser), `CRASH_MOVES` (Pied Voltige raté). Mêmes listes dans
