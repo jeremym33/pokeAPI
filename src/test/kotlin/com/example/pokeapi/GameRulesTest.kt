@@ -452,4 +452,14 @@ class GameRulesTest {
         assertEquals(setOf("kanto"), u.regionStarters)
         assertEquals(emptyMap(), u.companions)
     }
+
+    @Test
+    fun `nouvelle region aux niveaux les plus bas`() {
+        assertEquals(emptyMap(), GameRules.REGION_LEVEL_OFFSET)
+        assertEquals(GameRules.STARTER_LEVEL, GameRules.REGION_STARTER_LEVEL["johto"])
+        assertEquals(GameRules.REGION_LEAGUE_TOP_LEVELS["kanto"], GameRules.REGION_LEAGUE_TOP_LEVELS["johto"])
+        // 1re arène de Johto : comme la 1re de Kanto (numéro 0 dans sa région)
+        val johtoGyms = GameRules.gymSteps().filter { GameRules.STEPS[it].region == "johto" }
+        assertEquals((0..7).toList(), johtoGyms.map { GameRules.gymNumber(it) })
+    }
 }

@@ -149,10 +149,11 @@ object GameRules {
     val REGION_VERSIONS = mapOf(KANTO to VERSION, JOHTO to "crystal")
 
     /**
-     * Niveaux des Pokémon sauvages de Johto relevés : Cristal commence au niveau 2, alors que l'équipe arrive de
-     * Kanto bien plus forte (2 → 47 … 40 → 85).
+     * Décalage des niveaux des Pokémon sauvages par région : aucun. Chaque région commence aux niveaux les plus bas
+     * (Cristal : niveau 2 sur la Route 29), avec un starter niveau 5, puisque les Pokémon des autres régions n'y
+     * combattent pas.
      */
-    val REGION_LEVEL_OFFSET = mapOf(JOHTO to 45)
+    val REGION_LEVEL_OFFSET: Map<String, Int> = emptyMap()
 
     /** Dernier numéro du Pokédex de chaque région. */
     val REGION_DEX = mapOf(KANTO to 151, JOHTO to 251)
@@ -163,8 +164,8 @@ object GameRules {
      */
     val REGION_STARTERS = mapOf(JOHTO to listOf("chikorita", "cyndaquil", "totodile"))
 
-    /** Niveau du starter d'une région (Johto : premières rencontres de Cristal aux niveaux 47 à 49). */
-    val REGION_STARTER_LEVEL = mapOf(JOHTO to 50)
+    /** Niveau du starter d'une région : comme au début de l'aventure (premières rencontres de Cristal aux niveaux 2 à 4). */
+    val REGION_STARTER_LEVEL = mapOf(JOHTO to STARTER_LEVEL)
 
     /** Région d'une espèce : Kanto (n° 1 à 151) ou Johto (152 à 251). */
     fun speciesRegion(speciesId: Int): String = if (speciesId <= DEX_SIZE) KANTO else JOHTO
@@ -246,8 +247,8 @@ object GameRules {
      */
     val LEAGUE_TOP_LEVELS = listOf(46, 48, 50, 52, 55)
 
-    /** Niveaux de la Ligue de chaque région : celle de Johto juste au-dessus de la dernière arène de Johto (≈ 73). */
-    val REGION_LEAGUE_TOP_LEVELS = mapOf(KANTO to LEAGUE_TOP_LEVELS, JOHTO to listOf(74, 76, 78, 80, 84))
+    /** Niveaux de la Ligue de chaque région : chaque région repartant de zéro, les mêmes (Route Victoire ≈ 40 à 45). */
+    val REGION_LEAGUE_TOP_LEVELS = mapOf(KANTO to LEAGUE_TOP_LEVELS, JOHTO to LEAGUE_TOP_LEVELS)
 
     /** Légendaires et fabuleux de Kanto et Johto : jamais dans les équipes des arènes ni de la Ligue. */
     val LEGENDARIES = setOf(144, 145, 146, 150, 151, 243, 244, 245, 249, 250, 251)

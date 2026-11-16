@@ -15,16 +15,17 @@ les Pokémon rares ; Johto de même, plus le bonheur, la Pierre Soleil et les œ
 | Pokémon sauvage | Après chaque victoire contre lui | Il peut proposer de vous rejoindre (voir ci-dessous) |
 | Évolution | Fin de combat, objet, entraînement | L'espèce obtenue compte comme rejointe |
 | Œuf | Pension | Forme de base de l'un des parents |
-| Starter de Johto | Première arrivée à Johto | Germignon, Héricendre ou Kaiminus au choix, niveau 50 |
+| Starter de Johto | Première arrivée à Johto | Germignon, Héricendre ou Kaiminus au choix, niveau 5 |
 | Pokémon rare | Après la Ligue de la région | Apparaît de temps en temps, par le coup de pouce |
 
 ## 1. Pokémon sauvages
 
 - **Où** : sur les lieux du parcours qui ont des Pokémon sauvages (routes, grottes, forêts…), avec « Chercher un
   Pokémon sauvage ». Les rencontres viennent de **Vert Feuille** pour Kanto (n° 1 à 151 seulement) et de **Cristal**
-  pour Johto (n° 1 à 251, niveaux relevés de 45).
-- **Rencontres débloquées par les badges** : herbes et Canne au début ; Super Canne à 3 badges ; Surf et Méga Canne
-  à 5 badges.
+  pour Johto (n° 1 à 251). **Chaque région repart des niveaux les plus bas** (niveau 2 sur la Route 29), avec ses
+  propres badges : à Johto, le niveau maximum et les cannes ou le surf dépendent des badges de Johto.
+- **Rencontres débloquées par les badges de la région** : herbes et Canne au début ; Super Canne à 3 badges ; Surf et
+  Méga Canne à 5 badges.
 - **Liste des espèces d'un lieu** : elle montre les espèces des herbes et de la Canne (celles qu'il faut voir pour
   franchir le lieu). Après la victoire contre le Maître de la Ligue de la région, elle montre aussi celles de la Super
   Canne, de la Méga Canne et du Surf (« 🎣 Après la Ligue : à la canne et en surf »), chacune comme rejointe, vue ou
@@ -96,7 +97,8 @@ coup de pouce a **10 %** de chances d'être chromatique (contre 1 sur 4 096 norm
 
 - Johto s'ouvre quand les **151 Pokémon de Kanto** ont rejoint votre Pokédex.
 - À votre première arrivée à Johto, vous **choisissez votre starter de Johto** : Germignon, Héricendre ou Kaiminus,
-  niveau 50. Les Pokémon de Kanto ne combattent pas à Johto : il est le premier de votre nouvelle équipe.
+  niveau 5. Les Pokémon de Kanto ne combattent pas à Johto : il est le premier de votre nouvelle équipe, et Johto se
+  joue comme un nouveau départ (Pokémon sauvages de niveau 2, niveau maximum 15 jusqu'au premier badge de Johto).
 - Les deux autres starters de Johto s'obtiennent comme Pokémon rares (voir 6), ou par œuf.
 
 ## 6. Pokémon rares (après la Ligue)

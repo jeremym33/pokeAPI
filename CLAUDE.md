@@ -57,7 +57,8 @@ jour avec chaque route ou champ ajouté.
 - **Pas de contenu original recréé** : pas de noms ni d'équipes de champions, du Conseil des 4 ou de Maîtres des jeux
   officiels. Tout est généré depuis les données (types les plus fréquents des routes, statistiques…).
 - **Parcours** (`GameRules.STEPS`) : villes, routes et lieux de Kanto (rencontres de Vert Feuille), puis Johto
-  (Cristal, niveaux +45) jusqu'au Plateau Indigo de Johto. Chaque lieu n'apparaît qu'une fois par région. Les
+  (Cristal, niveaux d'origine : chaque région repart de zéro, `REGION_LEVEL_OFFSET` vide) jusqu'au Plateau Indigo de
+  Johto. Chaque lieu n'apparaît qu'une fois par région. Les
   numéros d'étapes sont sauvegardés : ajouter des étapes **à la fin** ; retirer ou déplacer une étape exige une
   migration des numéros (`SaveUpgrade.kt`, voir `remapStepV2`). Une route est franchie avec 10 victoires et toutes
   ses espèces vues (herbes et Canne : `routeSpecies`). La vue d'un lieu (`StepView.species`, `RouteSpecies`) indique pour
@@ -67,10 +68,11 @@ jour avec chaque route ou champ ajouté.
 - **Jadielle** : une seule fois, au début ; son arène (`gymOpensAfter`) est la 8e de Kanto et n'ouvre qu'avec les 7
   autres badges, sans bloquer la route ; la Route 23 (`requiresBadgeOf`) attend son badge. L'ordre des arènes suit
   `GameRules.gymOrder` / `gymSteps()`, pas l'ordre des étapes.
-- **Arènes** : 8 par région, type tiré des Pokémon rencontrés avant ; badges = limite de niveau (`LEVEL_CAPS`).
+- **Arènes** : 8 par région, type tiré des Pokémon rencontrés avant, même progression dans chaque région ; les badges
+  **de la région en cours** (`regionBadges`) fixent la limite de niveau (`LEVEL_CAPS`) et les rencontres (cannes, surf).
 - **Ligues** : une par région au Plateau Indigo (`leagues[région]`) : 4 membres du Conseil puis le Maître, à la
-  suite. Kanto : niv. 38 à 55 ; Johto : niv. 64 à 84 (meilleur Pokémon de
-  chaque adversaire : `REGION_LEAGUE_TOP_LEVELS`). Légendaires exclus des équipes.
+  suite. Kanto et Johto : niv. 38 à 55 (meilleur Pokémon
+  de chaque adversaire : `REGION_LEAGUE_TOP_LEVELS`). Légendaires exclus des équipes.
 - **Pokémon rares** : après le Maître d'une région, les espèces introuvables de cette région apparaissent par le
   coup de pouce ; légendaires à lieu fixe (`RARE_HOMES`). Mewtwo seul dans la Grotte Azurée.
 - **Coup de pouce** invisible : au hasard entre le 5e et le 15e combat sur un lieu (`GameRules.boostChance`,
@@ -85,7 +87,7 @@ jour avec chaque route ou champ ajouté.
   n'est pas obtenu, même si l'espèce l'est.
 - **Régions** : Johto s'ouvre avec les 151 Pokémon de Kanto obtenus. Chaque Pokémon a une région d'origine
   (`origin`) : seuls ceux de la région en cours combattent (plus de compagnon). À la première arrivée dans une région,
-  on y choisit un **starter de la région** (`REGION_STARTERS`, niveau `REGION_STARTER_LEVEL` : 50 à Johto ;
+  on y choisit un **starter de la région** (`REGION_STARTERS`, niveau `REGION_STARTER_LEVEL` : 5 ;
   `TravelRequest.starter`, ou `POST /game/region-starter` sur place ; `GameState.regionStarters`). Une pension par région, accessible de partout (sauf défi de Ligue) ; zones d'entraînement limitées aux
   Pokémon de leur région. Pas d'évolution vers une espèce d'une région non débloquée.
 - **Attaques qui blessent le lanceur** : contrecoup proportionnel aux dégâts via `drain` < 0 (données PokéAPI) ;

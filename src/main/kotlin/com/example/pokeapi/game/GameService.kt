@@ -222,10 +222,11 @@ class GameService(
                 location = names[GameRules.STEPS[step].location],
                 type = type,
                 obtained = step in s.badges,
-                effects = GameRules.badgeEffects(k + 1),
+                // Effets dans sa région : chaque région repart du niveau maximum le plus bas
+                effects = GameRules.badgeEffects(GameRules.gymNumber(step) + 1),
             )
         }
-        BadgesView(s.badges.size, badges.size, GameRules.levelCap(s.badges.size), badges)
+        BadgesView(s.badges.size, badges.size, GameRules.levelCap(s.regionBadges(s.region())), badges)
     }
 
     /**
@@ -545,7 +546,7 @@ class GameService(
     }
 
     private suspend fun checkTrainingPlace(s: GameState) {
-        if (GameRules.STEPS[s.stepIndex].city || pool(s.stepIndex, s.badges.size).isEmpty()) {
+        if (GameRules.STEPS[s.stepIndex].city || pool(s.stepIndex, s.regionBadges(s.region())).isEmpty()) {
             throw BadRequestException("Aucun Pokémon sauvage ici pour s'entraîner")
         }
     }
@@ -572,14 +573,14 @@ class GameService(
             val elapsed = ((now - t.lastSync) / GameRules.TRAINING_FIGHT_MS).coerceAtLeast(0)
             if (elapsed == 0L) continue
             val synced = t.lastSync + elapsed * GameRules.TRAINING_FIGHT_MS
-            val pool = pool(step, state.badges.size)
+            val pool = pool(step, state.regionBadges(GameRules.STEPS[step].region))
             if (pool.isEmpty()) {
                 state = state.copy(training = state.training + (step to t.copy(lastSync = synced)))
                 continue
             }
             val baseExperience = pool.map { it.pokemonId }.distinct()
                 .associateWith { id -> pokemonService.getPokemon(id.toString())?.baseExperience ?: 60 }
-            val cap = GameRules.levelCap(state.badges.size)
+            val cap = GameRules.levelCap(state.regionBadges(GameRules.STEPS[step].region))
             val before = t.fighter
             var f = before
             repeat(elapsed.coerceAtMost(GameRules.TRAINING_MAX_FIGHTS.toLong()).toInt()) {
@@ -662,7 +663,7 @@ class GameService(
 
     private suspend fun startWildBattle(s: GameState): GameState {
         val active = s.firstFighter()
-        val pool = pool(s.stepIndex, s.badges.size)
+        val pool = pool(s.stepIndex, s.regionBadges(s.region()))
         if (pool.isEmpty()) throw BadRequestException("Aucun Pokémon sauvage ici")
         // Coup de pouce invisible, au hasard entre le 5e et le 15e combat sur le lieu (GameRules.boostChance) : une
         // espèce pas encore vue s'il en reste, sinon une espèce vue mais pas encore rejointe, avec une chance d'être
@@ -1306,7 +1307,8 @@ class GameService(
     /** Expérience pour les Pokémon qui ont combattu ; une montée de niveau fait apprendre aussitôt les nouvelles attaques. */
     private suspend fun shareXp(s: GameState, enemy: Fighter, log: MutableList<String>): GameState {
         val b = s.battle!!
-        val cap = GameRules.levelCap(s.badges.size)
+        // Niveau maximum de la région : chaque région repart des badges de zéro
+        val cap = GameRules.levelCap(s.regionBadges(s.region()))
         val gain = GameRules.xpReward(enemy, b.kind == BattleKind.GYM)
         val team = s.team.map { f0 ->
             if (f0.uid !in b.participants || f0.fainted) return@map f0
@@ -1368,7 +1370,7 @@ class GameService(
             }
         } else {
             val type = state.gymTypes[b.step]
-            val newCap = GameRules.levelCap(state.badges.size + 1)
+            val newCap = GameRules.levelCap(state.regionBadges(GameRules.STEPS[b.step].region) + 1)
             log += "Vous avez gagné ! Vous obtenez le Badge ${TYPES_FR[type] ?: "d'arène"}. Niveau maximum : $newCap."
             state = state.copy(badges = state.badges + b.step)
         }
@@ -1576,20 +1578,19 @@ class GameService(
         // Pokémon sauvages de la même région ; dans Johto, rencontres de base seulement (les badges de Kanto
         // ouvrent déjà le surf et les meilleures cannes, aux niveaux bien plus hauts)
         val region = GameRules.STEPS[s.stepIndex].region
-        val badges = if (region == KANTO) s.badges.size else 0
+        val badges = s.regionBadges(region)
         // Arène qui ouvre après les autres (Jadielle) : à la hauteur des lieux qui la précèdent dans l'ordre des arènes
         val bound = if (GameRules.STEPS[s.stepIndex].gymOpensAfter != null) GameRules.gymOrder(s.stepIndex) + 1 else s.stepIndex
         val wildMax = (0 until bound).filter { GameRules.STEPS[it].region == region }
             .maxOfOrNull { i -> pool(i, badges).maxOfOrNull { it.maxLevel } ?: 0 } ?: 0
-        return GameRules.gymTopLevel(wildMax, GameRules.levelCap(s.badges.size))
+        return GameRules.gymTopLevel(wildMax, GameRules.levelCap(badges))
     }
 
     /** Équipe d'une arène : Pokémon de Kanto du type de l'arène, de plus en plus forts au fil des arènes. */
     private suspend fun gymTeam(step: Int, type: String, topLevel: Int, maxDex: Int = GameRules.DEX_SIZE): List<Fighter> {
         val number = GameRules.gymNumber(step)
-        // Johto vient après Kanto : équipes plus fournies et plus solides dès la première arène
-        return if (GameRules.STEPS[step].region == KANTO) gymTeam(type, topLevel, size = minOf(6, 2 + number / 2), targetStat = 280 + 45 * number)
-        else gymTeam(type, topLevel, size = minOf(6, 4 + number / 3), targetStat = 420 + 20 * number, maxDex = maxDex)
+        // Chaque région repart de zéro : même progression d'une arène à l'autre
+        return gymTeam(type, topLevel, size = minOf(6, 2 + number / 2), targetStat = 280 + 45 * number, maxDex = maxDex)
     }
 
     /** Équipe d'un type : [size] Pokémon de Kanto proches de [targetStat] (total des statistiques), du plus faible au plus fort. */
@@ -1788,7 +1789,7 @@ class GameService(
 
         val names = locationNames()
         val steps = GameRules.STEPS.mapIndexed { i, step ->
-            val hasEncounters = pool(i, s.badges.size).isNotEmpty()
+            val hasEncounters = pool(i, s.regionBadges(step.region)).isNotEmpty()
             val species = if (step.city) emptySet() else routeSpecies(i)
             // Espèces de l'étape actuelle, pour savoir lesquelles il reste à voir (après la Ligue, aussi à la canne et en surf)
             val shown = if (i != s.stepIndex) emptyList() else shownSpecies(s, i)
@@ -1838,7 +1839,7 @@ class GameService(
                 recruit = b.recruit?.toView(),
                 recruitIsNew = b.recruit?.let { it.speciesId !in s.caught } ?: false,
                 canContinue = b.kind == BattleKind.WILD && b.outcome in setOf(BattleOutcome.WON, BattleOutcome.FLED) &&
-                    s.settings.nextEncounterButton && s.canFight() && pool(s.stepIndex, s.badges.size).isNotEmpty(),
+                    s.settings.nextEncounterButton && s.canFight() && pool(s.stepIndex, s.regionBadges(s.region())).isNotEmpty(),
             )
         }
         // Objets possédés, avec les Pokémon sur lesquels ils ont un effet.
@@ -1856,7 +1857,7 @@ class GameService(
             currentStep = s.stepIndex,
             unlockedStep = unlocked,
             badges = s.badges.size,
-            levelCap = GameRules.levelCap(s.badges.size),
+            levelCap = GameRules.levelCap(s.regionBadges(s.region())),
             caught = s.caught.count { it <= s.dexMax() },
             dexSize = s.dexMax(),
             starterChoices = GameRules.REGION_STARTERS.filterKeys { it !in s.regionStarters && (it != JOHTO || s.johtoUnlocked) },

@@ -16,7 +16,8 @@ tags:
       sont propres à chaque compte ; le Pokédex et les régions restent publics.
   - name: Aventure
     description: |
-      Jeu d'aventure dans Kanto (rencontres de Vert Feuille), puis Johto (rencontres de Cristal, niveaux relevés de 45),
+      Jeu d'aventure dans Kanto (rencontres de Vert Feuille), puis Johto (rencontres de Cristal, aux niveaux d'origine :
+      chaque région repart des niveaux les plus bas, avec ses propres badges),
       ouvert une fois les 151 Pokémon de Kanto obtenus. Chaque action renvoie l'état complet de la partie (GameView).
       Une route se franchit avec au moins 10 victoires et toutes ses espèces vues (rencontres disponibles dès le départ),
       rencontrées selon leurs chances habituelles.
@@ -264,7 +265,7 @@ paths:
       description: |
         Dans une région, seuls les Pokémon qui en sont originaires (capturés, offerts ou nés là) peuvent combattre. À la
         première arrivée dans une région (Johto), `starter` désigne le starter de la région choisi (GameView.starterChoices :
-        chikorita, cyndaquil, totodile), offert au niveau 50 ; il est obligatoire ce jour-là, inutile ensuite.
+        chikorita, cyndaquil, totodile), offert au niveau 5 ; il est obligatoire ce jour-là, inutile ensuite.
       requestBody:
         required: true
         content:
@@ -494,7 +495,7 @@ paths:
         défi (/game/league/abandon, seule autre action possible pendant le défi), le fait reprendre depuis le début. Chaque Ligue a ses propres victoires (league.region,
         league.championWins). Battre le Maître de Kanto ouvre la Grotte Azurée et fait apparaître, par le coup de
         pouce, les Pokémon de Kanto introuvables à l'état sauvage (StepView.rare) ; Mewtwo seulement dans la Grotte
-        Azurée. La Ligue de Johto (6 Pokémon par adversaire, niveaux 64 à 84 ; Kanto : 38 à 55) fait de même pour les Pokémon de Johto
+        Azurée. La Ligue de Johto (6 Pokémon par adversaire, mêmes niveaux que celle de Kanto : 38 à 55) fait de même pour les Pokémon de Johto
         introuvables dans Cristal (n° 152 à 251 : starters, bébés, fossiles…) ; légendaires à lieu fixe : Raikou, Entei
         et Suicune dans la Tour Cendrée, Lugia sur le Chenal 41, Ho-Oh (niv. 90) sur la Route 37, Celebi dans le Bois aux
         Chênes.

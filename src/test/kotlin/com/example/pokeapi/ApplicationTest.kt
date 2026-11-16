@@ -1765,7 +1765,7 @@ class ApplicationTest {
         for (stage in 0..4) {
             v = game(post("/league"))
             assertEquals(BattleKind.LEAGUE, v.battle!!.kind)
-            assertTrue(v.battle!!.enemy.level in 60..84, "Ligue de Johto : niveaux 64 à 84")
+            assertTrue(v.battle!!.enemy.level in 30..55, "Ligue de Johto : mêmes niveaux que celle de Kanto (38 à 55)")
             while (v.battle!!.outcome == null) v = game(post("/battle/attack", """{"move":0}"""))
             assertEquals(BattleOutcome.WON, v.battle!!.outcome)
             v = game(post("/battle/close"))
@@ -1820,7 +1820,8 @@ class ApplicationTest {
         assertEquals(newBark, v.currentStep)
         assertEquals("johto", v.region)
         val starter = v.team.single { it.speciesId == 152 }
-        assertEquals(50, starter.level)
+        assertEquals(5, starter.level) // Johto repart des niveaux les plus bas
+        assertEquals(15, v.levelCap) // niveau maximum de Johto : aucun badge de Johto (les 8 de Kanto ne comptent pas)
         assertEquals("johto", starter.origin)
         assertEquals(true, starter.usable)
         assertEquals(false, v.team.single { it.uid == "p1" }.usable) // le starter de Kanto ne combat pas à Johto
