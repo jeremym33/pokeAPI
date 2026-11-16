@@ -32,6 +32,11 @@ import kotlin.random.Random
 /** Une rencontre possible dans un lieu (version Vert Feuille). */
 private data class PoolEntry(val pokemonId: Int, val types: List<String>, val method: String, val minLevel: Int, val maxLevel: Int, val chance: Int)
 
+private const val MAX_TEAM_PRESETS = 6
+private const val MAX_HISTORY = 300
+/** Pause au-delà de laquelle le temps entre deux actions ne compte pas comme temps de jeu. */
+private const val PLAY_PAUSE_MS = 5 * 60_000L
+
 /** Façons de rencontrer un Pokémon sauvage, pour les fiches du Motisdex (badges de la région nécessaires). */
 private val DEX_METHODS = linkedMapOf(
     "walk" to "herbes ou grotte", "old-rod" to "Canne", "good-rod" to "Super Canne (3 badges)",
@@ -216,6 +221,190 @@ class GameService(
     }
 
     /** Badges d'arène de la partie (obtenus ou non) et leurs effets. */
+    // ---------- Équipes enregistrées, soin rapide ----------
+
+    /** Enregistre l'équipe actuelle sous un nom (le même nom la remplace) ; 6 équipes au plus. */
+    suspend fun saveTeamPreset(userId: Int, name: String): GameView = act(userId) { s ->
+        val n = name.trim()
+        if (n.isEmpty() || n.length > 20) throw BadRequestException("Donnez à l'équipe un nom de 1 à 20 caractères")
+        val others = s.teamPresets.filter { it.name != n }
+        if (others.size >= MAX_TEAM_PRESETS) throw BadRequestException("$MAX_TEAM_PRESETS équipes enregistrées au plus : supprimez-en une")
+        s.copy(teamPresets = others + TeamPreset(n, s.team.map { it.uid }), lastEvent = "Équipe « $n » enregistrée.")
+    }
+
+    /** Rappelle une équipe enregistrée : ses Pokémon encore possédés (équipe ou boîte) forment l'équipe, dans l'ordre. */
+    suspend fun applyTeamPreset(userId: Int, name: String): GameView = act(userId) { s ->
+        noBattle(s)
+        noLeagueChallenge(s)
+        val preset = s.teamPresets.firstOrNull { it.name == name } ?: throw BadRequestException("Équipe inconnue : « $name »")
+        val all = (s.team + s.box).associateBy { it.uid }
+        val uids = preset.uids.filter { it in all }
+        if (uids.isEmpty()) throw BadRequestException("Aucun Pokémon de l'équipe « $name » n'est dans l'équipe ou la boîte")
+        val missing = preset.uids.size - uids.size
+        s.copy(
+            team = uids.map { all.getValue(it) }, box = all.values.filter { it.uid !in uids },
+            lastEvent = "Équipe « $name » rappelée." + if (missing > 0) " ($missing Pokémon absent${if (missing > 1) "s" else ""} : à la pension, à l'entraînement ou relâché.)" else "",
+        )
+    }
+
+    suspend fun deleteTeamPreset(userId: Int, name: String): GameView = act(userId) { s ->
+        s.copy(teamPresets = s.teamPresets.filter { it.name != name })
+    }
+
+    /**
+     * Soin rapide : retour au Centre Pokémon de la ville accessible la plus proche dans le parcours de la région (à
+     * égalité, la dernière visitée), et soin de l'équipe et de la boîte.
+     */
+    suspend fun healNearest(userId: Int): GameView = act(userId) { s ->
+        noBattle(s)
+        noLeagueChallenge(s)
+        val region = s.region()
+        val unlocked = unlockedStep(s)
+        val cities = GameRules.STEPS.indices.filter { GameRules.STEPS[it].city && GameRules.STEPS[it].region == region && it <= unlocked }
+        val target = if (GameRules.STEPS[s.stepIndex].city) s.stepIndex
+        else cities.minWithOrNull(compareBy<Int> { abs(it - s.stepIndex) }.thenBy { if (it == s.lastCenter) 0 else 1 })
+            ?: throw BadRequestException("Aucune ville accessible dans la région")
+        val name = locationNames()[GameRules.STEPS[target].location] ?: GameRules.STEPS[target].location
+        s.copy(
+            stepIndex = target, lastCenter = target, team = s.team.map { it.healed() }, box = s.box.map { it.healed() },
+            lastEvent = if (target == s.stepIndex) "Votre équipe est soignée." else "Retour à $name : votre équipe est soignée.",
+        )
+    }
+
+    // ---------- Défis du jour, journal, statistiques ----------
+
+    /** Défis du jour : 3 par jour (heure du serveur), tirés pour la région actuelle, renouvelés à la première action. */
+    private suspend fun withDaily(s: GameState, userId: Int): GameState {
+        val today = java.time.LocalDate.now()
+        if (s.daily.date == today.toString()) return s
+        val rnd = Random(today.toEpochDay() * 7919 + userId)
+        val region = s.region()
+        val unlocked = unlockedStep(s)
+        val types = GameRules.STEPS.indices.filter { it <= unlocked && GameRules.STEPS[it].region == region && !GameRules.STEPS[it].city }
+            .flatMap { i -> pool(i, s.regionBadges(region)).flatMap { it.types } }.distinct().sorted()
+        val items = GameRules.ITEMS.map { it.item }
+        val challenges = listOfNotNull(
+            DailyChallenge("wins", target = listOf(5, 8, 10).random(rnd), reward = items.random(rnd)),
+            types.randomOrNull(rnd)?.let { DailyChallenge("type", target = 3, type = it, reward = items.random(rnd)) },
+            DailyChallenge("recruit", target = listOf(1, 2).random(rnd), reward = items.random(rnd)),
+        )
+        return s.copy(daily = DailyChallenges(today.toString(), challenges))
+    }
+
+    private fun dailyText(c: DailyChallenge): String = when (c.kind) {
+        "wins" -> "Gagner ${c.target} combats"
+        "type" -> "Battre ${c.target} Pokémon sauvages de type ${TYPES_FR[c.type] ?: c.type}"
+        "recruit" -> "Accueillir ${c.target} Pokémon"
+        else -> c.kind
+    }
+
+    /**
+     * Après une action : moments forts du journal (recrues, éclosions, évolutions, badges, Ligues, régions), progrès des
+     * défis du jour (avec leur récompense), statistiques de la partie (temps de jeu, captures, évolutions…).
+     */
+    private suspend fun chronicle(before: GameState, after0: GameState): GameState {
+        var after = after0
+        val now = System.currentTimeMillis()
+        fun owned(s: GameState) = (s.team + s.box + s.training.values.map { it.fighter } + s.allDayCarePokemon()).associateBy { it.uid }
+        val old = owned(before)
+        val entries = mutableListOf<HistoryEntry>()
+        var captures = 0
+        var evolutions = 0
+        var hatches = 0
+        val hatched = (before.eggs.size - after.eggs.size).coerceAtLeast(0)
+        owned(after).values.forEach { f ->
+            val o = old[f.uid]
+            val shiny = if (f.shiny) " chromatique" else ""
+            when {
+                o == null && hatches < hatched -> {
+                    hatches++
+                    entries += HistoryEntry(now, "hatch", "Un œuf éclot : ${f.displayName}$shiny !", f.pokemonId, f.shiny)
+                }
+                o == null -> {
+                    captures++
+                    entries += HistoryEntry(now, "capture", "${f.displayName}$shiny vous rejoint (${regionName(f.originRegion())}).", f.pokemonId, f.shiny)
+                }
+                o.pokemonId != f.pokemonId -> {
+                    evolutions++
+                    entries += HistoryEntry(now, "evolution", "${o.displayName} évolue en ${f.displayName}.", f.pokemonId, f.shiny)
+                }
+            }
+        }
+        val newBadges = after.badges - before.badges
+        if (newBadges.isNotEmpty()) {
+            val names = locationNames()
+            newBadges.sorted().forEach { step ->
+                val place = names[GameRules.STEPS[step].location] ?: GameRules.STEPS[step].location
+                val type = after.gymTypes[step]?.let { TYPES_FR[it] }
+                entries += HistoryEntry(now, "badge", "Badge ${type ?: "d'arène"} obtenu à $place (${regionName(GameRules.STEPS[step].region)}).")
+            }
+        }
+        GameRules.REGIONS.forEach { r ->
+            if (after.leagueIn(r).wins > before.leagueIn(r).wins) entries += HistoryEntry(now, "league", "Victoire contre le Maître de la Ligue de ${regionName(r)} !")
+            if (after.regionUnlocked(r) && !before.regionUnlocked(r)) entries += HistoryEntry(now, "region", "La région de ${regionName(r)} est ouverte.")
+        }
+
+        // Défis du jour
+        val b = after.battle
+        val wildWin = b != null && b.kind == BattleKind.WILD && b.outcome == BattleOutcome.WON && before.battle?.outcome != BattleOutcome.WON
+        val winsDelta = (victoryCount(after) - victoryCount(before)).coerceAtLeast(0)
+        val lines = mutableListOf<String>()
+        val challenges = after.daily.challenges.map { c ->
+            if (c.done) return@map c
+            val delta = when (c.kind) {
+                "wins" -> winsDelta
+                "type" -> if (wildWin && c.type in b!!.enemy.types) 1 else 0
+                "recruit" -> captures
+                else -> 0
+            }
+            if (delta == 0) return@map c
+            val progress = minOf(c.target, c.progress + delta)
+            val done = progress >= c.target
+            if (done) {
+                val item = GameRules.ITEMS.firstOrNull { it.item == c.reward }
+                if (item != null) after = after.withItem(item)
+                val line = "Défi du jour réussi : ${dailyText(c)} ! Vous recevez : ${item?.nameFr ?: c.reward}."
+                lines += line
+                entries += HistoryEntry(now, "daily", line)
+            }
+            c.copy(progress = progress, done = done)
+        }
+        after = after.copy(daily = after.daily.copy(challenges = challenges))
+        if (lines.isNotEmpty()) {
+            after = if (after.battle != null) after.withLog(lines) else after.copy(lastEvent = (listOfNotNull(after.lastEvent) + lines).joinToString(" "))
+        }
+
+        // Statistiques : temps de jeu (les pauses de plus de 5 minutes ne comptent pas), défaites
+        val gap = now - before.stats.lastActionAt
+        val lost = after.battle?.outcome == BattleOutcome.LOST && before.battle?.outcome != BattleOutcome.LOST
+        val stats = after.stats.copy(
+            playMs = after.stats.playMs + if (before.stats.lastActionAt > 0 && gap in 0..PLAY_PAUSE_MS) gap else 0,
+            lastActionAt = now,
+            captures = after.stats.captures + captures,
+            evolutions = after.stats.evolutions + evolutions,
+            hatches = after.stats.hatches + hatches,
+            defeats = after.stats.defeats + if (lost) 1 else 0,
+        )
+        return after.copy(stats = stats, history = (after.history + entries).takeLast(MAX_HISTORY))
+    }
+
+    /** Journal : statistiques de la partie et moments forts, les plus récents d'abord. */
+    suspend fun journal(userId: Int): JournalView = lock.withLock {
+        val s = loadMigrated(userId) ?: throw NotFoundException("Aucune partie en cours")
+        val owned = (s.team + s.box + s.training.values.map { it.fighter } + s.allDayCarePokemon()).associateBy { it.uid }
+        val favorite = s.stats.fighterWins.filterKeys { it in owned }.maxByOrNull { it.value }
+        JournalView(
+            StatsSummaryView(
+                playMinutes = s.stats.playMs / 60_000, victories = victoryCount(s), defeats = s.stats.defeats,
+                captures = s.stats.captures, evolutions = s.stats.evolutions, hatches = s.stats.hatches,
+                shinies = s.shinyCaught.size, caught = s.caught.count { it <= s.dexMax() }, badges = s.badges.size,
+                leagues = s.leagues.values.sumOf { it.wins },
+                favorite = favorite?.let { owned.getValue(it.key).toViewIn(s) }, favoriteWins = favorite?.value ?: 0,
+            ),
+            s.history.reversed(),
+        )
+    }
+
     // ---------- Fiches : espèce du Motisdex, Pokémon du joueur ----------
 
     /**
@@ -1474,7 +1663,10 @@ class GameService(
             log += "${f.displayName} monte au niveau ${after.level} !"
             learnNewMoves(after, sinceLevel = f.level, s.settings, log)
         }
-        return s.copy(team = team)
+        // Adversaires vaincus par Pokémon (statistiques : Pokémon préféré)
+        val winners = s.team.filter { it.uid in b.participants && !it.fainted }.map { it.uid }
+        val fighterWins = winners.fold(s.stats.fighterWins) { m, uid -> m + (uid to (m[uid] ?: 0) + 1) }
+        return s.copy(team = team, stats = s.stats.copy(fighterWins = fighterWins))
     }
 
     private suspend fun victory(s: GameState, log: MutableList<String>): GameState {
@@ -2084,6 +2276,14 @@ class GameService(
             johtoUnlocked = s.johtoUnlocked,
             hoennUnlocked = s.hoennUnlocked,
             unlockedRegions = GameRules.REGIONS.filter { s.regionUnlocked(it) },
+            teamPresets = s.teamPresets.map { p ->
+                val all = (s.team + s.box).associateBy { it.uid }
+                TeamPresetView(p.name, p.uids, p.uids.mapNotNull { all[it]?.displayName }, p.uids.all { it in all })
+            },
+            daily = s.daily.challenges.takeIf { s.daily.date == java.time.LocalDate.now().toString() }.orEmpty().map { c ->
+                DailyChallengeView(dailyText(c), c.progress, c.target, GameRules.ITEMS.firstOrNull { it.item == c.reward }?.nameFr ?: c.reward, c.done)
+            },
+            night = !GameRules.isDay(java.time.LocalTime.now().hour),
             // Une espèce obtenue (évolution…) compte aussi comme vue
             seen = (s.seen + s.caught).count { it <= s.dexMax() },
             steps = steps,
@@ -2150,9 +2350,9 @@ class GameService(
     }
 
     private suspend fun act(userId: Int, change: suspend (GameState) -> GameState): GameView = lock.withLock {
-        val state = syncDayCare(syncTraining(loadMigrated(userId) ?: throw NotFoundException("Aucune partie en cours")))
+        val state = withDaily(syncDayCare(syncTraining(loadMigrated(userId) ?: throw NotFoundException("Aucune partie en cours"))), userId)
         // Le message d'évènement ne vaut que pour l'action qui l'a produit.
-        val updated = unlockRegions(rememberShiny(rememberCleared(unlockAchievements(change(state.copy(lastEvent = null))))))
+        val updated = chronicle(state, unlockRegions(rememberShiny(rememberCleared(unlockAchievements(change(state.copy(lastEvent = null)))))))
         save(userId, updated)
         // Succès débloqués par cette action : seule sa réponse les signale (notification affichée une fois).
         val unlocked = Achievements.ALL.filter { it.id in updated.achievements && it.id !in state.achievements }

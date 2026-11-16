@@ -29,6 +29,9 @@ data class TravelRequest(
 data class AttackRequest(val move: Int)
 
 @Serializable
+data class PresetRequest(val name: String)
+
+@Serializable
 data class SwitchRequest(val uid: String)
 
 @Serializable
@@ -99,6 +102,16 @@ fun Route.gameRoutes(service: GameService, auth: AuthService) {
         // Starter de la région actuelle (partie arrivée dans la région avant cette règle)
         post("/region-starter") { call.respond(service.chooseRegionStarter(call.user(), call.receive<StarterRequest>().starter)) }
         post("/heal") { call.respond(service.heal(call.user())) }
+        // Soin rapide : retour à la ville la plus proche et soin
+        post("/heal-nearest") { call.respond(service.healNearest(call.user())) }
+        // Équipes enregistrées
+        route("/team-presets") {
+            post { call.respond(service.saveTeamPreset(call.user(), call.receive<PresetRequest>().name)) }
+            post("/apply") { call.respond(service.applyTeamPreset(call.user(), call.receive<PresetRequest>().name)) }
+            delete("/{name}") { call.respond(service.deleteTeamPreset(call.user(), call.parameters["name"]!!)) }
+        }
+        // Journal : statistiques et moments forts
+        get("/journal") { call.respond(service.journal(call.user())) }
         post("/explore") { call.respond(service.explore(call.user())) }
         // Ligue (Plateau Indigo) : prochain membre du Conseil, puis le Maître
         post("/league") { call.respond(service.challengeLeague(call.user())) }

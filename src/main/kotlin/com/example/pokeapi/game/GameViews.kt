@@ -249,6 +249,33 @@ data class BattleView(
 )
 
 @Serializable
+data class TeamPresetView(val name: String, val uids: List<String>, val names: List<String>, val complete: Boolean)
+
+@Serializable
+data class DailyChallengeView(val text: String, val progress: Int, val target: Int, val reward: String, val done: Boolean)
+
+/** Statistiques de la partie. [favorite] : le Pokémon possédé qui a vaincu le plus d'adversaires. */
+@Serializable
+data class StatsSummaryView(
+    val playMinutes: Long,
+    val victories: Int,
+    val defeats: Int,
+    val captures: Int,
+    val evolutions: Int,
+    val hatches: Int,
+    val shinies: Int,
+    val caught: Int,
+    val badges: Int,
+    val leagues: Int,
+    val favorite: FighterView? = null,
+    val favoriteWins: Int = 0,
+)
+
+/** Journal de la partie : statistiques et moments forts, les plus récents d'abord. */
+@Serializable
+data class JournalView(val stats: StatsSummaryView, val history: List<HistoryEntry>)
+
+@Serializable
 data class GameView(
     val started: Boolean,
     val starters: List<String> = GameRules.STARTERS,
@@ -265,6 +292,12 @@ data class GameView(
     val hoennUnlocked: Boolean = false,
     /** Régions ouvertes, dans l'ordre (kanto, johto, hoenn). */
     val unlockedRegions: List<String> = listOf(KANTO),
+    /** Équipes enregistrées. */
+    val teamPresets: List<TeamPresetView> = emptyList(),
+    /** Défis du jour. */
+    val daily: List<DailyChallengeView> = emptyList(),
+    /** Nuit à l'heure du serveur (18 h à 6 h) : thème assombri, évolutions de nuit. */
+    val night: Boolean = false,
     /** Région de l'étape actuelle. */
     val region: String = KANTO,
     val steps: List<StepView> = emptyList(),

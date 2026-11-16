@@ -120,6 +120,14 @@ jour avec chaque route ou champ ajouté.
   `/withdraw`, `/egg` (par défaut la région actuelle) ; vue : `GameView.dayCares` (et `dayCare`, la région actuelle) ;
   2 Pokémon compatibles (groupe d'œufs ou Métamorph) → un œuf toutes les 5 min ; l'espèce de l'œuf est
   fixée à son apparition (`eggSpecies`) ; le bébé éclot avec `HAPPINESS_HATCHED` (10) points de bonheur.
+- **Équipes enregistrées** (`GameState.teamPresets`, 6 au plus ; `POST /game/team-presets`, `/team-presets/apply`,
+  `DELETE /team-presets/{name}`) ; **soin rapide** (`POST /game/heal-nearest` : ville accessible la plus proche).
+- **Défis du jour** (`withDaily`, `GameState.daily`) : 3 par jour (date du serveur), tirés pour la région actuelle
+  (gagner N combats, battre N Pokémon d'un type, accueillir N Pokémon), progrès suivis dans `chronicle`, objet
+  d'évolution en récompense ; vue `GameView.daily`. **Journal** (`chronicle`, après chaque action dans `act`) :
+  `GameState.history` (recrues, éclosions, évolutions, badges, Ligues, régions, défis ; 300 au plus) et
+  `GameState.stats` (temps de jeu hors pauses de plus de 5 min, recrues, évolutions, éclosions, défaites,
+  `fighterWins` pour le Pokémon préféré) ; `GET /game/journal`. `GameView.night` : nuit à l'heure du serveur.
 - **Fiches** : `GET /game/dex/{number}` (`dexSpecies` : où obtenir une espèce vue ou rejointe : starter, lieux
   sauvages avec méthode et niveaux, évolution, œuf, Pokémon rare) et `GET /game/pokemon/{uid}` (`fighterDetails` :
   statistiques, évolutions possibles avec leur condition et leur progression).

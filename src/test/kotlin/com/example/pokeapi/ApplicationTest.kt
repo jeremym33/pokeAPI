@@ -1,6 +1,7 @@
 package com.example.pokeapi
 
 import com.example.pokeapi.game.GameRules
+import com.example.pokeapi.game.JournalView
 import com.example.pokeapi.game.DexSpeciesView
 import com.example.pokeapi.game.FighterDetailsView
 import com.example.pokeapi.game.BadgesView
@@ -679,6 +680,15 @@ class ApplicationTest {
         }
         assertTrue(v.steps[1].cleared, "Route 1 non franchie après $battles combats")
         assertEquals(10, v.steps[1].wins)
+        // Défis du jour : « Gagner N combats » avance avec les victoires (réussi, il donne un objet)
+        val winsChallenge = v.daily.first { it.text.startsWith("Gagner") }
+        assertEquals(minOf(winsChallenge.target, 10), winsChallenge.progress)
+        assertEquals(winsChallenge.progress >= winsChallenge.target, winsChallenge.done)
+        // Journal : victoires comptées, temps de jeu, recrues et défis réussis dans l'historique
+        val journal = json.decodeFromString<JournalView>(client.get("/game/journal").bodyAsText())
+        assertTrue(journal.stats.victories >= 10)
+        assertEquals(journal.stats.captures, journal.history.count { it.kind == "capture" })
+        assertEquals(winsChallenge.done, journal.history.any { it.kind == "daily" })
         assertTrue(v.unlockedStep > 1)
 
         // Les lieux absents de PokéAPI simulé sont franchis d'office : on arrive à la première arène (Argenta)
@@ -707,6 +717,45 @@ class ApplicationTest {
         assertEquals(true, game(client.get("/game")).started)
         assertEquals(HttpStatusCode.NoContent, client.delete("/game") { contentType(ContentType.Application.Json); setBody("""{"password":"pikachu123"}""") }.status)
         assertEquals(false, game(client.get("/game")).started)
+    }
+
+    @Test
+    fun `equipes enregistrees et soin rapide`() = appTest {
+        suspend fun game(response: HttpResponse): GameView {
+            assertTrue(response.status.isSuccess(), response.bodyAsText())
+            return json.decodeFromString<GameView>(response.bodyAsText())
+        }
+        suspend fun post(path: String, body: String? = null) = client.post("/game$path") {
+            if (body != null) { contentType(ContentType.Application.Json); setBody(body) }
+        }
+        game(post("/new", """{"starter":"bulbasaur"}"""))
+        // Deux Pokémon de plus dans la boîte ; équipe blessée sur la Route 1
+        editSave { save ->
+            val first = save["team"]!!.jsonArray[0].jsonObject
+            val hurt = JsonObject(first + ("hp" to JsonPrimitive(1)))
+            val p2 = JsonObject(first + mapOf("uid" to JsonPrimitive("p2"), "hp" to JsonPrimitive(1)))
+            val p3 = JsonObject(first + mapOf("uid" to JsonPrimitive("p3")))
+            JsonObject(save + mapOf("team" to JsonArray(listOf(hurt)), "box" to JsonArray(listOf(p2, p3)), "stepIndex" to JsonPrimitive(1)))
+        }
+        // Équipe « Ligue » : p1 seul ; puis p3 et p2
+        var v = game(post("/team-presets", """{"name":"Ligue"}"""))
+        assertEquals(listOf("p1"), v.teamPresets.single().uids)
+        v = game(client.put("/game/team") { contentType(ContentType.Application.Json); setBody("""{"uids":["p3","p2"]}""") })
+        v = game(post("/team-presets", """{"name":"Route"}"""))
+        assertEquals(listOf("Ligue", "Route"), v.teamPresets.map { it.name })
+        // Rappel de l'équipe « Ligue » : p1 en équipe, p2 et p3 dans la boîte
+        v = game(post("/team-presets/apply", """{"name":"Ligue"}"""))
+        assertEquals(listOf("p1"), v.team.map { it.uid })
+        assertEquals(setOf("p2", "p3"), v.box.map { it.uid }.toSet())
+        assertEquals(HttpStatusCode.BadRequest, post("/team-presets/apply", """{"name":"Inconnue"}""").status)
+        assertEquals(HttpStatusCode.BadRequest, post("/team-presets", """{"name":"   "}""").status)
+        v = game(client.delete("/game/team-presets/Route"))
+        assertEquals(listOf("Ligue"), v.teamPresets.map { it.name })
+        // Soin rapide depuis la Route 1 : retour à la dernière ville (Bourg Palette), équipe et boîte soignées
+        v = game(post("/heal-nearest"))
+        assertEquals(0, v.currentStep)
+        assertTrue(v.team.all { it.hp == it.maxHp } && v.box.all { it.hp == it.maxHp })
+        assertTrue(v.lastEvent!!.contains("soignée"), v.lastEvent)
     }
 
     @Test
@@ -1936,6 +1985,10 @@ class ApplicationTest {
         game(client.post("/game/travel") { contentType(ContentType.Application.Json); setBody("""{"step":0}""") })
         v = game(client.post("/game/travel") { contentType(ContentType.Application.Json); setBody("""{"step":$newBark}""") })
         assertEquals(1, v.team.count { it.speciesId == 152 })
+        // Journal : ouverture de Johto et arrivée du starter de Johto
+        val history = json.decodeFromString<JournalView>(client.get("/game/journal").bodyAsText()).history
+        assertTrue(history.any { it.kind == "region" && it.text.contains("Johto") }, history.toString())
+        assertTrue(history.any { it.kind == "capture" && it.pokemonId == 152 }, history.toString())
     }
 
     @Test

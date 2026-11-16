@@ -196,6 +196,40 @@ data class GameSettings(
 )
 
 /** Sauvegarde de la partie. */
+/** Équipe enregistrée (« Ligue », « Hoenn »…), rappelée d'un geste. */
+@Serializable
+data class TeamPreset(val name: String, val uids: List<String>)
+
+/**
+ * Moment fort de la partie (journal) : [kind] capture, hatch, evolution, badge, league, region, daily ; [at] en
+ * millisecondes depuis 1970.
+ */
+@Serializable
+data class HistoryEntry(val at: Long, val kind: String, val text: String, val pokemonId: Int? = null, val shiny: Boolean = false)
+
+/**
+ * Défi du jour : [kind] wins (gagner des combats), type (battre des Pokémon sauvages d'un type), recruit (accueillir
+ * des Pokémon) ; [reward] : objet d'évolution reçu en le réussissant.
+ */
+@Serializable
+data class DailyChallenge(val kind: String, val target: Int, val type: String? = null, val progress: Int = 0, val reward: String, val done: Boolean = false)
+
+/** Défis du jour [date] (AAAA-MM-JJ, heure du serveur) : renouvelés chaque jour. */
+@Serializable
+data class DailyChallenges(val date: String = "", val challenges: List<DailyChallenge> = emptyList())
+
+/** Statistiques de la partie (page Journal). [fighterWins] : adversaires vaincus par Pokémon (uid). */
+@Serializable
+data class PlayStats(
+    val playMs: Long = 0,
+    val lastActionAt: Long = 0,
+    val captures: Int = 0,
+    val evolutions: Int = 0,
+    val hatches: Int = 0,
+    val defeats: Int = 0,
+    val fighterWins: Map<String, Int> = emptyMap(),
+)
+
 @Serializable
 data class GameState(
     val starter: String,
@@ -255,6 +289,12 @@ data class GameState(
     val johtoUnlocked: Boolean = false,
     /** Hoenn ouvert (les 251 premiers Pokémon obtenus) : acquis une fois pour toutes. */
     val hoennUnlocked: Boolean = false,
+    /** Équipes enregistrées (6 au plus). */
+    val teamPresets: List<TeamPreset> = emptyList(),
+    /** Journal des moments forts (les plus récents à la fin, 300 au plus). */
+    val history: List<HistoryEntry> = emptyList(),
+    val daily: DailyChallenges = DailyChallenges(),
+    val stats: PlayStats = PlayStats(),
     val eggs: List<Egg> = emptyList(),
     /** Version des attaques enregistrées dans la partie (2 : drain, soin, coups multiples ; 3 : statistiques ; 4 : peur). */
     val movesVersion: Int = 0,

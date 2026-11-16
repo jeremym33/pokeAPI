@@ -672,6 +672,87 @@ paths:
                         locked: { type: boolean }
         "400": { $ref: "#/components/responses/BadRequest" }
 
+  /game/heal-nearest:
+    post:
+      tags: [Aventure]
+      security: [{ bearerAuth: [] }]
+      summary: Soin rapide (retour à la ville la plus proche de la région et soin)
+      description: La ville actuelle, sinon la ville accessible la plus proche du lieu dans le parcours de la région (à égalité, la dernière visitée).
+      responses:
+        "200":
+          description: État de la partie
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /game/team-presets:
+    post:
+      tags: [Aventure]
+      security: [{ bearerAuth: [] }]
+      summary: Enregistrer l'équipe actuelle sous un nom (6 équipes au plus ; le même nom la remplace)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { name: { type: string, example: Ligue } } }
+      responses:
+        "200":
+          description: État de la partie (teamPresets)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /game/team-presets/apply:
+    post:
+      tags: [Aventure]
+      security: [{ bearerAuth: [] }]
+      summary: Rappeler une équipe enregistrée (ses Pokémon encore dans l'équipe ou la boîte, dans l'ordre)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { name: { type: string, example: Ligue } } }
+      responses:
+        "200":
+          description: État de la partie
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /game/team-presets/{name}:
+    delete:
+      tags: [Aventure]
+      security: [{ bearerAuth: [] }]
+      summary: Supprimer une équipe enregistrée
+      parameters:
+        - { name: name, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: État de la partie
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameView" }
+
+  /game/journal:
+    get:
+      tags: [Aventure]
+      security: [{ bearerAuth: [] }]
+      summary: Journal de la partie (statistiques et moments forts)
+      description: |
+        stats : temps de jeu (minutes, pauses de plus de 5 minutes exclues), victoires, défaites, recrues, évolutions,
+        éclosions, chromatiques, espèces rejointes, badges, Ligues gagnées, Pokémon préféré (le plus d'adversaires
+        vaincus). history : moments forts, les plus récents d'abord (kind : capture, hatch, evolution, badge, league,
+        region, daily ; at en millisecondes).
+      responses:
+        "200":
+          description: Journal
+          content:
+            application/json:
+              schema: { type: object, properties: { stats: { type: object }, history: { type: array, items: { type: object } } } }
+
   /game/dex:
     get:
       tags: [Aventure]
@@ -1475,6 +1556,12 @@ components:
           type: object
           additionalProperties: { type: object }
           description: Pension de chaque région ouverte (clé kanto, johto, hoenn) ; dayCare est celle de la région actuelle
+        teamPresets: { type: array, items: { type: object }, description: "Équipes enregistrées (name, uids, names, complete)" }
+        daily:
+          type: array
+          items: { type: object }
+          description: Défis du jour (text, progress, target, reward, done) ; renouvelés chaque jour, réussis ils donnent un objet d'évolution
+        night: { type: boolean, description: "Nuit à l'heure du serveur (18 h à 6 h)" }
         hoennUnlocked: { type: boolean, description: "Hoenn ouvert (les 251 premiers Pokémon obtenus)" }
         unlockedRegions:
           type: array
