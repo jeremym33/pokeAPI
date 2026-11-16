@@ -31,7 +31,11 @@ fun upgradeSave(s: GameState): GameState {
     var u = s
     if (u.saveVersion < 1) u = upgradeV1(u)
     if (u.saveVersion < 2) u = upgradeV2(u)
-    if (u.saveVersion < 3) u = u.copy(regionStarters = u.regionStarters + KANTO, companions = emptyMap(), saveVersion = 3)
+    if (u.saveVersion < 3) {
+        // Le dernier message peut parler du compagnon de voyage, qui n'existe plus
+        val event = u.lastEvent?.takeUnless { "vous accompagne" in it }
+        u = u.copy(regionStarters = u.regionStarters + KANTO, companions = emptyMap(), lastEvent = event, saveVersion = 3)
+    }
     return u.copy(saveVersion = SAVE_VERSION)
 }
 

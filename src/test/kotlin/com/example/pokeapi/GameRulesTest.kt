@@ -442,8 +442,12 @@ class GameRulesTest {
 
     @Test
     fun `mise a jour v3 - plus de compagnon, starter de Kanto compte comme choisi`() {
-        val old = GameState(starter = "bulbasaur", team = listOf(fighter(5).copy(uid = "p1")), saveVersion = 2, companions = mapOf("johto" to "p1"))
+        val old = GameState(
+            starter = "bulbasaur", team = listOf(fighter(5).copy(uid = "p1")), saveVersion = 2, companions = mapOf("johto" to "p1"),
+            lastEvent = "Dracaufeu vous accompagne à Johto : c'est le seul Pokémon venu d'ailleurs qui pourra y combattre.",
+        )
         val u = upgradeSave(old)
+        assertEquals(null, u.lastEvent)
         assertEquals(SAVE_VERSION, u.saveVersion)
         assertEquals(setOf("kanto"), u.regionStarters)
         assertEquals(emptyMap(), u.companions)
