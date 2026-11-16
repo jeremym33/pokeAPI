@@ -30,14 +30,18 @@ jour avec chaque route ou champ ajouté.
 
 ## Organisation du code
 
-- `routes/` : `Routes.kt` (Pokédex, régions, lieux, équipes, mise à jour), `AuthRoutes.kt`, `GameRoutes.kt` (`/game/...`).
+- `routes/` : `Routes.kt` (Pokédex, régions, lieux, équipes, mise à jour), `AuthRoutes.kt` (`/auth/...` : inscription,
+  connexion, déconnexion, `me`, suppression du compte), `GameRoutes.kt` (`/game/...`).
+- `auth/AuthService.kt` : comptes (mots de passe PBKDF2, sessions par jeton haché), `confirmPassword`, `deleteAccount`.
 - `service/`, `repository/`, `client/` (appels pokeapi.co), `db/Tables.kt` (dont `game_save` : une partie JSON par utilisateur).
-- `game/` : le jeu d'aventure.
+- `docs/obtenir-les-pokemon.md` : guide joueur (obtention des 386 Pokémon).
+- `game/` : le jeu d'aventure (Kanto, Johto, Hoenn).
   - `GameRules.kt` : constantes et règles pures (parcours `STEPS`, niveaux, XP, dégâts, chances, Ligue, Pokémon rares…).
   - `GameModels.kt` : état sauvegardé (`GameState`, `Fighter`, `Battle`, `DayCare`, `LeagueProgress`, `Egg`…).
   - `GameViews.kt` : ce que l'API renvoie (`GameView`, `FighterView`, `StepView`, `LeagueView`…).
   - `GameService.kt` : toutes les actions (gros fichier : chercher par section `// ---------- … ----------`).
-  - `Achievements.kt` : succès (récompenses : pierres d'évolution, Câble Link).
+  - `Achievements.kt` : succès (récompenses : pierres d'évolution, Câble Link ; succès de Johto et de Hoenn par
+    espèces de la région rejointes : `johtoCaught`, `hoennCaught`).
   - `SaveUpgrade.kt` : mise à jour des anciennes sauvegardes (`SAVE_VERSION` 3 : v1 Ligues et pensions par région,
     origines ; v2 une seule Jadielle, numéros d'étapes décalés ; v3 starter de région, plus de compagnon).
 
@@ -122,6 +126,14 @@ jour avec chaque route ou champ ajouté.
 Guide joueur : `docs/obtenir-les-pokemon.md` (façons d'obtenir les Pokémon, coup de pouce, Pokémon rares, liste des
 espèces des lieux, simplifications par rapport aux jeux). À tenir à jour avec les règles d'obtention (rencontres,
 évolutions, œufs, rares, coup de pouce).
+
+## Ajouter une région
+
+Étapes ajoutées à la fin de `STEPS` ; `REGIONS`, `REGION_DEX`, `REGION_VERSIONS`, `REGION_NAMES`, `REGION_STARTERS`,
+`REGION_STARTER_LEVEL`, `REGION_LEAGUE_TOP_LEVELS`, `LEGENDARIES`, `RARE_HOMES` ; un champ `<région>Unlocked` dans
+`GameState` et dans `regionUnlocked` / `unlockRegions` ; succès de la région ; conditions d'évolution nouvelles dans
+`evolutionConditionMet` ; côté application, `src/constants/regions.ts` (nom, symbole, `lastDex`, couleur). Vérifier
+sur les données réelles que toutes les espèces sont obtenables, puis mettre à jour le guide joueur.
 
 ## Tests
 
