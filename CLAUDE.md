@@ -37,7 +37,8 @@ jour avec chaque route ou champ ajouté.
 - `docs/obtenir-les-pokemon.md` : guide joueur (obtention des 386 Pokémon).
 - `game/` : le jeu d'aventure (Kanto, Johto, Hoenn).
   - `GameRules.kt` : constantes et règles pures (parcours `STEPS`, niveaux, XP, dégâts, chances, Ligue, Pokémon rares…).
-  - `GameModels.kt` : état sauvegardé (`GameState`, `Fighter`, `Battle`, `DayCare`, `LeagueProgress`, `Egg`…).
+  - `GameModels.kt` : état sauvegardé (`GameState`, `Fighter`, `Battle`, `DayCare`, `LeagueProgress`, `Egg`,
+    `TeamPreset`, `HistoryEntry`, `DailyChallenges`, `PlayStats`…).
   - `GameViews.kt` : ce que l'API renvoie (`GameView`, `FighterView`, `StepView`, `LeagueView`…).
   - `GameService.kt` : toutes les actions (gros fichier : chercher par section `// ---------- … ----------`).
   - `Achievements.kt` : succès (récompenses : pierres d'évolution, Câble Link ; succès de Johto et de Hoenn par
@@ -47,8 +48,10 @@ jour avec chaque route ou champ ajouté.
 
 ### Mécanique de `GameService`
 
-- Toute action passe par `act(userId) { s -> … }` (verrou, chargement migré, `syncTraining`/`syncDayCare`, puis
-  `unlockAchievements`, `rememberCleared`, `rememberShiny`, `unlockRegions`, sauvegarde, vue).
+- Toute action passe par `act(userId) { s -> … }` (verrou, chargement migré, `syncTraining`/`syncDayCare`,
+  `withDaily` (défis du jour), puis l'action, `unlockAchievements`, `rememberCleared`, `rememberShiny`, `unlockRegions`,
+  `chronicle` (journal, progrès des défis, statistiques, en comparant l'état avant et après), sauvegarde, vue). Les
+  lectures (`GET /game`, `/journal`, `/dex`…) ne passent pas par `act` : rien n'y est modifié.
 - `loadMigrated` : `upgradeSave` (version de sauvegarde), `migrateRoutes`, `migrateMoves`. **Toute évolution du
   format de `GameState` doit rester compatible** : champs nouveaux avec valeur par défaut, et migration dans
   `upgradeSave` (incrémenter `SAVE_VERSION`) si des données existantes doivent changer. Au démarrage,
