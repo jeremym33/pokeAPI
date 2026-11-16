@@ -69,7 +69,8 @@ jour avec chaque route ou champ ajouté.
   `GameRules.gymOrder` / `gymSteps()`, pas l'ordre des étapes.
 - **Arènes** : 8 par région, type tiré des Pokémon rencontrés avant ; badges = limite de niveau (`LEVEL_CAPS`).
 - **Ligues** : une par région au Plateau Indigo (`leagues[région]`) : 4 membres du Conseil puis le Maître, à la
-  suite. Kanto : niv. 52 à 65 ; Johto : niv. 78 à 100. Légendaires exclus des équipes.
+  suite. Kanto : niv. 38 à 55 ; Johto : niv. 64 à 84 (meilleur Pokémon de
+  chaque adversaire : `REGION_LEAGUE_TOP_LEVELS`). Légendaires exclus des équipes.
 - **Pokémon rares** : après le Maître d'une région, les espèces introuvables de cette région apparaissent par le
   coup de pouce ; légendaires à lieu fixe (`RARE_HOMES`). Mewtwo seul dans la Grotte Azurée.
 - **Coup de pouce** invisible : au hasard entre le 5e et le 15e combat sur un lieu (`GameRules.boostChance`,

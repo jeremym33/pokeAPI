@@ -1765,7 +1765,7 @@ class ApplicationTest {
         for (stage in 0..4) {
             v = game(post("/league"))
             assertEquals(BattleKind.LEAGUE, v.battle!!.kind)
-            assertTrue(v.battle!!.enemy.level >= 80, "Ligue de Johto au niveau de la fin de Cristal")
+            assertTrue(v.battle!!.enemy.level in 60..84, "Ligue de Johto : niveaux 64 à 84")
             while (v.battle!!.outcome == null) v = game(post("/battle/attack", """{"move":0}"""))
             assertEquals(BattleOutcome.WON, v.battle!!.outcome)
             v = game(post("/battle/close"))

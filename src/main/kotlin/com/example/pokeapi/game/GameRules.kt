@@ -234,11 +234,14 @@ object GameRules {
     /** Ligue : 4 membres du Conseil puis le Maître, à battre à la suite. */
     const val LEAGUE_MEMBERS = 4
 
-    /** Niveau du meilleur Pokémon de chaque adversaire de la Ligue de Kanto (4 membres, puis le Maître). */
-    val LEAGUE_TOP_LEVELS = listOf(52, 55, 58, 61, 65)
+    /**
+     * Niveau du meilleur Pokémon de chaque adversaire de la Ligue de Kanto (4 membres, puis le Maître) : juste au-dessus
+     * de la Route Victoire (≈ 45), les combats s'enchaînant sans soin.
+     */
+    val LEAGUE_TOP_LEVELS = listOf(46, 48, 50, 52, 55)
 
-    /** Niveaux de la Ligue de chaque région : celle de Johto suit la Route Victoire de Cristal (niv. 85 avec le décalage). */
-    val REGION_LEAGUE_TOP_LEVELS = mapOf(KANTO to LEAGUE_TOP_LEVELS, JOHTO to listOf(88, 91, 94, 97, 100))
+    /** Niveaux de la Ligue de chaque région : celle de Johto juste au-dessus de la dernière arène de Johto (≈ 73). */
+    val REGION_LEAGUE_TOP_LEVELS = mapOf(KANTO to LEAGUE_TOP_LEVELS, JOHTO to listOf(74, 76, 78, 80, 84))
 
     /** Légendaires et fabuleux de Kanto et Johto : jamais dans les équipes des arènes ni de la Ligue. */
     val LEGENDARIES = setOf(144, 145, 146, 150, 151, 243, 244, 245, 249, 250, 251)
