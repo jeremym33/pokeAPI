@@ -83,6 +83,13 @@ fun Route.gameRoutes(service: GameService, auth: AuthService) {
         get("/achievements") { call.respond(service.achievements(call.user())) }
         // Motisdex : espèces de Kanto vues et rejointes
         get("/dex") { call.respond(service.dex(call.user())) }
+        // Fiche d'une espèce vue ou rejointe : où et comment l'obtenir
+        get("/dex/{number}") {
+            val number = call.parameters["number"]?.toIntOrNull() ?: throw io.ktor.server.plugins.BadRequestException("Numéro invalide")
+            call.respond(service.dexSpecies(call.user(), number))
+        }
+        // Fiche d'un Pokémon du joueur : statistiques et évolutions possibles
+        get("/pokemon/{uid}") { call.respond(service.fighterDetails(call.user(), call.parameters["uid"]!!)) }
         // Vérifie (et corrige) les Pokémon de la partie d'après les données en base : à l'ouverture de la page
         post("/verify") { call.respond(service.verify(call.user())) }
         post("/travel") {

@@ -32,6 +32,12 @@ import kotlin.random.Random
 /** Une rencontre possible dans un lieu (version Vert Feuille). */
 private data class PoolEntry(val pokemonId: Int, val types: List<String>, val method: String, val minLevel: Int, val maxLevel: Int, val chance: Int)
 
+/** Façons de rencontrer un Pokémon sauvage, pour les fiches du Motisdex (badges de la région nécessaires). */
+private val DEX_METHODS = linkedMapOf(
+    "walk" to "herbes ou grotte", "old-rod" to "Canne", "good-rod" to "Super Canne (3 badges)",
+    "super-rod" to "Méga Canne (5 badges)", "surf" to "Surf (5 badges)",
+)
+
 private val TYPES_FR = mapOf(
     "normal" to "Normal", "fire" to "Feu", "water" to "Eau", "grass" to "Plante", "electric" to "Électrik",
     "ice" to "Glace", "fighting" to "Combat", "poison" to "Poison", "ground" to "Sol", "flying" to "Vol",
@@ -210,6 +216,129 @@ class GameService(
     }
 
     /** Badges d'arène de la partie (obtenus ou non) et leurs effets. */
+    // ---------- Fiches : espèce du Motisdex, Pokémon du joueur ----------
+
+    /**
+     * Où et comment obtenir une espèce vue ou rejointe des régions ouvertes : starter, lieux sauvages (avec la façon de
+     * la rencontrer et ses niveaux), évolution, œuf de pension, Pokémon rare après la Ligue.
+     */
+    suspend fun dexSpecies(userId: Int, number: Int): DexSpeciesView = lock.withLock {
+        val s = loadMigrated(userId) ?: throw NotFoundException("Aucune partie en cours")
+        val maxDex = s.dexMax()
+        if (number !in 1..maxDex) throw BadRequestException("Pokémon hors des régions ouvertes : n° $number")
+        val status = when (number) {
+            in s.caught -> DexStatus.CAUGHT
+            in s.seen -> DexStatus.SEEN
+            else -> throw BadRequestException("Pokémon inconnu : croisez-le d'abord pour savoir où le trouver")
+        }
+        val names = locationNames()
+        fun stepName(i: Int) = names[GameRules.STEPS[i].location] ?: GameRules.STEPS[i].location
+        suspend fun pokemonName(id: Int, fallback: String) = runCatching { pokemonServiceName(id) }.getOrNull() ?: fallback
+        val sources = mutableListOf<DexSource>()
+
+        // Starters : Kanto au début de la partie, les autres à la première arrivée dans leur région
+        (listOf(KANTO to GameRules.STARTERS) + GameRules.REGION_STARTERS.toList()).forEach { (region, starters) ->
+            if (!s.regionUnlocked(region)) return@forEach
+            val ids = starters.mapNotNull { runCatching { pokemonService.getPokemon(it)?.speciesId }.getOrNull() }
+            if (number in ids) {
+                val text = if (region == KANTO) "Starter au choix, au début de la partie" else "Starter au choix, à la première arrivée à ${regionName(region)}"
+                sources += DexSource("starter", text, region)
+            }
+        }
+
+        // Lieux sauvages des régions ouvertes
+        GameRules.STEPS.indices.filter { !GameRules.STEPS[it].city && s.regionUnlocked(GameRules.STEPS[it].region) }.forEach { i ->
+            val here = pool(i, 8).filter { it.pokemonId == number }
+            if (here.isEmpty()) return@forEach
+            val methods = here.map { it.method }.distinct().sortedBy { DEX_METHODS.keys.indexOf(it) }.mapNotNull { DEX_METHODS[it] }
+            val min = here.minOf { it.minLevel }
+            val max = here.maxOf { it.maxLevel }
+            val levels = if (min == max) "niv. $min" else "niv. $min à $max"
+            sources += DexSource("wild", "${stepName(i)} : ${methods.joinToString(", ")} · $levels", GameRules.STEPS[i].region, i)
+        }
+
+        // Évolution, ou apparition en plus d'une évolution (Munja)
+        val chain = evolutionService.evolutions(number.toString())
+        fun idOf(n: EvolutionNode) = n.pokemon?.id ?: n.speciesId
+        fun findWithParent(nodes: List<EvolutionNode>, parent: EvolutionNode?): Pair<EvolutionNode, EvolutionNode?>? =
+            nodes.firstNotNullOfOrNull { n -> if (idOf(n) == number) n to parent else findWithParent(n.evolvesTo, n) }
+        val found = chain?.let { findWithParent(it.roots, null) }
+        found?.let { (node, parent) ->
+            if (parent == null || !GameRules.inDex(idOf(parent), maxDex)) return@let
+            val parentName = pokemonName(idOf(parent), parent.name)
+            val text = if (node.conditions.any(GameRules::isShedCondition)) {
+                val sibling = parent.evolvesTo.firstOrNull { it !== node && it.conditions.none(GameRules::isShedCondition) }
+                "Apparaît en plus quand $parentName évolue${sibling?.let { " en ${pokemonName(idOf(it), it.name)}" } ?: ""} (niveau 20)"
+            } else "Évolution de $parentName : ${node.conditions.joinToString(" ou ").ifEmpty { "condition inconnue" }}"
+            sources += DexSource("evolution", text)
+        }
+
+        // Œuf : forme de base de sa lignée dans les régions ouvertes, si un membre de la famille peut se reproduire
+        if (found != null && (kantoBase(number, maxDex) ?: number) == number) {
+            fun family(n: EvolutionNode): List<EvolutionNode> = listOf(n) + n.evolvesTo.flatMap(::family)
+            val members = family(found.first).filter { GameRules.inDex(idOf(it), maxDex) }
+            val breeders = members.filter { m -> breedingInfo(m.speciesId).first.let { it.isNotEmpty() && "no-eggs" !in it } }
+            if (breeders.isNotEmpty()) {
+                val parents = breeders.take(3).map { pokemonName(idOf(it), it.name) }.joinToString(", ")
+                sources += DexSource("egg", "Œuf de pension : confiez-y un de ces Pokémon ($parents${if (breeders.size > 3) "…" else ""}) avec un partenaire compatible ou un Métamorph")
+            }
+        }
+
+        // Pokémon rare après la Ligue de sa région
+        GameRules.REGIONS.filter { s.regionUnlocked(it) && number in GameRules.regionIds(it) }.forEach { region ->
+            rareSpecies(region)[number]?.let { step ->
+                val done = s.leagueIn(region).wins > 0
+                sources += DexSource(
+                    "rare",
+                    "Pokémon rare à ${stepName(step)}, par le coup de pouce, après la Ligue de ${regionName(region)}" + if (done) "" else " (pas encore battue)",
+                    region, step,
+                )
+            }
+        }
+
+        DexSpeciesView(number, pokemonName(number, "n° $number"), status, sources)
+    }
+
+    private suspend fun pokemonServiceName(id: Int): String? =
+        pokemonService.getPokemon(id.toString())?.let { it.nameFr ?: it.name.replaceFirstChar(Char::uppercase) }
+
+    /** Fiche d'un Pokémon du joueur (équipe, boîte, entraînement, pensions) : statistiques et évolutions possibles. */
+    suspend fun fighterDetails(userId: Int, uid: String): FighterDetailsView = lock.withLock {
+        val s = loadMigrated(userId) ?: throw NotFoundException("Aucune partie en cours")
+        val f = (s.team + s.box + s.training.values.map { it.fighter } + s.allDayCarePokemon()).firstOrNull { it.uid == uid }
+            ?: throw BadRequestException("Pokémon introuvable")
+        fun Stats.view() = StatsView(hp, attack, defense, spAttack, spDefense, speed)
+        val base = StatsView(
+            f.base["hp"] ?: 0, f.base["attack"] ?: 0, f.base["defense"] ?: 0,
+            f.base["special-attack"] ?: 0, f.base["special-defense"] ?: 0, f.base["speed"] ?: 0,
+        )
+        val hour = java.time.LocalTime.now().hour
+        val maxDex = s.dexMax()
+        val evolutions = evolutionNode(f)?.evolvesTo.orEmpty().map { child ->
+            val id = child.pokemon?.id ?: child.speciesId
+            val name = runCatching { pokemonServiceName(id) }.getOrNull() ?: child.name
+            val locked = !GameRules.inDex(id, maxDex)
+            val shed = child.conditions.any(GameRules::isShedCondition)
+            val item = GameRules.ITEMS.firstOrNull { item -> child.conditions.any(item::matches) }
+            val ready = !locked && !shed && (
+                child.conditions.any { GameRules.evolutionConditionMet(f, it, hour) } || (item != null && (s.items[item.item] ?: 0) > 0)
+                )
+            val condition = when {
+                locked -> "Région de ${regionName(GameRules.speciesRegion(id))} pas encore ouverte"
+                shed -> "Apparaît en plus quand il évolue au niveau 20"
+                else -> child.conditions.joinToString(" ou ") { c ->
+                    c + when {
+                        c.startsWith("Gagner un niveau, avec un bonheur élevé") -> " (bonheur ${f.happiness} / ${GameRules.HAPPINESS_EVOLUTION})"
+                        item != null && item.matches(c) -> if ((s.items[item.item] ?: 0) > 0) " (${item.nameFr} dans le sac)" else " (${item.nameFr} : à gagner par les succès)"
+                        else -> ""
+                    }
+                }.ifEmpty { "Condition inconnue" }
+            }
+            EvolutionHint(id, name, child.pokemon?.spriteUrl, condition, ready, locked)
+        }
+        FighterDetailsView(f.uid, GameRules.stats(f).view(), base, evolutions)
+    }
+
     suspend fun badges(userId: Int): BadgesView = lock.withLock {
         val s = loadMigrated(userId) ?: throw NotFoundException("Aucune partie en cours")
         val names = locationNames()

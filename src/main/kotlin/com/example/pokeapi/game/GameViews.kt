@@ -72,6 +72,38 @@ data class DexEntry(
     val shinyArtworkUrl: String? = null,
 )
 
+/**
+ * Façon d'obtenir une espèce : [kind] starter, wild (lieu sauvage), evolution, egg (œuf de pension), rare (Pokémon
+ * rare après la Ligue) ; [step] : étape du parcours concernée (lieu sauvage, Pokémon rare).
+ */
+@Serializable
+data class DexSource(val kind: String, val text: String, val region: String? = null, val step: Int? = null)
+
+/** Fiche d'une espèce vue ou rejointe du Motisdex : où et comment l'obtenir. */
+@Serializable
+data class DexSpeciesView(val number: Int, val name: String?, val status: DexStatus, val sources: List<DexSource>)
+
+@Serializable
+data class StatsView(val hp: Int, val attack: Int, val defense: Int, val spAttack: Int, val spDefense: Int, val speed: Int)
+
+/**
+ * Évolution possible d'un Pokémon du joueur : [condition] en français (avec la progression : bonheur, niveau, objet
+ * dans le sac), [ready] si elle peut se faire maintenant, [locked] si l'espèce est d'une région pas encore ouverte.
+ */
+@Serializable
+data class EvolutionHint(
+    val pokemonId: Int,
+    val name: String,
+    val spriteUrl: String?,
+    val condition: String,
+    val ready: Boolean = false,
+    val locked: Boolean = false,
+)
+
+/** Fiche d'un Pokémon du joueur : statistiques à son niveau, statistiques de base, évolutions possibles. */
+@Serializable
+data class FighterDetailsView(val uid: String, val stats: StatsView, val baseStats: StatsView, val evolutions: List<EvolutionHint>)
+
 @Serializable
 data class DexView(
     val total: Int,

@@ -604,12 +604,80 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Aucune partie en cours }
 
+  /game/dex/{number}:
+    get:
+      tags: [Aventure]
+      security: [{ bearerAuth: [] }]
+      summary: Où et comment obtenir une espèce vue ou rejointe
+      description: |
+        Sources dans les régions ouvertes (kind) : starter, wild (lieu sauvage, façon de la rencontrer et niveaux, step),
+        evolution (Pokémon d'origine et condition ; Munja : en plus de Ninjask), egg (œuf de pension), rare (Pokémon rare
+        après la Ligue, step). 400 pour une espèce jamais rencontrée ou hors des régions ouvertes.
+      parameters:
+        - { name: number, in: path, required: true, schema: { type: integer, example: 25 } }
+      responses:
+        "200":
+          description: Fiche de l'espèce
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  number: { type: integer }
+                  name: { type: string }
+                  status: { type: string, enum: [SEEN, CAUGHT] }
+                  sources:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        kind: { type: string, enum: [starter, wild, evolution, egg, rare] }
+                        text: { type: string, example: "Forêt de Jade : herbes ou grotte · niv. 3 à 5" }
+                        region: { type: string, nullable: true }
+                        step: { type: integer, nullable: true }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /game/pokemon/{uid}:
+    get:
+      tags: [Aventure]
+      security: [{ bearerAuth: [] }]
+      summary: Fiche d'un Pokémon du joueur (statistiques et évolutions possibles)
+      description: |
+        Équipe, boîte, entraînement ou pensions. stats : statistiques à son niveau ; baseStats : de l'espèce ;
+        evolutions : condition en français avec la progression (bonheur, objet dans le sac), ready si elle peut se faire
+        maintenant, locked pour une espèce d'une région pas encore ouverte.
+      parameters:
+        - { name: uid, in: path, required: true, schema: { type: string, example: p1 } }
+      responses:
+        "200":
+          description: Fiche du Pokémon
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uid: { type: string }
+                  stats: { type: object, description: "hp, attack, defense, spAttack, spDefense, speed" }
+                  baseStats: { type: object }
+                  evolutions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        pokemonId: { type: integer }
+                        name: { type: string }
+                        spriteUrl: { type: string, nullable: true }
+                        condition: { type: string, example: "Niveau 16" }
+                        ready: { type: boolean }
+                        locked: { type: boolean }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
   /game/dex:
     get:
       tags: [Aventure]
       security: [{ bearerAuth: [] }]
-      summary: Motisdex de la partie (Pokémon de Kanto vus et rejoints)
-      description: Les 151 espèces de Kanto ; une espèce jamais rencontrée ne révèle ni nom ni image.
+      summary: Motisdex de la partie (Pokémon des régions ouvertes vus et rejoints)
+      description: Les espèces des régions ouvertes (151, 251 puis 386) ; une espèce jamais rencontrée ne révèle ni nom ni image.
       responses:
         "200":
           description: Motisdex

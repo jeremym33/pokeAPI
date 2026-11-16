@@ -1,6 +1,8 @@
 package com.example.pokeapi
 
 import com.example.pokeapi.game.GameRules
+import com.example.pokeapi.game.DexSpeciesView
+import com.example.pokeapi.game.FighterDetailsView
 import com.example.pokeapi.game.BadgesView
 import com.example.pokeapi.game.RouteSpecies
 import com.example.pokeapi.game.UnlockedAchievement
@@ -705,6 +707,30 @@ class ApplicationTest {
         assertEquals(true, game(client.get("/game")).started)
         assertEquals(HttpStatusCode.NoContent, client.delete("/game") { contentType(ContentType.Application.Json); setBody("""{"password":"pikachu123"}""") }.status)
         assertEquals(false, game(client.get("/game")).started)
+    }
+
+    @Test
+    fun `fiches - espece du Motisdex et Pokemon du joueur`() = appTest {
+        client.post("/game/new") { contentType(ContentType.Application.Json); setBody("""{"starter":"bulbasaur"}""") }
+        // Bulbizarre (rejoint) : starter au début de la partie
+        val dex = client.get("/game/dex/1")
+        assertEquals(HttpStatusCode.OK, dex.status, dex.bodyAsText())
+        val species = json.decodeFromString<DexSpeciesView>(dex.bodyAsText())
+        assertEquals(DexStatus.CAUGHT, species.status)
+        assertTrue(species.sources.any { it.kind == "starter" && it.text.contains("début de la partie") }, species.sources.toString())
+        // Espèce inconnue ou hors des régions ouvertes : refusée
+        assertEquals(HttpStatusCode.BadRequest, client.get("/game/dex/4").status)
+        assertEquals(HttpStatusCode.BadRequest, client.get("/game/dex/200").status)
+        // Fiche du starter : statistiques à son niveau et évolution vers Herbizarre au niveau 16
+        val details = json.decodeFromString<FighterDetailsView>(client.get("/game/pokemon/p1").bodyAsText())
+        assertEquals("p1", details.uid)
+        assertEquals(45, details.baseStats.hp)
+        assertTrue(details.stats.hp > 0)
+        val ivysaur = details.evolutions.single()
+        assertEquals(2, ivysaur.pokemonId)
+        assertEquals("Niveau 16", ivysaur.condition)
+        assertEquals(false, ivysaur.ready)
+        assertEquals(HttpStatusCode.BadRequest, client.get("/game/pokemon/inconnu").status)
     }
 
     @Test
