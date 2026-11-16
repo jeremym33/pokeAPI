@@ -84,7 +84,8 @@ jour avec chaque route ou champ ajouté.
   Pokémon sont obtenables : garder `docs/obtenir-les-pokemon.md` à jour si une règle change.
 - **Chromatiques** (`shiny`) : gardés à l'évolution (toutes les évolutions passent par `evolve`) ; `shinySeen` /
   `shinyCaught` pour le Motisdex. Réglage `recruitOnlyNew` : un chromatique reste proposé tant que ce chromatique
-  n'est pas obtenu, même si l'espèce l'est.
+  n'est pas obtenu, même si l'espèce l'est ; une espèce aussi, tant qu'aucun exemplaire né dans la région en cours n'est
+  possédé (`ownsBornIn`, `BattleView.recruitNewInRegion`).
 - **Régions** : Johto s'ouvre avec les 151 Pokémon de Kanto obtenus. Chaque Pokémon a une région d'origine
   (`origin`) : seuls ceux de la région en cours combattent (plus de compagnon). À la première arrivée dans une région,
   on y choisit un **starter de la région** (`REGION_STARTERS`, niveau `REGION_STARTER_LEVEL` : 5 ;

@@ -205,6 +205,8 @@ data class BattleView(
     val recruit: FighterView?,
     /** La recrue est une espèce pas encore obtenue. */
     val recruitIsNew: Boolean,
+    /** Espèce déjà dans le Pokédex, mais aucun exemplaire né dans la région : celui-ci pourra y combattre. */
+    val recruitNewInRegion: Boolean = false,
     /** Combat terminé sur un lieu avec des Pokémon sauvages : « Pokémon suivant » possible (selon les réglages). */
     val canContinue: Boolean,
 )

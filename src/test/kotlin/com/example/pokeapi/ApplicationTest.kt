@@ -1357,6 +1357,58 @@ class ApplicationTest {
     }
 
     @Test
+    fun `aventure - seulement les nouveaux pokemon, sauf le premier ne dans la region`() = appTest {
+        suspend fun game(response: HttpResponse): GameView {
+            assertTrue(response.status.isSuccess(), response.bodyAsText())
+            return json.decodeFromString<GameView>(response.bodyAsText())
+        }
+        suspend fun post(path: String, body: String? = null) = client.post("/game$path") {
+            if (body != null) { contentType(ContentType.Application.Json); setBody(body) }
+        }
+        game(post("/new", """{"starter":"squirtle"}"""))
+        game(client.put("/game/settings") { contentType(ContentType.Application.Json); setBody("""{"recruitOnlyNew":true}""") })
+        // Carapuce (Kanto) très fort ; Bulbizarre déjà dans le Pokédex, mais le seul possédé est né à Johto
+        editSave { save ->
+            val first = save["team"]!!.jsonArray[0].jsonObject
+            val strong = JsonObject(first + mapOf(
+                "level" to JsonPrimitive(100), "xp" to JsonPrimitive(1_000_000), "hp" to JsonPrimitive(999),
+                "base" to json.parseToJsonElement("""{"hp":255,"attack":255,"defense":255,"special-attack":255,"special-defense":255,"speed":255}"""),
+            ))
+            val bulbasaur = JsonObject(first + mapOf("uid" to JsonPrimitive("p9"), "pokemonId" to JsonPrimitive(1), "speciesId" to JsonPrimitive(1), "origin" to JsonPrimitive("johto")))
+            JsonObject(save + mapOf(
+                "team" to JsonArray(listOf(strong)), "box" to JsonArray(listOf(bulbasaur)),
+                "caught" to json.parseToJsonElement("[1, 7]"), "seen" to json.parseToJsonElement("[1, 7]"),
+            ))
+        }
+        game(post("/travel", """{"step":1}"""))
+        // Route 1 (Bulbizarre seulement) : il peut proposer de rejoindre l'équipe, le premier né à Kanto
+        var proposed: GameView? = null
+        repeat(60) {
+            if (proposed != null) return@repeat
+            var v = game(post("/explore"))
+            while (v.battle!!.outcome == null) v = game(post("/battle/attack", """{"move":0}"""))
+            assertTrue(v.battle!!.log.none { "déjà dans votre Pokédex" in it }, v.battle!!.log.toString())
+            if (v.battle!!.recruit != null) proposed = v else game(post("/battle/close"))
+        }
+        assertTrue(proposed != null, "un Bulbizarre né à Kanto doit pouvoir être proposé")
+        assertTrue(proposed!!.battle!!.log.any { "(le premier né à Kanto !)" in it }, proposed!!.battle!!.log.toString())
+        assertEquals(false, proposed!!.battle!!.recruitIsNew)
+        assertEquals(true, proposed!!.battle!!.recruitNewInRegion)
+        game(post("/battle/recruit", """{"accept":true}"""))
+        game(post("/battle/close"))
+        // Un Bulbizarre né à Kanto est maintenant possédé : les suivants s'éloignent
+        repeat(10) {
+            var v = game(post("/explore"))
+            while (v.battle!!.outcome == null) v = game(post("/battle/attack", """{"move":0}"""))
+            if (!v.battle!!.enemy.shiny) {
+                assertEquals(null, v.battle!!.recruit)
+                assertTrue(v.battle!!.log.any { "s'éloigne (déjà dans votre Pokédex)" in it }, v.battle!!.log.toString())
+            }
+            game(post("/battle/close"))
+        }
+    }
+
+    @Test
     fun `aventure - pas d'evolution hors de Kanto`() = appTest {
         suspend fun game(response: HttpResponse): GameView {
             assertTrue(response.status.isSuccess(), response.bodyAsText())

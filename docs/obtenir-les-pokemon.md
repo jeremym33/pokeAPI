@@ -41,7 +41,9 @@ les Pokémon rares ; Johto de même, plus le bonheur, la Pierre Soleil et les œ
 
   Vous acceptez ou refusez ; il rejoint l'équipe, ou la boîte si l'équipe a déjà 6 Pokémon.
 - **Réglage « Proposer seulement les nouveaux Pokémon »** : une espèce déjà rejointe ne propose plus de vous
-  rejoindre (« s'éloigne »), **sauf un chromatique** que vous n'avez pas encore.
+  rejoindre (« s'éloigne »), **sauf un chromatique** que vous n'avez pas encore, et **sauf le premier de son espèce né
+  dans la région où vous êtes** (à Johto, un Rattata alors que vous n'avez que des Rattata de Kanto) : seuls les
+  Pokémon nés dans la région y combattent.
 - **Région** : le Pokémon est « né » dans la région du lieu (il ne combat que dans sa région).
 
 ## 2. Le coup de pouce (invisible)

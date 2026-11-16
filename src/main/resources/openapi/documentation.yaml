@@ -787,7 +787,7 @@ paths:
               type: object
               properties:
                 nextEncounterButton: { type: boolean, description: "Proposer « Pokémon suivant » en fin de combat sur une route", default: true }
-                recruitOnlyNew: { type: boolean, description: "Ne proposer de rejoindre l'équipe qu'aux espèces pas encore obtenues ; un chromatique est proposé tant que ce chromatique n'a pas été obtenu", default: false }
+                recruitOnlyNew: { type: boolean, description: "Ne proposer de rejoindre l'équipe qu'aux espèces pas encore obtenues ; un chromatique est proposé tant que ce chromatique n'a pas été obtenu, et une espèce tant qu'aucun exemplaire né dans la région en cours n'est possédé", default: false }
                 autoReplaceMoves: { type: boolean, description: "Avec 4 attaques équipées, une nouvelle attaque remplace la plus ancienne (sinon elle rejoint les attaques connues)", default: true }
       responses:
         "200":

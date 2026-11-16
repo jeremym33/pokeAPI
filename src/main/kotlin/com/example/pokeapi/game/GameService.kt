@@ -1333,8 +1333,12 @@ class GameService(
         if (b.kind == BattleKind.WILD) {
             val enemy = b.enemy
             state = state.copy(wins = state.wins + (b.step to (state.wins[b.step] ?: 0) + 1))
-            // Un chromatique est nouveau tant que ce chromatique-là n'a pas été obtenu (même si l'espèce l'est)
-            val alreadyCaught = if (enemy.shiny) enemy.speciesId in state.shinyCaught else enemy.speciesId in state.caught
+            // Un chromatique est nouveau tant que ce chromatique-là n'a pas été obtenu (même si l'espèce l'est) ; une
+            // espèce est nouvelle tant qu'aucun Pokémon de cette espèce né dans la région n'est possédé (ceux des autres
+            // régions n'y combattent pas)
+            val region = GameRules.STEPS[b.step].region
+            val newHere = !state.ownsBornIn(enemy.speciesId, region)
+            val alreadyCaught = if (enemy.shiny) enemy.speciesId in state.shinyCaught else enemy.speciesId in state.caught && !newHere
             if (alreadyCaught && state.settings.recruitOnlyNew) {
                 // Réglage « seulement les nouveaux Pokémon » : pas de proposition pour une espèce (ou un chromatique) déjà obtenue.
                 log += "${enemy.displayName} s'éloigne (${if (enemy.shiny) "chromatique déjà obtenu" else "déjà dans votre Pokédex"})."
@@ -1343,6 +1347,7 @@ class GameService(
                 log += "${enemy.displayName} veut vous rejoindre !" + when {
                     enemy.shiny && !alreadyCaught -> " (nouveau chromatique !)"
                     enemy.shiny -> " (vous en avez déjà un chromatique)"
+                    enemy.speciesId in state.caught && newHere -> " (le premier né à ${regionName(region)} !)"
                     enemy.speciesId in state.caught -> " (vous en avez déjà un)"
                     else -> " (nouveau !)"
                 }
@@ -1668,6 +1673,10 @@ class GameService(
     /** Région d'origine d'un Pokémon (déduite de son espèce pour un Pokémon d'avant les régions). */
     private fun Fighter.originRegion(): String = origin ?: GameRules.speciesRegion(speciesId)
 
+    /** Possède un Pokémon de cette espèce né dans la région (équipe, boîte, entraînement, pensions). */
+    private fun GameState.ownsBornIn(speciesId: Int, region: String): Boolean =
+        (team + box + training.values.map { it.fighter } + allDayCarePokemon()).any { it.speciesId == speciesId && it.originRegion() == region }
+
     /** Peut combattre dans la région actuelle : seulement s'il en est originaire. */
     private fun GameState.usable(f: Fighter): Boolean = f.originRegion() == region()
 
@@ -1838,6 +1847,7 @@ class GameService(
                 canFlee = b.kind == BattleKind.WILD && b.outcome == null,
                 recruit = b.recruit?.toView(),
                 recruitIsNew = b.recruit?.let { it.speciesId !in s.caught } ?: false,
+                recruitNewInRegion = b.recruit?.let { it.speciesId in s.caught && !s.ownsBornIn(it.speciesId, GameRules.STEPS[b.step].region) } ?: false,
                 canContinue = b.kind == BattleKind.WILD && b.outcome in setOf(BattleOutcome.WON, BattleOutcome.FLED) &&
                     s.settings.nextEncounterButton && s.canFight() && pool(s.stepIndex, s.regionBadges(s.region())).isNotEmpty(),
             )
