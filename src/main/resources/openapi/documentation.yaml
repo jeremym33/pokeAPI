@@ -686,6 +686,24 @@ paths:
               schema: { $ref: "#/components/schemas/GameView" }
         "400": { $ref: "#/components/responses/BadRequest" }
 
+  /game/favorites:
+    post:
+      tags: [Aventure]
+      security: [{ bearerAuth: [] }]
+      summary: Ajouter ou retirer une zone favorite (raccourci de voyage, 8 au plus)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { step: { type: integer, example: 12 }, favorite: { type: boolean, default: true } } }
+      responses:
+        "200":
+          description: État de la partie (favoriteSteps)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GameView" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
   /game/team-presets:
     post:
       tags: [Aventure]
@@ -1556,6 +1574,7 @@ components:
           type: object
           additionalProperties: { type: object }
           description: Pension de chaque région ouverte (clé kanto, johto, hoenn) ; dayCare est celle de la région actuelle
+        favoriteSteps: { type: array, items: { type: integer }, description: "Zones favorites (numéros d'étapes)" }
         teamPresets: { type: array, items: { type: object }, description: "Équipes enregistrées (name, uids, names, complete)" }
         daily:
           type: array

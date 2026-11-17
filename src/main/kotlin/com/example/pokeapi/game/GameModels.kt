@@ -289,6 +289,8 @@ data class GameState(
     val johtoUnlocked: Boolean = false,
     /** Hoenn ouvert (les 251 premiers Pokémon obtenus) : acquis une fois pour toutes. */
     val hoennUnlocked: Boolean = false,
+    /** Zones favorites (numéros d'étapes), raccourcis de voyage ; 8 au plus. */
+    val favoriteSteps: List<Int> = emptyList(),
     /** Équipes enregistrées (6 au plus). */
     val teamPresets: List<TeamPreset> = emptyList(),
     /** Journal des moments forts (les plus récents à la fin, 300 au plus). */

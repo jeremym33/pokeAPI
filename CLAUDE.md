@@ -124,6 +124,9 @@ jour avec chaque route ou champ ajouté.
   `/withdraw`, `/egg` (par défaut la région actuelle) ; vue : `GameView.dayCares` (et `dayCare`, la région actuelle) ;
   2 Pokémon compatibles (groupe d'œufs ou Métamorph) → un œuf toutes les 5 min ; l'espèce de l'œuf est
   fixée à son apparition (`eggSpecies`) ; le bébé éclot avec `HAPPINESS_HATCHED` (10) points de bonheur.
+- **Zones favorites** (`GameState.favoriteSteps`, numéros d'étapes, 8 au plus ; `POST /game/favorites`
+  `{step, favorite}` ; vue `GameView.favoriteSteps`) : raccourcis de voyage. Ce sont des numéros d'étapes : à
+  renuméroter avec les autres si une migration déplace des étapes.
 - **Équipes enregistrées** (`GameState.teamPresets`, 6 au plus ; `POST /game/team-presets`, `/team-presets/apply`,
   `DELETE /team-presets/{name}`) ; **soin rapide** (`POST /game/heal-nearest` : ville accessible la plus proche).
 - **Défis du jour** (`withDaily`, `GameState.daily`) : 3 par jour (date du serveur), tirés pour la région actuelle

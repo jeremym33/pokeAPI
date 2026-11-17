@@ -292,6 +292,8 @@ data class GameView(
     val hoennUnlocked: Boolean = false,
     /** Régions ouvertes, dans l'ordre (kanto, johto, hoenn). */
     val unlockedRegions: List<String> = listOf(KANTO),
+    /** Zones favorites (numéros d'étapes), dans l'ordre où elles ont été ajoutées. */
+    val favoriteSteps: List<Int> = emptyList(),
     /** Équipes enregistrées. */
     val teamPresets: List<TeamPresetView> = emptyList(),
     /** Défis du jour. */

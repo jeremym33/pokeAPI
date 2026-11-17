@@ -751,6 +751,15 @@ class ApplicationTest {
         assertEquals(HttpStatusCode.BadRequest, post("/team-presets", """{"name":"   "}""").status)
         v = game(client.delete("/game/team-presets/Route"))
         assertEquals(listOf("Ligue"), v.teamPresets.map { it.name })
+        // Zones favorites : ajout, doublon sans effet, retrait, étape inconnue refusée
+        v = game(post("/favorites", """{"step":1}"""))
+        assertEquals(listOf(1), v.favoriteSteps)
+        v = game(post("/favorites", """{"step":0,"favorite":true}"""))
+        v = game(post("/favorites", """{"step":1,"favorite":true}"""))
+        assertEquals(listOf(1, 0), v.favoriteSteps)
+        v = game(post("/favorites", """{"step":1,"favorite":false}"""))
+        assertEquals(listOf(0), v.favoriteSteps)
+        assertEquals(HttpStatusCode.BadRequest, post("/favorites", """{"step":9999}""").status)
         // Soin rapide depuis la Route 1 : retour à la dernière ville (Bourg Palette), équipe et boîte soignées
         v = game(post("/heal-nearest"))
         assertEquals(0, v.currentStep)

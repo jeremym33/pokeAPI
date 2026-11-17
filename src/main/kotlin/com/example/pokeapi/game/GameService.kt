@@ -33,6 +33,7 @@ import kotlin.random.Random
 private data class PoolEntry(val pokemonId: Int, val types: List<String>, val method: String, val minLevel: Int, val maxLevel: Int, val chance: Int)
 
 private const val MAX_TEAM_PRESETS = 6
+private const val MAX_FAVORITES = 8
 private const val MAX_HISTORY = 300
 /** Pause au-delà de laquelle le temps entre deux actions ne compte pas comme temps de jeu. */
 private const val PLAY_PAUSE_MS = 5 * 60_000L
@@ -221,6 +222,19 @@ class GameService(
     }
 
     /** Badges d'arène de la partie (obtenus ou non) et leurs effets. */
+    // ---------- Zones favorites ----------
+
+    /** Ajoute (ou retire) une zone des favoris : raccourci de voyage ; 8 au plus. */
+    suspend fun setFavorite(userId: Int, step: Int, favorite: Boolean): GameView = act(userId) { s ->
+        if (step !in GameRules.STEPS.indices) throw BadRequestException("Étape inconnue : $step")
+        when {
+            !favorite -> s.copy(favoriteSteps = s.favoriteSteps - step)
+            step in s.favoriteSteps -> s
+            s.favoriteSteps.size >= MAX_FAVORITES -> throw BadRequestException("$MAX_FAVORITES zones favorites au plus : retirez-en une")
+            else -> s.copy(favoriteSteps = s.favoriteSteps + step)
+        }
+    }
+
     // ---------- Équipes enregistrées, soin rapide ----------
 
     /** Enregistre l'équipe actuelle sous un nom (le même nom la remplace) ; 6 équipes au plus. */
@@ -2276,6 +2290,7 @@ class GameService(
             johtoUnlocked = s.johtoUnlocked,
             hoennUnlocked = s.hoennUnlocked,
             unlockedRegions = GameRules.REGIONS.filter { s.regionUnlocked(it) },
+            favoriteSteps = s.favoriteSteps,
             teamPresets = s.teamPresets.map { p ->
                 val all = (s.team + s.box).associateBy { it.uid }
                 TeamPresetView(p.name, p.uids, p.uids.mapNotNull { all[it]?.displayName }, p.uids.all { it in all })

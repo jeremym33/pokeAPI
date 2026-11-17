@@ -32,6 +32,9 @@ data class AttackRequest(val move: Int)
 data class PresetRequest(val name: String)
 
 @Serializable
+data class FavoriteRequest(val step: Int, val favorite: Boolean = true)
+
+@Serializable
 data class SwitchRequest(val uid: String)
 
 @Serializable
@@ -104,6 +107,11 @@ fun Route.gameRoutes(service: GameService, auth: AuthService) {
         post("/heal") { call.respond(service.heal(call.user())) }
         // Soin rapide : retour à la ville la plus proche et soin
         post("/heal-nearest") { call.respond(service.healNearest(call.user())) }
+        // Zones favorites (raccourcis de voyage)
+        post("/favorites") {
+            val request = call.receive<FavoriteRequest>()
+            call.respond(service.setFavorite(call.user(), request.step, request.favorite))
+        }
         // Équipes enregistrées
         route("/team-presets") {
             post { call.respond(service.saveTeamPreset(call.user(), call.receive<PresetRequest>().name)) }
